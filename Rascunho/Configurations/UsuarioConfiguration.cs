@@ -1,7 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Rascunho.Entities;
-using Rascunho.Entities;
 
 namespace Rascunho.Configurations;
 

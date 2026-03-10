@@ -21,7 +21,7 @@ public class UsuarioService
 
     public async Task<Usuario> CriarUsuarioAsync(CriarUsuarioRequest request)
     {
-        bool emailJaExiste = await _context.Usuarios.AnyAsync(u => u.Email == request.Email);
+        bool emailJaExiste = await _context.Usuarios.AnyAsync(u => u.Email.ToLower() == request.Email.ToLower());
         if (emailJaExiste)
         {
             throw new RegraNegocioException("Este e-mail já está em uso no sistema.");
@@ -48,7 +48,7 @@ public class UsuarioService
         var emailsRequisicao = requests.Select(r => r.Email).ToList();
 
         var emailsDuplicadosNaLista = emailsRequisicao
-            .GroupBy(email => email)
+            .GroupBy(email => email.ToLower())
             .Where(grupo => grupo.Count() > 1)
             .Select(grupo => grupo.Key)
             .ToList();
@@ -114,6 +114,31 @@ public class UsuarioService
             .ToListAsync();
 
         return usuariosDb.Select(u => ObterUsuarioResponse.DeEntidade(u, _hashids));
+    }
+
+    public async Task<ListagemComContagemResponse> ListarUsuariosPorTipoAsync(string tipo, bool? ativo = null)
+    {
+        // 1. Inicia a query base filtrando pelo tipo (ignorando maiúsculas/minúsculas para evitar erros)
+        var query = _context.Usuarios
+            .Where(u => u.Tipo.ToLower() == tipo.ToLower());
+
+        // 2. Aplica o filtro de status apenas se ele foi fornecido
+        if (ativo.HasValue)
+        {
+            query = query.Where(u => u.Ativo == ativo.Value);
+        }
+
+        // 3. Faz a contagem de forma ultra rápida no banco de dados (gera um SELECT COUNT(*))
+        int quantidade = await query.CountAsync();
+
+        // 4. Busca os dados reais no banco
+        var usuariosDb = await query.ToListAsync();
+
+        // 5. Converte as entidades para o DTO aplicando o Hashids
+        var listaDto = usuariosDb.Select(u => ObterUsuarioResponse.DeEntidade(u, _hashids));
+
+        // 6. Retorna o envelope com a quantidade e a lista
+        return new ListagemComContagemResponse(quantidade, listaDto);
     }
 
     public async Task<ObterUsuarioResponse> ObterUsuarioPorIdAsync(int idReal)

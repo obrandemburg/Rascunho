@@ -9,9 +9,10 @@
 	<ItemGroup>
 		<PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
 		<PackageReference Include="EFCore.BulkExtensions.PostgreSql" Version="10.0.1" />
+		<PackageReference Include="FluentValidation.AspNetCore" Version="11.3.1" />
 		<PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
 		<PackageReference Include="Hashids.net" Version="1.7.0" />
-		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.4" />
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.3">
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -19,7 +20,6 @@
 		</PackageReference>
 		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
 		<PackageReference Include="Scalar.AspNetCore" Version="2.13.2" />
-		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.5" />
 	</ItemGroup>
 
 </Project>

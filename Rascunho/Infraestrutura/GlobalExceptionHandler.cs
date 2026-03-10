@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Diagnostics;
 using Rascunho.Exceptions;
 
-namespace Rascunho.Infra;
+namespace Rascunho.Infraestrutura;
 
 public class GlobalExceptionHandler : IExceptionHandler
 {
