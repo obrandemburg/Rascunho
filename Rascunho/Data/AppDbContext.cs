@@ -8,8 +8,8 @@ namespace Rascunho.Data
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
         public DbSet<Usuario> Usuarios { get; set; }
-        //public DbSet<Ritmo> Ritmos { get; set; }
-        //public DbSet<Turma> Turmas { get; set; }
+        public DbSet<Ritmo> Ritmos { get; set; }
+        public DbSet<Sala> Salas { get; set; }
         public DbSet<Aluno> Alunos { get; set; }
         public DbSet<Professor> Professores { get; set; }
         public DbSet<Bolsista> Bolsistas { get; set; }
