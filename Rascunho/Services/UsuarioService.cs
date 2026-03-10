@@ -1,18 +1,22 @@
-﻿using Rascunho.DTOs;
-using Rascunho.Entities;
-using Rascunho.Data;
+﻿using EFCore.BulkExtensions;
+using HashidsNet;
 using Microsoft.EntityFrameworkCore;
-using EFCore.BulkExtensions;
+using Rascunho.Data;
+using Rascunho.DTOs;
+using Rascunho.Entities;
+using Rascunho.Exceptions;
 
 namespace Rascunho.Services;
 
 public class UsuarioService
 {
     private readonly AppDbContext _context;
+    private readonly IHashids _hashids;
 
-    public UsuarioService(AppDbContext context)
+    public UsuarioService(AppDbContext context, IHashids hashids)
     {
         _context = context;
+        _hashids = hashids;
     }
 
     public async Task<Usuario> CriarUsuarioAsync(CriarUsuarioRequest request)
@@ -20,7 +24,7 @@ public class UsuarioService
         bool emailJaExiste = await _context.Usuarios.AnyAsync(u => u.Email == request.Email);
         if (emailJaExiste)
         {
-            throw new Exception("Este e-mail já está em uso no sistema.");
+            throw new RegraNegocioException("Este e-mail já está em uso no sistema.");
         }
         string senhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha);
 
@@ -32,7 +36,7 @@ public class UsuarioService
             "Gerente" => new Gerente(request.Nome, request.Email, senhaHash),
             "Recepção" => new Recepcao(request.Nome, request.Email, senhaHash),
             "Líder" => new Lider(request.Nome, request.Email, senhaHash),
-            _ => throw new ArgumentException("Tipo de usuário inválido")
+            _ => throw new RegraNegocioException("Tipo de usuário inválido")
         };
 
         _context.Usuarios.Add(usuario);
@@ -41,6 +45,29 @@ public class UsuarioService
     }
     public async Task InserirUsuariosEmMassaAsync(IEnumerable<CriarUsuarioRequest> requests)
     {
+        var emailsRequisicao = requests.Select(r => r.Email).ToList();
+
+        var emailsDuplicadosNaLista = emailsRequisicao
+            .GroupBy(email => email)
+            .Where(grupo => grupo.Count() > 1)
+            .Select(grupo => grupo.Key)
+            .ToList();
+
+        if (emailsDuplicadosNaLista.Any())
+        {
+            throw new RegraNegocioException($"A lista enviada contém e-mails duplicados entre si: {string.Join(", ", emailsDuplicadosNaLista)}");
+        }
+
+        var emailsJaExistentesNoBanco = await _context.Usuarios
+            .Where(u => emailsRequisicao.Contains(u.Email))
+            .Select(u => u.Email)
+            .ToListAsync();
+
+        if (emailsJaExistentesNoBanco.Any())
+        {
+            throw new RegraNegocioException($"Os seguintes e-mails já estão cadastrados no sistema e não podem ser reinseridos: {string.Join(", ", emailsJaExistentesNoBanco)}");
+        }
+
         var usuariosParaInserir = new List<Usuario>();
 
         foreach (var request in requests)
@@ -55,7 +82,7 @@ public class UsuarioService
                 "Gerente" => new Gerente(request.Nome, request.Email, senhaHash),
                 "Recepção" => new Recepcao(request.Nome, request.Email, senhaHash),
                 "Líder" => new Lider(request.Nome, request.Email, senhaHash),
-                _ => throw new ArgumentException($"Tipo de usuário inválido: {request.Tipo}")
+                _ => throw new RegraNegocioException($"Tipo de usuário inválido: {request.Tipo}")
             };
 
             usuariosParaInserir.Add(usuario);
@@ -66,95 +93,52 @@ public class UsuarioService
 
     public async Task<IEnumerable<ObterUsuarioResponse>> ListarTodosUsuariosAsync()
     {
-        var usuarios = await _context.Usuarios
-            .Select(usuario => new ObterUsuarioResponse(
-                usuario.Email,
-                usuario.Nome,
-                usuario.NomeSocial,
-                usuario.Biografia,
-                usuario.FotoUrl,
-                usuario.Tipo,
-                usuario.Ativo
-            ))
-            .ToListAsync();
+        var usuariosDb = await _context.Usuarios.ToListAsync();
 
-        return usuarios;
+        return usuariosDb.Select(usuario => ObterUsuarioResponse.DeEntidade(usuario, _hashids));
     }
+
     public async Task<IEnumerable<ObterUsuarioResponse>> ListarUsuariosAtivosAsync()
     {
-        var usuarios = await _context.Usuarios
+        var usuariosDb = await _context.Usuarios
             .Where(u => u.Ativo)
-            .Select(usuario => new ObterUsuarioResponse(
-                usuario.Email,
-                usuario.Nome,
-                usuario.NomeSocial,
-                usuario.Biografia,
-                usuario.FotoUrl,
-                usuario.Tipo,
-                usuario.Ativo
-            ))
             .ToListAsync();
 
-        return usuarios;
+        return usuariosDb.Select(u => ObterUsuarioResponse.DeEntidade(u, _hashids));
     }
+
     public async Task<IEnumerable<ObterUsuarioResponse>> ListarUsuariosDesativadosAsync()
     {
-        var usuarios = await _context.Usuarios
+        var usuariosDb = await _context.Usuarios
             .Where(u => !u.Ativo)
-            .Select(usuario => new ObterUsuarioResponse(
-                usuario.Email,
-                usuario.Nome,
-                usuario.NomeSocial,
-                usuario.Biografia,
-                usuario.FotoUrl,
-                usuario.Tipo,
-                usuario.Ativo
-            ))
             .ToListAsync();
 
-        return usuarios;
+        return usuariosDb.Select(u => ObterUsuarioResponse.DeEntidade(u, _hashids));
     }
-    public async Task<ObterUsuarioResponse> ObterUsuarioPorIdAsync(Guid id)
+
+    public async Task<ObterUsuarioResponse> ObterUsuarioPorIdAsync(int idReal)
     {
-        var usuario = await _context.Usuarios
-            .Where(u => u.Id == id)
-            .Select(u => new ObterUsuarioResponse(
-                usuario.Email,
-                usuario.Nome,
-                usuario.NomeSocial,
-                usuario.Biografia,
-                usuario.FotoUrl,
-                usuario.Tipo,
-                usuario.Ativo)
-            .FirstOrDefaultAsync();
+        var usuario = await _context.Usuarios.FindAsync(idReal);
+        if (usuario == null || !usuario.Ativo)
+            throw new RegraNegocioException("Usuário não encontrado.");
 
-        if (usuario == null)
-            throw new Exception("Usuário não encontrado.");
-
-        return usuario;
+        return ObterUsuarioResponse.DeEntidade(usuario, _hashids);
     }
 
-    public async Task AtualizarPerfilAsync(Guid id, EditarPerfilRequest request)
+    public async Task AtualizarPerfilAsync(int id, EditarPerfilRequest request)
     {
         var usuario = await _context.Usuarios.FindAsync(id)
-            ?? throw new Exception("Usuário não encontrado.");
+            ?? throw new RegraNegocioException("Usuário não encontrado.");
 
         usuario.EditarPerfil(request.FotoUrl, request.NomeSocial, request.Biografia);
 
         await _context.SaveChangesAsync();
     }
-    public async Task ExcluirUsuarioAsync(Guid id)
-    {
-        var usuario = await _context.Usuarios.FindAsync(id)
-            ?? throw new Exception("Usuário não encontrado.");
 
-        _context.Usuarios.Remove(usuario);
-        await _context.SaveChangesAsync();
-    }
-    public async Task AlterarStatusAsync(Guid id, bool ativar)
+    public async Task AlterarStatusAsync(int id, bool ativar)
     {
         var usuario = await _context.Usuarios.FindAsync(id)
-            ?? throw new Exception("Usuário não encontrado.");
+            ?? throw new RegraNegocioException("Usuário não encontrado.");
 
         if (ativar)
             usuario.Ativar();
@@ -163,4 +147,14 @@ public class UsuarioService
 
         await _context.SaveChangesAsync();
     }
+
+    public async Task ExcluirUsuarioAsync(int id)
+    {
+        var usuario = await _context.Usuarios.FindAsync(id)
+            ?? throw new RegraNegocioException("Usuário não encontrado.");
+
+        _context.Usuarios.Remove(usuario);
+        await _context.SaveChangesAsync();
+    }
+    
 }

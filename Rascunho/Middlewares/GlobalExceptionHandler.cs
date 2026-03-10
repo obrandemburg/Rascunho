@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Diagnostics;
+using Rascunho.Exceptions;
 
 namespace Rascunho.Infra;
 
@@ -19,11 +20,15 @@ public class GlobalExceptionHandler : IExceptionHandler
             statusCode = StatusCodes.Status400BadRequest;
             mensagem = exception.Message;
         }
-        else if (exception is Exception) // Aqui você pode criar exceções customizadas no futuro (ex: RegraNegocioException)
+        else if (exception is RegraNegocioException)
         {
-            // Para erros de negócio, como e-mail duplicado
             statusCode = StatusCodes.Status422UnprocessableEntity;
             mensagem = exception.Message;
+        }
+        else
+        {
+            statusCode = StatusCodes.Status500InternalServerError;
+            mensagem = "Ocorreu um erro interno. Tente novamente mais tarde.";
         }
 
         // Configura a resposta HTTP

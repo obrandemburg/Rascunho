@@ -1,7 +1,7 @@
 ﻿namespace Rascunho.Entities;
 public abstract class Usuario
 {
-    public Guid Id { get; protected set; }
+    public int Id { get; protected set; }
     public string Nome { get; protected set; } = string.Empty;
     public string Email { get; protected set; } = string.Empty;
     public string SenhaHash { get; protected set; } = string.Empty;
@@ -15,7 +15,6 @@ public abstract class Usuario
 
     protected Usuario(string nome, string email, string senhaHash, string tipo)
     {
-        Id = Guid.NewGuid();
         Nome = nome;
         NomeSocial = nome;
         Email = email;

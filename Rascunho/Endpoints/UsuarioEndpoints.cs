@@ -1,4 +1,5 @@
-﻿using Rascunho.DTOs;
+﻿using HashidsNet;
+using Rascunho.DTOs;
 using Rascunho.Services;
 
 namespace Rascunho.Endpoints
@@ -9,12 +10,13 @@ namespace Rascunho.Endpoints
         {
             var group = app.MapGroup("/api/usuarios");
 
-            //Apenas para testes, cadastra usuários no sistema sem necessidade de login
-            group.MapPost("/cadastrar", async (CriarUsuarioRequest request, UsuarioService usuarioService) =>
+            group.MapPost("/cadastrar", async (CriarUsuarioRequest request, UsuarioService usuarioService, IHashids hashids) =>
             {
                 var usuario = await usuarioService.CriarUsuarioAsync(request);
-                return Results.Created($"/api/usuarios/{usuario.Id}", new ObterUsuarioResponse
-                    (usuario.Email, usuario.Nome, usuario.NomeSocial, usuario.Biografia, usuario.FotoUrl, usuario.Tipo, usuario.Ativo));
+
+                var response = ObterUsuarioResponse.DeEntidade(usuario, hashids);
+
+                return Results.Created($"/api/usuarios/{response.IdHash}", response);
             });
 
             group.MapPost("/cadastrar/lista", async (List<CriarUsuarioRequest> listaDeUsuarios, UsuarioService usuarioService) =>
@@ -53,20 +55,47 @@ namespace Rascunho.Endpoints
                 return Results.Ok(response);
             });
 
-            group.MapGet("/{id:guid}", async (Guid id, UsuarioService usuarioService) =>
+            // OBTER POR ID
+            group.MapGet("/obter/{idHash}", async (string idHash, UsuarioService usuarioService, IHashids hashids) =>
             {
-                var response = await usuarioService.ObterUsuarioPorIdAsync(id);
+                var decodedIds = hashids.Decode(idHash);
+                if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID fornecido é inválido ou malformado." });
+
+                var response = await usuarioService.ObterUsuarioPorIdAsync(decodedIds[0]);
                 return Results.Ok(response);
             });
 
-            group.MapPut("/atualizar/{id:guid}", async (Guid id, EditarPerfilRequest request, UsuarioService usuarioService) =>
+            // ATUALIZAR PERFIL
+            group.MapPut("/atualizar/{idHash}", async (string idHash, EditarPerfilRequest request, UsuarioService usuarioService, IHashids hashids) =>
             {
-                await usuarioService.AtualizarPerfilAsync(id, request);
+                var decodedIds = hashids.Decode(idHash);
+                if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID inválido." });
 
+                await usuarioService.AtualizarPerfilAsync(decodedIds[0], request);
                 return Results.NoContent();
             });
 
+            // ALTERAR STATUS
+            group.MapPut("/status/{idHash}", async (string idHash, bool status, UsuarioService usuarioService, IHashids hashids) =>
+            {
+                var decodedIds = hashids.Decode(idHash);
+                if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID inválido." });
 
+                await usuarioService.AlterarStatusAsync(decodedIds[0], status);
+                return Results.NoContent();
+            });
+
+            // EXCLUIR USUÁRIO
+            group.MapDelete("/deletar/{idHash}", async (string idHash, UsuarioService usuarioService, IHashids hashids) =>
+            {
+                var decodedIds = hashids.Decode(idHash);
+                if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID inválido." });
+
+                await usuarioService.ExcluirUsuarioAsync(decodedIds[0]);
+                return Results.NoContent();
+            });
+
+            
 
         }
     }
