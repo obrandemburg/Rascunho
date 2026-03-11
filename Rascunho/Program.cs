@@ -24,8 +24,10 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // CONFIGURAÇÃO DA AUTENTICAÇÃO E AUTORIZAÇÃO
-var jwtKey = builder.Configuration["Jwt:Key"];
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("A chave JWT não foi configurada nas variáveis de ambiente/secrets.");
 var keyBytes = Encoding.ASCII.GetBytes(jwtKey!);
+
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -56,7 +58,10 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
 // Chave de encriptação de Id
-builder.Services.AddSingleton<IHashids>(new Hashids("PontoDaDanca_Chave_Super_Secreta_2026", minHashLength: 8));
+var hashidsSalt = builder.Configuration["Hashids:Salt"]
+    ?? throw new InvalidOperationException("A chave do Hashids não foi configurada nas variáveis de ambiente/secrets.");
+
+builder.Services.AddSingleton<IHashids>(new Hashids(hashidsSalt, minHashLength: 8));
 
 // Validações
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
@@ -67,8 +72,15 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    // Isso garante que o banco seja criado e atualizado assim que a API subir
-    db.Database.Migrate();
+    try
+    {
+        await db.Database.MigrateAsync();
+    }
+    catch (Exception ex)
+    {
+        // Adicione um log de erro aqui, se necessário
+        Console.WriteLine($"Erro ao rodar migrations: {ex.Message}");
+    }
 }
 
 app.UseExceptionHandler();
