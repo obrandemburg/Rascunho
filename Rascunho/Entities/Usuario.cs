@@ -10,6 +10,7 @@ public abstract class Usuario
     public string Biografia { get; protected set; } = string.Empty;
     public string FotoUrl { get; protected set; } = string.Empty;
     public bool Ativo { get; protected set; } = true;
+    public DateOnly DataNascimento { get; set; }
 
     protected Usuario() { }
 

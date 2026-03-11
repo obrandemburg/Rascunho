@@ -16,6 +16,10 @@ namespace Rascunho.Data
         public DbSet<Gerente> Gerentes { get; set; }
         public DbSet<Recepcao> Recepcoes { get; set; }
         public DbSet<Lider> Lideres { get; set; }
+        public DbSet<Turma> Turmas { get; set; }
+        public DbSet<TurmaProfessor> TurmaProfessores { get; set; }
+        public DbSet<Matricula> Matriculas { get; set; }
+        public DbSet<Interesse> Interesses { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

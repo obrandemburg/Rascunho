@@ -12,6 +12,9 @@ public class UsuarioConfiguration : IEntityTypeConfiguration<Usuario>
         builder.Property(u => u.Nome).IsRequired().HasMaxLength(150);
         builder.HasIndex(u => u.Email).IsUnique();
         builder.Property(u => u.SenhaHash).IsRequired();
+        builder.Property(a => a.DataNascimento)
+            .IsRequired()
+            .HasColumnName("data_nascimento");
 
         // Configuração TPH (Table-Per-Hierarchy)
         builder.HasDiscriminator(u => u.Tipo)

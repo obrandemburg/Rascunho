@@ -13,7 +13,6 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
-// A LINHA builder.Services.AddSwaggerGen(); FOI APAGADA DAQUI!
 
 builder.Services.AddOpenApi(options =>
 {
@@ -48,6 +47,9 @@ builder.Services.AddAuthorization(); // Ativa as Roles e Policies
 // Serviços
 builder.Services.AddScoped<UsuarioService>();
 builder.Services.AddScoped<TokenService>();
+builder.Services.AddScoped<RitmoService>();
+builder.Services.AddScoped<SalaService>();
+builder.Services.AddScoped<TurmaService>();
 
 // Tratamento global de exceções
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -60,6 +62,14 @@ builder.Services.AddSingleton<IHashids>(new Hashids("PontoDaDanca_Chave_Super_Se
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 
 var app = builder.Build();
+
+// APLICAÇÃO AUTOMÁTICA DE MIGRATIONS (Ideal para o ambiente de testes na VPS)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    // Isso garante que o banco seja criado e atualizado assim que a API subir
+    db.Database.Migrate();
+}
 
 app.UseExceptionHandler();
 
@@ -82,4 +92,8 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapUsuarioEndpoints();
+app.MapSalaEndpoints();
+app.MapRitmoEndpoints();
+app.MapTurmaEndpoints();
+
 app.Run();
