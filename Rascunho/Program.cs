@@ -85,8 +85,8 @@ using (var scope = app.Services.CreateScope())
 
 app.UseExceptionHandler();
 
-if (app.Environment.IsDevelopment())
-{
+//if (app.Environment.IsDevelopment())
+//{
     app.MapOpenApi();
 
     // Interface moderna do Scalar
@@ -96,7 +96,7 @@ if (app.Environment.IsDevelopment())
                .WithTheme(ScalarTheme.DeepSpace)
                .WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Axios);
     });
-}
+//}
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
