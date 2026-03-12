@@ -52,6 +52,7 @@ builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<RitmoService>();
 builder.Services.AddScoped<SalaService>();
 builder.Services.AddScoped<TurmaService>();
+builder.Services.AddScoped<AvisoService>();
 
 // Tratamento global de exceções
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -107,5 +108,6 @@ app.MapUsuarioEndpoints();
 app.MapSalaEndpoints();
 app.MapRitmoEndpoints();
 app.MapTurmaEndpoints();
+app.MapAvisoEndpoints();
 
 app.Run();
