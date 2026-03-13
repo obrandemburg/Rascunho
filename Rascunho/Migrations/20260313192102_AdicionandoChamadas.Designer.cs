@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Rascunho.Data;
@@ -11,9 +12,11 @@ using Rascunho.Data;
 namespace Rascunho.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260313192102_AdicionandoChamadas")]
+    partial class AdicionandoChamadas
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,53 +24,6 @@ namespace Rascunho.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("Rascunho.Entities.AulaParticular", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("AlunoId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("DataHoraFim")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("DataHoraInicio")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("DataSolicitacao")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ObservacaoAluno")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<int>("ProfessorId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("RitmoId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AlunoId");
-
-                    b.HasIndex("ProfessorId");
-
-                    b.HasIndex("RitmoId");
-
-                    b.ToTable("AulasParticulares", (string)null);
-                });
 
             modelBuilder.Entity("Rascunho.Entities.Aviso", b =>
                 {
@@ -382,12 +338,6 @@ namespace Rascunho.Migrations
                 {
                     b.HasBaseType("Rascunho.Entities.Usuario");
 
-                    b.Property<int?>("DiaObrigatorio1")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("DiaObrigatorio2")
-                        .HasColumnType("integer");
-
                     b.HasDiscriminator().HasValue("Bolsista");
                 });
 
@@ -417,33 +367,6 @@ namespace Rascunho.Migrations
                     b.HasBaseType("Rascunho.Entities.Usuario");
 
                     b.HasDiscriminator().HasValue("Recepção");
-                });
-
-            modelBuilder.Entity("Rascunho.Entities.AulaParticular", b =>
-                {
-                    b.HasOne("Rascunho.Entities.Usuario", "Aluno")
-                        .WithMany()
-                        .HasForeignKey("AlunoId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Rascunho.Entities.Usuario", "Professor")
-                        .WithMany()
-                        .HasForeignKey("ProfessorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Rascunho.Entities.Ritmo", "Ritmo")
-                        .WithMany()
-                        .HasForeignKey("RitmoId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Aluno");
-
-                    b.Navigation("Professor");
-
-                    b.Navigation("Ritmo");
                 });
 
             modelBuilder.Entity("Rascunho.Entities.Aviso", b =>

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Rascunho.Data;
@@ -11,9 +12,11 @@ using Rascunho.Data;
 namespace Rascunho.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260313194449_AdicionandoAulasParticulares")]
+    partial class AdicionandoAulasParticulares
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -381,12 +384,6 @@ namespace Rascunho.Migrations
             modelBuilder.Entity("Rascunho.Entities.Bolsista", b =>
                 {
                     b.HasBaseType("Rascunho.Entities.Usuario");
-
-                    b.Property<int?>("DiaObrigatorio1")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("DiaObrigatorio2")
-                        .HasColumnType("integer");
 
                     b.HasDiscriminator().HasValue("Bolsista");
                 });
