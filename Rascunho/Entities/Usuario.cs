@@ -47,8 +47,18 @@ public class Professor : Usuario
 
 public class Bolsista : Usuario
 {
+    // Propriedades exclusivas do Bolsista
+    public DayOfWeek? DiaObrigatorio1 { get; private set; }
+    public DayOfWeek? DiaObrigatorio2 { get; private set; }
+
     public Bolsista(string nome, string email, string senhaHash)
         : base(nome, email, senhaHash, "Bolsista") { }
+
+    public void DefinirDiasObrigatorios(DayOfWeek dia1, DayOfWeek dia2)
+    {
+        DiaObrigatorio1 = dia1;
+        DiaObrigatorio2 = dia2;
+    }
 }
 
 public class Lider : Usuario
