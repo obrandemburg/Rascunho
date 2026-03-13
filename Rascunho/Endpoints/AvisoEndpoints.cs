@@ -39,7 +39,7 @@ public static class AvisoEndpoints
             .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
         // 3. CRIAR AVISO
-        adminGroup.MapPost("/", async (CriarAvisoRequest request, AvisoService avisoService, IHashids hashids, ClaimsPrincipal user) =>
+        adminGroup.MapPost("/criar", async (CriarAvisoRequest request, AvisoService avisoService, ClaimsPrincipal user) =>
         {
             var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(idClaim, out int autorLogadoId)) return Results.Unauthorized();
@@ -50,7 +50,7 @@ public static class AvisoEndpoints
         .AddEndpointFilter<ValidationFilter<CriarAvisoRequest>>();
 
         // 4. ATUALIZAR AVISO
-        adminGroup.MapPut("/{idHash}", async (string idHash, AtualizarAvisoRequest request, AvisoService avisoService, IHashids hashids) =>
+        adminGroup.MapPut("/atualizar/aviso/{idHash}", async (string idHash, AtualizarAvisoRequest request, AvisoService avisoService, IHashids hashids) =>
         {
             var decodedIds = hashids.Decode(idHash);
             if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID inválido." });
@@ -61,7 +61,7 @@ public static class AvisoEndpoints
         .AddEndpointFilter<ValidationFilter<AtualizarAvisoRequest>>();
 
         // 5. DELETAR AVISO (Caso precisem excluir antes da data de expiração)
-        adminGroup.MapDelete("/{idHash}", async (string idHash, AvisoService avisoService, IHashids hashids) =>
+        adminGroup.MapDelete("/excluir/aviso/{idHash}", async (string idHash, AvisoService avisoService, IHashids hashids) =>
         {
             var decodedIds = hashids.Decode(idHash);
             if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID inválido." });
