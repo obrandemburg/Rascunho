@@ -19,6 +19,17 @@ builder.Services.AddOpenApi(options =>
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
 });
 
+//cors
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("PermitirFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173") // Adicione o domínio oficial aqui quando fizer o deploy do frontend
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 // Banco de dados
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -102,6 +113,8 @@ app.UseExceptionHandler();
     });
 //}
 app.UseHttpsRedirection();
+
+app.UseCors("PermitirFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
