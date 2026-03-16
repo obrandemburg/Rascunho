@@ -130,7 +130,7 @@ app.UseExceptionHandler();
                .WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Axios);
     });
 //}
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
 
 app.UseCors("PermitirFrontend");
 
