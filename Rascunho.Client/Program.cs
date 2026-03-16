@@ -11,7 +11,7 @@ builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 // 1. PADRÃO: Usando a API que já está em produção na VPS (Hetzner)
-builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri("http://5.161.202.169:8080") });
+builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri("http://5.161.202.169:8080/") });
 
 // 2. PARA TESTES GERAIS: Quando quiser testar com a API rodando no seu próprio Visual Studio
 // Descomente a linha abaixo e comente a linha de cima!
