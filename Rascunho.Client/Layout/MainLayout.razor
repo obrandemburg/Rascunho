@@ -19,14 +19,15 @@
         <MudText Typo="Typo.h5" Class="ml-3 font-weight-bold">Ponto da Dança</MudText>
         <MudSpacer />
         
-        @* ÁREA DO USUÁRIO (Mostra foto se logado, ou botão de Entrar se não) *@
+        @* ÁREA DO USUÁRIO *@
         <AuthorizeView>
-            <Authorized>
+            <Authorized Context="authContext">
+                @* <--- CORREÇÃO: Demos o nome 'authContext' *@
                 <MudMenu ActivationEvent="@MouseEvent.LeftClick" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                     <ActivatorContent>
-                        @* O JWT não guarda a foto nativamente como uma Claim padrão, então usamos claim customizada ou a inicial do nome *@
                         <MudAvatar Color="Color.Secondary">
-                            @context.User.Identity?.Name?.FirstOrDefault()
+                            @* CORREÇÃO: Usando o nome novo aqui *@
+                            @authContext.User.Identity?.Name?.FirstOrDefault()
                         </MudAvatar>
                     </ActivatorContent>
                     <ChildContent>
