@@ -24,16 +24,8 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("PermitirFrontend", policy =>
     {
-        policy.WithOrigins(
-                "http://5.161.202.169:81",  // Libera a sua Produção (Frontend na VPS)
-                "http://localhost:5173",    // Libera porta local padrão Vite/React
-                "http://localhost:5000",    // Libera porta local padrão Blazor
-                "http://localhost:5001",    // Libera porta local padrão Blazor HTTPS
-                "https://localhost:7080",   // Libera outra porta comum do VS
-                "http://localhost:5032",     // Outra porta comum
-                "http://localhost:5126"   // O seu PC rodando localmente
-              )
-              .SetIsOriginAllowed(origin => new Uri(origin).Host == "localhost") // Libera QUALQUER localhost para facilitar o seu desenvolvimento!
+        // Libera de qualquer lugar! A segurança será feita pelo Token JWT.
+        policy.AllowAnyOrigin()
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
