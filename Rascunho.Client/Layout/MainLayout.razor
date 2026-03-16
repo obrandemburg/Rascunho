@@ -1,16 +1,85 @@
 ﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using Rascunho.Client.Security
+@using Blazored.LocalStorage
+@inject ILocalStorageService LocalStorage
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+
+@* Configuração das Cores Oficiais do Ponto da Dança *@
+<MudThemeProvider Theme="@CustomTheme" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    @* BARRA SUPERIOR *@
+    <MudAppBar Elevation="1" Color="Color.Primary">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+        <MudText Typo="Typo.h5" Class="ml-3 font-weight-bold">Ponto da Dança</MudText>
+        <MudSpacer />
+        
+        @* ÁREA DO USUÁRIO (Mostra foto se logado, ou botão de Entrar se não) *@
+        <AuthorizeView>
+            <Authorized>
+                <MudMenu ActivationEvent="@MouseEvent.LeftClick" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                    <ActivatorContent>
+                        @* O JWT não guarda a foto nativamente como uma Claim padrão, então usamos claim customizada ou a inicial do nome *@
+                        <MudAvatar Color="Color.Secondary">
+                            @context.User.Identity?.Name?.FirstOrDefault()
+                        </MudAvatar>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem Href="/perfil" Icon="@Icons.Material.Filled.Person">Meu Perfil</MudMenuItem>
+                        <MudMenuItem OnClick="Sair" Icon="@Icons.Material.Filled.Logout">Sair</MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+            </Authorized>
+            <NotAuthorized>
+                <MudButton Color="Color.Inherit" Variant="Variant.Outlined" Href="/login">Entrar</MudButton>
+            </NotAuthorized>
+        </AuthorizeView>
+    </MudAppBar>
+
+    @* MENU LATERAL (DRAWER) *@
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="2" ClipMode="DrawerClipMode.Always">
         <NavMenu />
-    </div>
+    </MudDrawer>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
+    @* CONTEÚDO PRINCIPAL (Onde o Login e outras telas vão renderizar) *@
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pt-8 pb-8">
             @Body
-        </article>
-    </main>
-</div>
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+
+    private void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    private async Task Sair()
+    {
+        // Limpa o Token do navegador e avisa o sistema para fechar as portas
+        await LocalStorage.RemoveItemAsync("authToken");
+        ((CustomAuthStateProvider)AuthStateProvider).NotifyUserLogout();
+        NavigationManager.NavigateTo("/login");
+    }
+
+    // Identidade Visual: Verde forte como primário, Amarelo/Dourado como secundário para destaques
+    MudTheme CustomTheme = new MudTheme()
+    {
+        PaletteLight = new PaletteLight()
+        {
+            Primary = "#1b5e20", // Verde escuro elegante
+            Secondary = "#fbc02d", // Destaques (como a coroa/pontos)
+            AppbarBackground = "#1b5e20",
+            Background = "#f5f5f5", // Cinza bem claro para o fundo não cansar a vista
+            Surface = "#ffffff"
+        }
+    };
+}

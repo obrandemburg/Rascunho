@@ -10,9 +10,12 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-// 1. Configura o HttpClient para apontar para a sua API!
-// Coloque o IP da sua VPS ou do localhost onde a API está rodando
-builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri("http://localhost:5000") });
+// 1. PADRÃO: Usando a API que já está em produção na VPS (Hetzner)
+builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri("http://5.161.202.169:8080") });
+
+// 2. PARA TESTES GERAIS: Quando quiser testar com a API rodando no seu próprio Visual Studio
+// Descomente a linha abaixo e comente a linha de cima!
+// builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri("http://localhost:5000") });
 
 // 2. Adiciona a biblioteca de Design Visual
 builder.Services.AddMudServices();

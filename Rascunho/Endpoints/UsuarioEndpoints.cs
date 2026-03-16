@@ -80,7 +80,7 @@ public static class UsuarioEndpoints
             return Results.Ok(response);
         }).RequireAuthorization();
 
-        // 6. ATUALIZAR MEU PERFIL (Restaurada a SEGURANÇA DO TOKEN da main)
+        // 6. ATUALIZAR MEU PERFIL
         group.MapPut("/meu-perfil/atualizar", async (EditarPerfilRequest request, UsuarioService usuarioService, ClaimsPrincipal user) =>
         {
             var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
