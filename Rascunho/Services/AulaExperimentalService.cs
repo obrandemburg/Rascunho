@@ -1,10 +1,10 @@
 ﻿using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
-using Rascunho.DTOs;
+using Rascunho.Shared.DTOs; // <-- NOVO NAMESPACE AQUI
 using Rascunho.Entities;
 using Rascunho.Exceptions;
-using Rascunho.Mappers;
+using Rascunho.Mappers;       // <-- IMPORTANDO OS SEUS MAPPERS
 
 namespace Rascunho.Services;
 
@@ -30,35 +30,35 @@ public class AulaExperimentalService
             .FirstOrDefaultAsync(t => t.Id == turmaId)
             ?? throw new RegraNegocioException("Turma não encontrada.");
 
-        // TRAVA 1: O aluno já está matriculado nessa turma?
         if (turma.Matriculas.Any(m => m.AlunoId == alunoId))
-            throw new RegraNegocioException("Você já é um aluno matriculado nesta turma. Não precisa de aula experimental.");
+            throw new RegraNegocioException("Você já é um aluno matriculado nesta turma.");
 
-        // TRAVA 2: A turma tem vaga física para o aluno experimental?
         if (turma.Matriculas.Count >= turma.LimiteAlunos)
-            throw new RegraNegocioException("Esta turma está cheia. Não há vagas para aulas experimentais no momento.");
+            throw new RegraNegocioException("Esta turma está cheia.");
 
-        // TRAVA 3: O SISTEMA ANTIFRAUDE (Uma experimental por Ritmo)
         bool jaFezNesteRitmo = await _context.AulasExperimentais
             .Include(a => a.Turma)
-            .AnyAsync(a => a.AlunoId == alunoId &&
-                           a.Turma.RitmoId == turma.RitmoId &&
-                           a.Status != "Cancelada"); // Se foi cancelada, ele tem direito de tentar de novo
+            .AnyAsync(a => a.AlunoId == alunoId && a.Turma.RitmoId == turma.RitmoId && a.Status != "Cancelada");
 
         if (jaFezNesteRitmo)
             throw new RegraNegocioException("Você já solicitou ou realizou uma aula experimental para este ritmo.");
 
-        // Se passou por tudo, cria a solicitação
+        // ==========================================
+        // CRIAÇÃO DA ENTIDADE LIMPA
+        // ==========================================
         var experimental = new AulaExperimental(alunoId, turmaId, request.DataAula);
+
         _context.AulasExperimentais.Add(experimental);
         await _context.SaveChangesAsync();
 
-        // Carrega dados para a resposta
         await _context.Entry(experimental).Reference(a => a.Aluno).LoadAsync();
         await _context.Entry(experimental).Reference(a => a.Turma).LoadAsync();
         await _context.Entry(experimental.Turma).Reference(t => t.Ritmo).LoadAsync();
 
-        return ObterAulaExperimentalResponse.DeEntidade(experimental, _hashids);
+        // ==========================================
+        // USO DO MAPPER INTELIGENTE
+        // ==========================================
+        return experimental.ToResponse(_hashids);
     }
 
     public async Task AlterarStatusAsync(int experimentalId, string novoStatus)

@@ -1,5 +1,5 @@
 ﻿using HashidsNet;
-using Rascunho.DTOs;
+using Rascunho.Shared.DTOs;
 using Rascunho.Infraestrutura;
 using Rascunho.Services;
 using System.Security.Claims;

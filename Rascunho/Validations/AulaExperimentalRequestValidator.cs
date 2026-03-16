@@ -1,5 +1,5 @@
 ﻿using FluentValidation;
-using Rascunho.DTOs;
+using Rascunho.Shared.DTOs;
 
 namespace Rascunho.Validations;
 

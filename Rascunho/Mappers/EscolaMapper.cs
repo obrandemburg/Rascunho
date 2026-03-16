@@ -1,6 +1,6 @@
 ﻿using System.Linq;
 using HashidsNet;
-using Rascunho.DTOs;
+using Rascunho.Shared.DTOs;
 using Rascunho.Entities;
 
 namespace Rascunho.Mappers;

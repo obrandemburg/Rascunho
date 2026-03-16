@@ -1,6 +1,6 @@
 ﻿using HashidsNet;
 using Microsoft.AspNetCore.Mvc; // Necessário para o [FromQuery]
-using Rascunho.DTOs;
+using Rascunho.Shared.DTOs;
 using Rascunho.Infraestrutura;
 using Rascunho.Services;
 using System.Security.Claims;
