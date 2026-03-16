@@ -56,7 +56,21 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         var payload = jwt.Split('.')[1];
         var jsonBytes = ParseBase64WithoutPadding(payload);
         var keyValuePairs = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonBytes);
-        return keyValuePairs!.Select(kvp => new Claim(kvp.Key, kvp.Value.ToString()!));
+
+        var claims = new List<Claim>();
+        if (keyValuePairs != null)
+        {
+            foreach (var kvp in keyValuePairs)
+            {
+                var key = kvp.Key;
+                // Mapeamento para o .NET entender as Roles e Nomes vindos do JWT
+                if (key == "role") key = ClaimTypes.Role;
+                if (key == "unique_name") key = ClaimTypes.Name;
+
+                claims.Add(new Claim(key, kvp.Value.ToString()!));
+            }
+        }
+        return claims;
     }
 
     private byte[] ParseBase64WithoutPadding(string base64)
