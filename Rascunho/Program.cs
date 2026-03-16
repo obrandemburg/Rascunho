@@ -30,15 +30,23 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Banco de dados
+// ================================================================
+// 1. BANCO DE DADOS (Vindo do Docker/Ambiente)
+// ================================================================
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("A String de Conexão com o banco não foi encontrada no ambiente.");
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
 
-// CONFIGURAÇÃO DA AUTENTICAÇÃO E AUTORIZAÇÃO
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new InvalidOperationException("A chave JWT não foi configurada nas variáveis de ambiente/secrets.");
-var keyBytes = Encoding.ASCII.GetBytes(jwtKey!);
+// ================================================================
+// 2. CONFIGURAÇÃO JWT (Lendo do Docker/Ambiente com trava de segurança)
+// ================================================================
+var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("A Chave JWT (Jwt:Key) está faltando no ambiente.");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("O JWT Issuer (Jwt:Issuer) está faltando.");
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new InvalidOperationException("O JWT Audience (Jwt:Audience) está faltando.");
 
+var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -49,8 +57,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
             IssuerSigningKey = new SymmetricSecurityKey(keyBytes)
         };
     });
