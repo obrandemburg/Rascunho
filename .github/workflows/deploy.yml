@@ -61,13 +61,13 @@ jobs:
           port: ${{ secrets.VPS_PORT }}         # Geralmente 22
           script: |
             # 1. Navega até a pasta do seu projeto na VPS
-            cd /root/Rascunho # <--- MUDE ISSO SE A SUA PASTA TIVER OUTRO NOME NA VPS
+            cd /home/usuario/pontodadanca
             
             # 2. Faz login no ghcr.io de dentro da VPS
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # 3. Baixa as imagens novas que a Fase 1 acabou de criar
-            docker-compose pull
+            docker compose pull
             
             # 4. Reinicia os contêineres aplicando as novidades (sem derrubar o banco de dados)
-            docker-compose up -d
+            docker compose up -d
