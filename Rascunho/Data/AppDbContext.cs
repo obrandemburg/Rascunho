@@ -23,6 +23,9 @@ namespace Rascunho.Data
         public DbSet<Aviso> Avisos { get; set; }
         public DbSet<RegistroPresenca> RegistrosPresencas { get; set; }
         public DbSet<AulaParticular> AulasParticulares { get; set; }
+        public DbSet<Evento> Eventos { get; set; }
+        public DbSet<Ingresso> Ingressos { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

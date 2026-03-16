@@ -21,7 +21,8 @@ public static class BolsistaEndpoints
             await bolsistaService.AdicionarHabilidadeAsync(bolsistaId, request);
             return Results.Ok(new { Mensagem = "Habilidade adicionada com sucesso!" });
         })
-        .RequireAuthorization(policy => policy.RequireRole("Bolsista"));
+        .RequireAuthorization(policy => policy.RequireRole("Bolsista"))
+        .AddEndpointFilter<ValidationFilter<AdicionarHabilidadeRequest>>();
 
         // 2. BOLSISTA / GERENTE: Ver relatório de horas
         group.MapGet("/{bolsistaIdHash}/relatorio-horas", async (string bolsistaIdHash, BolsistaService bolsistaService, IHashids hashids, ClaimsPrincipal user) =>
@@ -50,7 +51,8 @@ public static class BolsistaEndpoints
             await bolsistaService.DefinirDiasObrigatoriosAsync(decodedIds[0], request.Dia1, request.Dia2);
             return Results.Ok(new { Mensagem = "Dias obrigatórios atualizados." });
         })
-        .RequireAuthorization(policy => policy.RequireRole("Gerente"));
+        .RequireAuthorization(policy => policy.RequireRole("Gerente"))
+        .AddEndpointFilter<ValidationFilter<DefinirDiasObrigatoriosRequest>>();
 
         // 4. AUTOMAÇÃO (A MÁGICA): Analisar e Balancear Turma
         group.MapGet("/analisar-turma/{turmaIdHash}", async (string turmaIdHash, BolsistaService bolsistaService, IHashids hashids) =>
