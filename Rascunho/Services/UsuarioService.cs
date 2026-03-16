@@ -5,6 +5,7 @@ using Rascunho.Data;
 using Rascunho.DTOs;
 using Rascunho.Entities;
 using Rascunho.Exceptions;
+using Rascunho.Mappers;
 
 namespace Rascunho.Services;
 
