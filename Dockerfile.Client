@@ -1,5 +1,5 @@
-# Estágio de Build
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+# Estágio de Build (ALTERADO PARA 10.0)
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY ["Rascunho.Client/Rascunho.Client.csproj", "Rascunho.Client/"]
 COPY ["Rascunho.Shared/Rascunho.Shared.csproj", "Rascunho.Shared/"]
@@ -16,5 +16,4 @@ FROM nginx:alpine AS final
 WORKDIR /usr/share/nginx/html
 # Copia os arquivos estáticos gerados pelo Blazor para a pasta pública do Nginx
 COPY --from=publish /app/publish/wwwroot .
-# (Opcional) Copie um arquivo nginx.conf personalizado se precisar lidar com rotas SPA
 EXPOSE 80
