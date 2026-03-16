@@ -108,6 +108,45 @@ namespace Rascunho.Migrations
                     b.ToTable("Avisos", (string)null);
                 });
 
+            modelBuilder.Entity("Rascunho.Entities.Evento", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Ativo")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Capacidade")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("DataHora")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Descricao")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<decimal>("Preco")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Eventos", (string)null);
+                });
+
             modelBuilder.Entity("Rascunho.Entities.HabilidadeUsuario", b =>
                 {
                     b.Property<int>("UsuarioId")
@@ -129,6 +168,41 @@ namespace Rascunho.Migrations
                     b.HasIndex("RitmoId");
 
                     b.ToTable("HabilidadesUsuarios", (string)null);
+                });
+
+            modelBuilder.Entity("Rascunho.Entities.Ingresso", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("DataCompra")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("EventoId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("UsuarioId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("ValorPago")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.HasIndex("EventoId", "UsuarioId")
+                        .IsUnique();
+
+                    b.ToTable("Ingressos", (string)null);
                 });
 
             modelBuilder.Entity("Rascunho.Entities.Interesse", b =>
@@ -476,6 +550,25 @@ namespace Rascunho.Migrations
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("Rascunho.Entities.Ingresso", b =>
+                {
+                    b.HasOne("Rascunho.Entities.Evento", "Evento")
+                        .WithMany("Ingressos")
+                        .HasForeignKey("EventoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Rascunho.Entities.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Evento");
+
+                    b.Navigation("Usuario");
+                });
+
             modelBuilder.Entity("Rascunho.Entities.Interesse", b =>
                 {
                     b.HasOne("Rascunho.Entities.Usuario", "Aluno")
@@ -569,6 +662,11 @@ namespace Rascunho.Migrations
                     b.Navigation("Professor");
 
                     b.Navigation("Turma");
+                });
+
+            modelBuilder.Entity("Rascunho.Entities.Evento", b =>
+                {
+                    b.Navigation("Ingressos");
                 });
 
             modelBuilder.Entity("Rascunho.Entities.Turma", b =>

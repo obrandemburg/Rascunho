@@ -1,0 +1,10 @@
+﻿using System;
+using System.Collections.Generic;
+
+namespace Rascunho.Shared.DTOs;
+
+public record CriarTurmaRequest(string RitmoIdHash, string SalaIdHash, DateTime DataInicio, int DiaDaSemana, TimeSpan HorarioInicio, TimeSpan HorarioFim, string Nivel, int LimiteAlunos, string LinkWhatsApp, List<string> ProfessoresIdsHash);
+public record TrocarSalaRequest(string NovaSalaIdHash, int NovoLimiteAlunos);
+public record MatricularRequest(string Papel);
+public record MatricularAdminRequest(string AlunoIdHash, string Papel);
+public record ObterTurmaResponse(string IdHash, string RitmoNome, string SalaNome, DateTime DataInicio, int DiaDaSemana, TimeSpan HorarioInicio, TimeSpan HorarioFim, string Nivel, int LimiteAlunos, int QuantidadeMatriculados, string LinkWhatsApp, bool Ativa, List<string> NomesProfessores);

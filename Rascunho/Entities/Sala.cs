@@ -24,4 +24,5 @@ public class Sala
 
     public void Ativar() => Ativo = true;
     public void Desativar() => Ativo = false;
+
 }

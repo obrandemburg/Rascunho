@@ -2,5 +2,7 @@
   <Folder Name="/Itens de Solução/">
     <File Path=".gitignore" />
   </Folder>
+  <Project Path="Rascunho.Client/Rascunho.Client.csproj" Id="2dff2b20-426a-479a-b6ea-678ee8bd8e63" />
+  <Project Path="Rascunho.Shared/Rascunho.Shared.csproj" Id="20f8b926-c430-4daf-9f85-928df951df81" />
   <Project Path="Rascunho/Rascunho.csproj" />
 </Solution>

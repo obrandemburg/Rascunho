@@ -1,7 +1,7 @@
 ﻿using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
-using Rascunho.DTOs;
+using Rascunho.Shared.DTOs;
 using Rascunho.Services;
 
 namespace Rascunho.Endpoints;
@@ -30,12 +30,7 @@ public static class AuthEndpoints
             string token = tokenService.GerarToken(usuario);
 
             // 5. Retorna os dados + Token
-            return Results.Ok(new LoginResponse(
-                token,
-                hashids.Encode(usuario.Id),
-                usuario.Nome,
-                usuario.Tipo
-            ));
+            return Results.Ok(new LoginResponse(token, usuario.Nome, usuario.Tipo, usuario.FotoUrl));
         });
     }
 }

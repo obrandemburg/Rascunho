@@ -1,0 +1,41 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@* A anotação [Authorize] impede que pessoas não logadas vejam esta página. Elas são chutadas para o Login. *@
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudText Typo="Typo.h3" Align="Align.Center" Color="Color.Primary" Class="mb-8 font-weight-bold">
+        Bem-vindo(a) ao Ponto da Dança!
+    </MudText>
+
+    <AuthorizeView>
+        <Authorized>
+            <MudGrid>
+                @* Destaque Geral *@
+                <MudItem xs="12" md="12">
+                    <MudPaper Elevation="2" Class="pa-6 rounded-xl" Style="background-color: #1b5e20; color: white;">
+                        <MudText Typo="Typo.h5">Olá, @context.User.Identity?.Name!</MudText>
+                        <MudText Typo="Typo.body1" Class="mt-2">Ficamos felizes em ter você aqui. Navegue pelo menu lateral para acessar suas opções.</MudText>
+                    </MudPaper>
+                </MudItem>
+
+                @* Avisos Rápidos (Exemplo genérico) *@
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2" Class="rounded-xl h-100">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6" Color="Color.Primary">Próximos Eventos</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudText Typo="Typo.body2">Fique de olho! Em breve teremos novidades no mural.</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Secondary">Ver Calendário</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        </Authorized>
+    </AuthorizeView>
+</MudContainer>

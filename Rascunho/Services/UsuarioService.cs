@@ -1,10 +1,12 @@
-﻿using EFCore.BulkExtensions;
+﻿using BCrypt.Net;
+using EFCore.BulkExtensions; // RESTAURADO DA MAIN!
 using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
-using Rascunho.DTOs;
 using Rascunho.Entities;
 using Rascunho.Exceptions;
+using Rascunho.Shared.DTOs;
+using Rascunho.Mappers;
 
 namespace Rascunho.Services;
 
@@ -19,13 +21,15 @@ public class UsuarioService
         _hashids = hashids;
     }
 
-    public async Task<Usuario> CriarUsuarioAsync(CriarUsuarioRequest request)
+    public async Task<ObterUsuarioResponse> CriarUsuarioAsync(CriarUsuarioRequest request)
     {
+        // RESTAURADO DA MAIN: Uso do ToLower() na validação
         bool emailJaExiste = await _context.Usuarios.AnyAsync(u => u.Email.ToLower() == request.Email.ToLower());
         if (emailJaExiste)
         {
             throw new RegraNegocioException("Este e-mail já está em uso no sistema.");
         }
+
         string senhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha);
 
         Usuario usuario = request.Tipo switch
@@ -33,16 +37,20 @@ public class UsuarioService
             "Aluno" => new Aluno(request.Nome, request.Email, senhaHash),
             "Professor" => new Professor(request.Nome, request.Email, senhaHash),
             "Bolsista" => new Bolsista(request.Nome, request.Email, senhaHash),
-            "Gerente" => new Gerente(request.Nome, request.Email, senhaHash),
-            "Recepção" => new Recepcao(request.Nome, request.Email, senhaHash),
             "Líder" => new Lider(request.Nome, request.Email, senhaHash),
-            _ => throw new RegraNegocioException("Tipo de usuário inválido")
+            "Recepção" => new Recepcao(request.Nome, request.Email, senhaHash),
+            "Gerente" => new Gerente(request.Nome, request.Email, senhaHash),
+            _ => throw new RegraNegocioException("Tipo de usuário inválido.")
         };
 
         _context.Usuarios.Add(usuario);
         await _context.SaveChangesAsync();
-        return usuario;
+
+        // USO DO NOVO MAPPER DA DEVELOP
+        return usuario.ToResponse(_hashids);
     }
+
+    // RESTAURADO DA MAIN: Validações ricas e BulkExtensions
     public async Task InserirUsuariosEmMassaAsync(IEnumerable<CriarUsuarioRequest> requests)
     {
         var emailsRequisicao = requests.Select(r => r.Email).ToList();
@@ -93,61 +101,47 @@ public class UsuarioService
 
     public async Task<IEnumerable<ObterUsuarioResponse>> ListarTodosUsuariosAsync()
     {
-        var usuariosDb = await _context.Usuarios.ToListAsync();
-
-        return usuariosDb.Select(usuario => ObterUsuarioResponse.DeEntidade(usuario, _hashids));
+        var usuarios = await _context.Usuarios.ToListAsync();
+        return usuarios.Select(u => u.ToResponse(_hashids));
     }
 
     public async Task<IEnumerable<ObterUsuarioResponse>> ListarUsuariosAtivosAsync()
     {
-        var usuariosDb = await _context.Usuarios
-            .Where(u => u.Ativo)
-            .ToListAsync();
-
-        return usuariosDb.Select(u => ObterUsuarioResponse.DeEntidade(u, _hashids));
+        var usuarios = await _context.Usuarios.Where(u => u.Ativo).ToListAsync();
+        return usuarios.Select(u => u.ToResponse(_hashids));
     }
 
     public async Task<IEnumerable<ObterUsuarioResponse>> ListarUsuariosDesativadosAsync()
     {
-        var usuariosDb = await _context.Usuarios
-            .Where(u => !u.Ativo)
-            .ToListAsync();
-
-        return usuariosDb.Select(u => ObterUsuarioResponse.DeEntidade(u, _hashids));
+        var usuarios = await _context.Usuarios.Where(u => !u.Ativo).ToListAsync();
+        return usuarios.Select(u => u.ToResponse(_hashids));
     }
 
-    public async Task<ListagemComContagemResponse> ListarUsuariosPorTipoAsync(string tipo, bool? ativo = null)
+    // RESTAURADO DA MAIN: Filtro dinâmico por tipo e status
+    public async Task<object> ListarUsuariosPorTipoAsync(string tipo, bool? ativo = null)
     {
-        // 1. Inicia a query base filtrando pelo tipo (ignorando maiúsculas/minúsculas para evitar erros)
-        var query = _context.Usuarios
-            .Where(u => u.Tipo.ToLower() == tipo.ToLower());
+        var query = _context.Usuarios.Where(u => u.Tipo.ToLower() == tipo.ToLower());
 
-        // 2. Aplica o filtro de status apenas se ele foi fornecido
         if (ativo.HasValue)
         {
             query = query.Where(u => u.Ativo == ativo.Value);
         }
 
-        // 3. Faz a contagem de forma ultra rápida no banco de dados (gera um SELECT COUNT(*))
         int quantidade = await query.CountAsync();
-
-        // 4. Busca os dados reais no banco
         var usuariosDb = await query.ToListAsync();
 
-        // 5. Converte as entidades para o DTO aplicando o Hashids
-        var listaDto = usuariosDb.Select(u => ObterUsuarioResponse.DeEntidade(u, _hashids));
+        var listaDto = usuariosDb.Select(u => u.ToResponse(_hashids));
 
-        // 6. Retorna o envelope com a quantidade e a lista
-        return new ListagemComContagemResponse(quantidade, listaDto);
+        return new { Quantidade = quantidade, Usuarios = listaDto };
     }
 
-    public async Task<ObterUsuarioResponse> ObterUsuarioPorIdAsync(int idReal)
+    public async Task<ObterUsuarioResponse> ObterUsuarioPorIdAsync(int id)
     {
-        var usuario = await _context.Usuarios.FindAsync(idReal);
+        var usuario = await _context.Usuarios.FindAsync(id);
         if (usuario == null || !usuario.Ativo)
             throw new RegraNegocioException("Usuário não encontrado.");
 
-        return ObterUsuarioResponse.DeEntidade(usuario, _hashids);
+        return usuario.ToResponse(_hashids);
     }
 
     public async Task AtualizarPerfilAsync(int id, EditarPerfilRequest request)
@@ -181,5 +175,4 @@ public class UsuarioService
         _context.Usuarios.Remove(usuario);
         await _context.SaveChangesAsync();
     }
-    
 }

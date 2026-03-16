@@ -1,44 +1,73 @@
-name: Deploy para VPS
+name: Deploy Automático para Produção (VPS)
 
+# 1. QUANDO O ROBÔ DEVE TRABALHAR?
+# Sempre que houver um "push" na branch "main"
 on:
   push:
-    branches:
-      - main # Só roda quando o código for para a main
+    branches: [ "main" ]
 
 jobs:
-  build-and-deploy:
+  # =========================================================
+  # FASE 1: CONSTRUIR E GUARDAR AS IMAGENS NO GHCR.IO
+  # =========================================================
+  build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      packages: write # Dá permissão para o robô salvar no ghcr.io
 
     steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v3
 
-      - name: Login no GitHub Container Registry (GHCR)
-        uses: docker/login-action@v3
+      - name: Fazer login no GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }} # O GitHub gera essa senha automaticamente
 
-      - name: Build e Push da Imagem Docker
-        uses: docker/build-push-action@v5
+      # Constrói a API usando o Dockerfile padrão
+      - name: Construir e Enviar a Imagem da API (Backend)
+        uses: docker/build-push-action@v4
         with:
           context: .
+          file: ./Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/pontodadanca-api:latest
+          tags: ghcr.io/obrandemburg/rascunho:latest
 
-      - name: Deploy na VPS via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      # Constrói o Frontend usando o Dockerfile.Client
+      - name: Construir e Enviar a Imagem do Frontend (Blazor WebAssembly)
+        uses: docker/build-push-action@v4
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          context: .
+          file: ./Dockerfile.Client
+          push: true
+          tags: ghcr.io/obrandemburg/rascunho-client:latest
+
+  # =========================================================
+  # FASE 2: ENTRAR NA VPS E ATUALIZAR O SISTEMA
+  # =========================================================
+  deploy:
+    needs: build-and-push # Só executa se a FASE 1 der certo
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conectar na VPS via SSH e Atualizar
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}       # Ex: 5.161.202.169
+          username: ${{ secrets.VPS_USERNAME }} # Ex: root
+          key: ${{ secrets.VPS_SSH_KEY }}       # Sua chave privada
+          port: ${{ secrets.VPS_PORT }}         # Geralmente 22
           script: |
-            cd /home/usuario/pontodadanca
-            # Força o Docker a baixar a imagem mais recente que o GitHub acabou de gerar
-            docker compose pull
-            # Reinicia os containers (se a imagem mudou, ele recria a API. O BD não é afetado)
-            docker compose up -d
+            # 1. Navega até a pasta do seu projeto na VPS
+            cd /root/Rascunho # <--- MUDE ISSO SE A SUA PASTA TIVER OUTRO NOME NA VPS
+            
+            # 2. Faz login no ghcr.io de dentro da VPS
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # 3. Baixa as imagens novas que a Fase 1 acabou de criar
+            docker-compose pull
+            
+            # 4. Reinicia os contêineres aplicando as novidades (sem derrubar o banco de dados)
+            docker-compose up -d

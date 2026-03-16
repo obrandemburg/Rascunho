@@ -1,10 +1,9 @@
 ﻿using HashidsNet;
 using Microsoft.AspNetCore.Mvc; // Necessário para o [FromQuery]
-using Rascunho.DTOs;
+using Rascunho.Shared.DTOs;
 using Rascunho.Infraestrutura;
 using Rascunho.Services;
 using System.Security.Claims;
-using static Rascunho.DTOs.ObterTurmaResponse;
 
 namespace Rascunho.Endpoints;
 
@@ -29,13 +28,14 @@ public static class TurmaEndpoints
         .RequireAuthorization();
 
         // 2. CRIAR TURMA (Apenas Recepção e Gerência)
-        group.MapPost("/criar", async (CriarTurmaRequest request, TurmaService turmaService, IHashids hashids) =>
+        group.MapPost("/criar", async (CriarTurmaRequest request, TurmaService turmaService) =>
         {
-            var turma = await turmaService.CriarTurmaAsync(request);
-            return Results.Created($"/api/turmas/{hashids.Encode(turma.Id)}", new { Mensagem = "Turma criada com sucesso!" });
+            // CORREÇÃO: Alteramos o nome da variável de 'turma' para 'response'
+            var response = await turmaService.CriarTurmaAsync(request);
+
+            return Results.Created($"/api/turmas/{response.IdHash}", response);
         })
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
-
         // ==========================================
         // ÁREA DO ALUNO (Auto-serviço)
         // ==========================================

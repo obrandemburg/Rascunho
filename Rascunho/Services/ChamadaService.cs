@@ -1,9 +1,10 @@
 ﻿using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
-using Rascunho.DTOs;
+using Rascunho.Shared.DTOs;
 using Rascunho.Entities;
 using Rascunho.Exceptions;
+using Rascunho.Mappers;
 
 namespace Rascunho.Services;
 

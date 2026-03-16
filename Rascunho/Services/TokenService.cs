@@ -3,6 +3,7 @@ using Rascunho.Entities;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Rascunho.Mappers;
 
 namespace Rascunho.Services;
 

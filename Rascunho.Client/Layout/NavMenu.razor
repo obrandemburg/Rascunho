@@ -1,0 +1,60 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+
+<MudNavMenu>
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Início</MudNavLink>
+
+    @* ==========================================
+       ÁREA DOS ALUNOS / BOLSISTAS / LÍDERES
+       ========================================== *@
+    <AuthorizeView Roles="Aluno,Bolsista,Líder">
+        <Authorized>
+            <MudNavGroup Title="Área do Aluno" Icon="@Icons.Material.Filled.Person" Expanded="true">
+                <MudNavLink Href="/quadro-turmas" Icon="@Icons.Material.Filled.TableChart">Quadro de Turmas</MudNavLink>
+                <MudNavLink Href="/minhas-aulas" Icon="@Icons.Material.Filled.EventAvailable">Minhas Aulas</MudNavLink>
+                <MudNavLink Href="/eventos" Icon="@Icons.Material.Filled.Celebration">Bailes & Eventos</MudNavLink>
+                <MudNavLink Href="/experimentais" Icon="@Icons.Material.Filled.Stars">Aula Experimental</MudNavLink>
+            </MudNavGroup>
+        </Authorized>
+    </AuthorizeView>
+
+    @* ==========================================
+       ÁREA DOS PROFESSORES
+       ========================================== *@
+    <AuthorizeView Roles="Professor">
+        <Authorized>
+            <MudNavGroup Title="Portal do Professor" Icon="@Icons.Material.Filled.School" Expanded="true">
+                <MudNavLink Href="/minhas-turmas" Icon="@Icons.Material.Filled.Groups">Minhas Turmas</MudNavLink>
+                <MudNavLink Href="/fazer-chamada" Icon="@Icons.Material.Filled.Checklist">Fazer Chamada</MudNavLink>
+                <MudNavLink Href="/aulas-particulares" Icon="@Icons.Material.Filled.AccessTime">Aulas Particulares</MudNavLink>
+            </MudNavGroup>
+        </Authorized>
+    </AuthorizeView>
+
+    @* ==========================================
+       ÁREA ADMINISTRATIVA (RECEPÇÃO E GERÊNCIA)
+       ========================================== *@
+    <AuthorizeView Roles="Recepção,Gerente">
+        <Authorized>
+            <MudNavGroup Title="Administração" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="true">
+                <MudNavLink Href="/admin/mural-avisos" Icon="@Icons.Material.Filled.Campaign">Mural de Avisos</MudNavLink>
+                <MudNavLink Href="/admin/turmas" Icon="@Icons.Material.Filled.ManageHistory">Gerenciar Turmas</MudNavLink>
+                <MudNavLink Href="/admin/salas" Icon="@Icons.Material.Filled.MeetingRoom">Salas & Aluguéis</MudNavLink>
+                <MudNavLink Href="/admin/eventos" Icon="@Icons.Material.Filled.EventNote">Gerenciar Eventos</MudNavLink>
+            </MudNavGroup>
+        </Authorized>
+    </AuthorizeView>
+
+    @* ==========================================
+       EXCLUSIVO GERÊNCIA
+       ========================================== *@
+    <AuthorizeView Roles="Gerente">
+        <Authorized>
+            <MudNavGroup Title="Gerência Estratégica" Icon="@Icons.Material.Filled.Insights" Expanded="false">
+                <MudNavLink Href="/gerencia/dashboard" Icon="@Icons.Material.Filled.QueryStats">Dashboard Financeiro</MudNavLink>
+                <MudNavLink Href="/gerencia/usuarios" Icon="@Icons.Material.Filled.ManageAccounts">Gestão de Usuários</MudNavLink>
+            </MudNavGroup>
+        </Authorized>
+    </AuthorizeView>
+
+</MudNavMenu>
