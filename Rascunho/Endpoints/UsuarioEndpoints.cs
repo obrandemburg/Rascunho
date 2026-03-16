@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Rascunho.Infraestrutura;
 using Rascunho.Services;
 using Rascunho.Shared.DTOs;
+using System.Security.Claims;
 
 namespace Rascunho.Endpoints;
 
@@ -12,98 +13,107 @@ public static class UsuarioEndpoints
     {
         var group = app.MapGroup("/api/usuarios");
 
-        // 1. CRIAR USUÁRIO
+        // 1. CADASTRAR
         group.MapPost("/cadastrar", async (CriarUsuarioRequest request, UsuarioService usuarioService) =>
         {
             var response = await usuarioService.CriarUsuarioAsync(request);
-            // CORREÇÃO: Removido o ObterUsuarioResponse.DeEntidade
             return Results.Created($"/api/usuarios/{response.IdHash}", response);
-        })
-        .AddEndpointFilter<ValidationFilter<CriarUsuarioRequest>>();
+        }).AddEndpointFilter<ValidationFilter<CriarUsuarioRequest>>();
 
-        // 2. CADASTRO EM MASSA
-        group.MapPost("/cadastrar-massa", async (List<CriarUsuarioRequest> requests, UsuarioService usuarioService) =>
+        // 2. CADASTRO EM MASSA (Restaurado rota e retorno da main)
+        group.MapPost("/cadastrar/lista", async (List<CriarUsuarioRequest> listaDeUsuarios, UsuarioService usuarioService) =>
         {
-            await usuarioService.InserirUsuariosEmMassaAsync(requests);
-            return Results.Ok(new { Mensagem = "Usuários processados com sucesso." });
-        });
+            await usuarioService.InserirUsuariosEmMassaAsync(listaDeUsuarios);
+            return Results.Ok(new
+            {
+                Mensagem = "Importação em massa concluída com sucesso.",
+                QuantidadeInserida = listaDeUsuarios.Count
+            });
+        }).AddEndpointFilter<ValidationFilter<List<CriarUsuarioRequest>>>()
+          .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
-        // 3. LISTAGENS
-        group.MapGet("/todos", async (UsuarioService usuarioService) =>
+        // 3. LISTAGENS (Restauradas rotas da main)
+        group.MapGet("/listar", async (UsuarioService usuarioService) =>
         {
             var response = await usuarioService.ListarTodosUsuariosAsync();
             return Results.Ok(response);
-        });
+        }).RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
-        group.MapGet("/ativos", async (UsuarioService usuarioService) =>
+        group.MapGet("/listar/ativos", async (UsuarioService usuarioService) =>
         {
             var response = await usuarioService.ListarUsuariosAtivosAsync();
             return Results.Ok(response);
-        });
+        }).RequireAuthorization();
 
-        group.MapGet("/desativados", async (UsuarioService usuarioService) =>
+        group.MapGet("/listar/desativados", async (UsuarioService usuarioService) =>
         {
             var response = await usuarioService.ListarUsuariosDesativadosAsync();
             return Results.Ok(response);
-        });
+        }).RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
-        group.MapGet("/alunos", async (UsuarioService usuarioService) =>
+        // 4. LISTAGENS DINÂMICAS POR TIPO (Restauradas da main)
+        group.MapGet("/tipo/{tipo}", async (string tipo, UsuarioService usuarioService) =>
         {
-            var response = await usuarioService.ListarUsuariosPorTipoAsync("Aluno");
+            var response = await usuarioService.ListarUsuariosPorTipoAsync(tipo, ativo: null);
             return Results.Ok(response);
-        });
+        }).RequireAuthorization();
 
-        group.MapGet("/professores", async (UsuarioService usuarioService) =>
+        group.MapGet("/tipo/{tipo}/ativos", async (string tipo, UsuarioService usuarioService) =>
         {
-            var response = await usuarioService.ListarUsuariosPorTipoAsync("Professor");
+            var response = await usuarioService.ListarUsuariosPorTipoAsync(tipo, ativo: true);
             return Results.Ok(response);
-        });
+        }).RequireAuthorization();
 
-        group.MapGet("/bolsistas", async (UsuarioService usuarioService) =>
+        group.MapGet("/tipo/{tipo}/desativados", async (string tipo, UsuarioService usuarioService) =>
         {
-            var response = await usuarioService.ListarUsuariosPorTipoAsync("Bolsista");
+            var response = await usuarioService.ListarUsuariosPorTipoAsync(tipo, ativo: false);
             return Results.Ok(response);
-        });
+        }).RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
-        // 4. OBTER POR ID
-        group.MapGet("/{idHash}", async (string idHash, UsuarioService usuarioService, IHashids hashids) =>
+        // 5. OBTER POR ID (Restaurada rota da main)
+        group.MapGet("/obter/{idHash}", async (string idHash, UsuarioService usuarioService, IHashids hashids) =>
         {
             var decodedIds = hashids.Decode(idHash);
-            if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID inválido." });
+            if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID fornecido é inválido ou malformado." });
 
             var response = await usuarioService.ObterUsuarioPorIdAsync(decodedIds[0]);
             return Results.Ok(response);
-        });
+        }).RequireAuthorization();
 
-        // 5. ATUALIZAR PERFIL
-        group.MapPut("/{idHash}", async (string idHash, EditarPerfilRequest request, UsuarioService usuarioService, IHashids hashids) =>
+        // 6. ATUALIZAR MEU PERFIL (Restaurada a SEGURANÇA DO TOKEN da main)
+        group.MapPut("/meu-perfil/atualizar", async (EditarPerfilRequest request, UsuarioService usuarioService, ClaimsPrincipal user) =>
         {
-            var decodedIds = hashids.Decode(idHash);
-            if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID inválido." });
+            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-            await usuarioService.AtualizarPerfilAsync(decodedIds[0], request);
+            if (string.IsNullOrEmpty(idClaim) || !int.TryParse(idClaim, out int usuarioLogadoId))
+            {
+                return Results.Unauthorized();
+            }
+
+            await usuarioService.AtualizarPerfilAsync(usuarioLogadoId, request);
             return Results.NoContent();
         })
-        .AddEndpointFilter<ValidationFilter<EditarPerfilRequest>>();
+        .AddEndpointFilter<ValidationFilter<EditarPerfilRequest>>()
+        .RequireAuthorization();
 
-        // 6. ALTERAR STATUS (Ativar/Inativar)
-        group.MapPut("/{idHash}/status", async (string idHash, [FromBody] bool ativo, UsuarioService usuarioService, IHashids hashids) =>
+        // 7. ALTERAR STATUS (Restaurada rota e Roles da main)
+        group.MapPut("/status/{idHash}", async (string idHash, [FromBody] bool status, UsuarioService usuarioService, IHashids hashids) =>
         {
             var decodedIds = hashids.Decode(idHash);
             if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID inválido." });
 
-            await usuarioService.AlterarStatusAsync(decodedIds[0], ativo);
+            await usuarioService.AlterarStatusAsync(decodedIds[0], status);
             return Results.NoContent();
-        });
+        }).RequireAuthorization(policy => policy.RequireRole("Gerente"));
 
-        // 7. EXCLUIR
-        group.MapDelete("/{idHash}", async (string idHash, UsuarioService usuarioService, IHashids hashids) =>
+        // 8. EXCLUIR USUÁRIO (Restaurada rota e Roles da main)
+        group.MapDelete("/deletar/{idHash}", async (string idHash, UsuarioService usuarioService, IHashids hashids) =>
         {
             var decodedIds = hashids.Decode(idHash);
             if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID inválido." });
 
             await usuarioService.ExcluirUsuarioAsync(decodedIds[0]);
             return Results.NoContent();
-        });
+        }).RequireAuthorization(policy => policy.RequireRole("Gerente"));
     }
 }

@@ -1,4 +1,5 @@
 ﻿using BCrypt.Net;
+using EFCore.BulkExtensions; // RESTAURADO DA MAIN!
 using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
@@ -22,10 +23,15 @@ public class UsuarioService
 
     public async Task<ObterUsuarioResponse> CriarUsuarioAsync(CriarUsuarioRequest request)
     {
-        if (await _context.Usuarios.AnyAsync(u => u.Email == request.Email))
-            throw new RegraNegocioException("Este e-mail já está em uso.");
+        // RESTAURADO DA MAIN: Uso do ToLower() na validação
+        bool emailJaExiste = await _context.Usuarios.AnyAsync(u => u.Email.ToLower() == request.Email.ToLower());
+        if (emailJaExiste)
+        {
+            throw new RegraNegocioException("Este e-mail já está em uso no sistema.");
+        }
 
         string senhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha);
+
         Usuario usuario = request.Tipo switch
         {
             "Aluno" => new Aluno(request.Nome, request.Email, senhaHash),
@@ -39,36 +45,58 @@ public class UsuarioService
 
         _context.Usuarios.Add(usuario);
         await _context.SaveChangesAsync();
+
+        // USO DO NOVO MAPPER DA DEVELOP
         return usuario.ToResponse(_hashids);
     }
 
-    public async Task InserirUsuariosEmMassaAsync(List<CriarUsuarioRequest> requests)
+    // RESTAURADO DA MAIN: Validações ricas e BulkExtensions
+    public async Task InserirUsuariosEmMassaAsync(IEnumerable<CriarUsuarioRequest> requests)
     {
-        var emails = requests.Select(r => r.Email).ToList();
-        var existentes = await _context.Usuarios.Where(u => emails.Contains(u.Email)).Select(u => u.Email).ToListAsync();
+        var emailsRequisicao = requests.Select(r => r.Email).ToList();
 
-        var novosUsuarios = new List<Usuario>();
-        foreach (var req in requests)
+        var emailsDuplicadosNaLista = emailsRequisicao
+            .GroupBy(email => email.ToLower())
+            .Where(grupo => grupo.Count() > 1)
+            .Select(grupo => grupo.Key)
+            .ToList();
+
+        if (emailsDuplicadosNaLista.Any())
         {
-            if (existentes.Contains(req.Email)) continue;
-            string senhaHash = BCrypt.Net.BCrypt.HashPassword(req.Senha);
-            Usuario? u = req.Tipo switch
+            throw new RegraNegocioException($"A lista enviada contém e-mails duplicados entre si: {string.Join(", ", emailsDuplicadosNaLista)}");
+        }
+
+        var emailsJaExistentesNoBanco = await _context.Usuarios
+            .Where(u => emailsRequisicao.Contains(u.Email))
+            .Select(u => u.Email)
+            .ToListAsync();
+
+        if (emailsJaExistentesNoBanco.Any())
+        {
+            throw new RegraNegocioException($"Os seguintes e-mails já estão cadastrados no sistema e não podem ser reinseridos: {string.Join(", ", emailsJaExistentesNoBanco)}");
+        }
+
+        var usuariosParaInserir = new List<Usuario>();
+
+        foreach (var request in requests)
+        {
+            string senhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha);
+
+            Usuario usuario = request.Tipo switch
             {
-                "Aluno" => new Aluno(req.Nome, req.Email, senhaHash),
-                "Professor" => new Professor(req.Nome, req.Email, senhaHash),
-                "Bolsista" => new Bolsista(req.Nome, req.Email, senhaHash),
-                "Líder" => new Lider(req.Nome, req.Email, senhaHash),
-                "Recepção" => new Recepcao(req.Nome, req.Email, senhaHash),
-                "Gerente" => new Gerente(req.Nome, req.Email, senhaHash),
-                _ => null
+                "Aluno" => new Aluno(request.Nome, request.Email, senhaHash),
+                "Professor" => new Professor(request.Nome, request.Email, senhaHash),
+                "Bolsista" => new Bolsista(request.Nome, request.Email, senhaHash),
+                "Gerente" => new Gerente(request.Nome, request.Email, senhaHash),
+                "Recepção" => new Recepcao(request.Nome, request.Email, senhaHash),
+                "Líder" => new Lider(request.Nome, request.Email, senhaHash),
+                _ => throw new RegraNegocioException($"Tipo de usuário inválido: {request.Tipo}")
             };
-            if (u != null) novosUsuarios.Add(u);
+
+            usuariosParaInserir.Add(usuario);
         }
-        if (novosUsuarios.Any())
-        {
-            _context.Usuarios.AddRange(novosUsuarios);
-            await _context.SaveChangesAsync();
-        }
+
+        await _context.BulkInsertAsync(usuariosParaInserir);
     }
 
     public async Task<IEnumerable<ObterUsuarioResponse>> ListarTodosUsuariosAsync()
@@ -89,36 +117,62 @@ public class UsuarioService
         return usuarios.Select(u => u.ToResponse(_hashids));
     }
 
-    public async Task<IEnumerable<ObterUsuarioResponse>> ListarUsuariosPorTipoAsync(string tipo)
+    // RESTAURADO DA MAIN: Filtro dinâmico por tipo e status
+    public async Task<object> ListarUsuariosPorTipoAsync(string tipo, bool? ativo = null)
     {
-        var usuarios = await _context.Usuarios.Where(u => u.Tipo == tipo).ToListAsync();
-        return usuarios.Select(u => u.ToResponse(_hashids));
+        var query = _context.Usuarios.Where(u => u.Tipo.ToLower() == tipo.ToLower());
+
+        if (ativo.HasValue)
+        {
+            query = query.Where(u => u.Ativo == ativo.Value);
+        }
+
+        int quantidade = await query.CountAsync();
+        var usuariosDb = await query.ToListAsync();
+
+        var listaDto = usuariosDb.Select(u => u.ToResponse(_hashids));
+
+        return new { Quantidade = quantidade, Usuarios = listaDto };
     }
 
     public async Task<ObterUsuarioResponse> ObterUsuarioPorIdAsync(int id)
     {
-        var u = await _context.Usuarios.FindAsync(id) ?? throw new RegraNegocioException("Usuário não encontrado.");
-        return u.ToResponse(_hashids);
+        var usuario = await _context.Usuarios.FindAsync(id);
+        if (usuario == null || !usuario.Ativo)
+            throw new RegraNegocioException("Usuário não encontrado.");
+
+        return usuario.ToResponse(_hashids);
     }
 
     public async Task AtualizarPerfilAsync(int id, EditarPerfilRequest request)
     {
-        var u = await _context.Usuarios.FindAsync(id) ?? throw new RegraNegocioException("Usuário não encontrado.");
-        u.EditarPerfil(request.FotoUrl, request.NomeSocial, request.Biografia);
+        var usuario = await _context.Usuarios.FindAsync(id)
+            ?? throw new RegraNegocioException("Usuário não encontrado.");
+
+        usuario.EditarPerfil(request.FotoUrl, request.NomeSocial, request.Biografia);
+
         await _context.SaveChangesAsync();
     }
 
-    public async Task AlterarStatusAsync(int id, bool ativo)
+    public async Task AlterarStatusAsync(int id, bool ativar)
     {
-        var u = await _context.Usuarios.FindAsync(id) ?? throw new RegraNegocioException("Usuário não encontrado.");
-        if (ativo) u.Ativar(); else u.Desativar();
+        var usuario = await _context.Usuarios.FindAsync(id)
+            ?? throw new RegraNegocioException("Usuário não encontrado.");
+
+        if (ativar)
+            usuario.Ativar();
+        else
+            usuario.Desativar();
+
         await _context.SaveChangesAsync();
     }
 
     public async Task ExcluirUsuarioAsync(int id)
     {
-        var u = await _context.Usuarios.FindAsync(id) ?? throw new RegraNegocioException("Usuário não encontrado.");
-        _context.Usuarios.Remove(u);
+        var usuario = await _context.Usuarios.FindAsync(id)
+            ?? throw new RegraNegocioException("Usuário não encontrado.");
+
+        _context.Usuarios.Remove(usuario);
         await _context.SaveChangesAsync();
     }
 }
