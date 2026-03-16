@@ -1,21 +1,19 @@
-# Estágio de Build (ALTERADO PARA 10.0)
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
 WORKDIR /src
 COPY ["Rascunho.Client/Rascunho.Client.csproj", "Rascunho.Client/"]
 COPY ["Rascunho.Shared/Rascunho.Shared.csproj", "Rascunho.Shared/"]
 RUN dotnet restore "Rascunho.Client/Rascunho.Client.csproj"
 COPY . .
 WORKDIR "/src/Rascunho.Client"
-RUN dotnet build "Rascunho.Client.csproj" -c Release -o /app/build
-
-FROM build AS publish
 RUN dotnet publish "Rascunho.Client.csproj" -c Release -o /app/publish
 
 FROM nginx:alpine AS final
 WORKDIR /usr/share/nginx/html
-COPY --from=publish /app/publish/wwwroot .
 
-# CORREÇÃO CRUCIAL: Copiar para dentro de conf.d/default.conf
+# CORREÇÃO AQUI: Garante que estamos pegando o conteúdo da pasta wwwroot gerada no publish
+COPY --from=build /app/publish/wwwroot .
+
+# Copia a configuração do Nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
