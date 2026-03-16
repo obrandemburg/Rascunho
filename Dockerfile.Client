@@ -1,19 +1,29 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
+# 1. Usando o SDK do .NET 10 para compilar o projeto
+FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
 WORKDIR /src
+
+# Copiando os arquivos de projeto
 COPY ["Rascunho.Client/Rascunho.Client.csproj", "Rascunho.Client/"]
 COPY ["Rascunho.Shared/Rascunho.Shared.csproj", "Rascunho.Shared/"]
+
+# Restaurando dependências
 RUN dotnet restore "Rascunho.Client/Rascunho.Client.csproj"
+
+# Copiando o resto do código
 COPY . .
 WORKDIR "/src/Rascunho.Client"
+
+# Publicando a aplicação
 RUN dotnet publish "Rascunho.Client.csproj" -c Release -o /app/publish
 
+# 2. Servidor Nginx para hospedar o frontend
 FROM nginx:alpine AS final
 WORKDIR /usr/share/nginx/html
 
-# CORREÇÃO AQUI: Garante que estamos pegando o conteúdo da pasta wwwroot gerada no publish
+# Copia os arquivos compilados do Blazor
 COPY --from=build /app/publish/wwwroot .
 
-# Copia a configuração do Nginx
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# COPIA O NGINX.CONF DO CAMINHO CORRETO PARA DENTRO DO CONTAINER
+COPY Rascunho.Client/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
