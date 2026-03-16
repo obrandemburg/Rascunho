@@ -68,6 +68,7 @@ builder.Services.AddScoped<ChamadaService>();
 builder.Services.AddScoped<AulaParticularService>();
 builder.Services.AddScoped<BolsistaService>();
 builder.Services.AddScoped<EventoService>();
+builder.Services.AddScoped<AulaExperimentalService>();
 
 // Tratamento global de exceções
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -130,5 +131,6 @@ app.MapChamadaEndpoints();
 app.MapAulaParticularEndpoints();
 app.MapBolsistaEndpoints();
 app.MapEventoEndpoints();
+app.MapAulaExperimentalEndpoints();
 
 app.Run();

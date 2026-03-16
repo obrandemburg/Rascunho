@@ -25,6 +25,7 @@ namespace Rascunho.Data
         public DbSet<AulaParticular> AulasParticulares { get; set; }
         public DbSet<Evento> Eventos { get; set; }
         public DbSet<Ingresso> Ingressos { get; set; }
+        public DbSet<AulaExperimental> AulasExperimentais { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
