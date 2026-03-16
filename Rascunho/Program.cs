@@ -30,7 +30,8 @@ builder.Services.AddCors(options =>
                 "http://localhost:5000",    // Libera porta local padrão Blazor
                 "http://localhost:5001",    // Libera porta local padrão Blazor HTTPS
                 "https://localhost:7080",   // Libera outra porta comum do VS
-                "http://localhost:5032"     // Outra porta comum
+                "http://localhost:5032",     // Outra porta comum
+                "http://localhost:5126"   // O seu PC rodando localmente
               )
               .SetIsOriginAllowed(origin => new Uri(origin).Host == "localhost") // Libera QUALQUER localhost para facilitar o seu desenvolvimento!
               .AllowAnyHeader()
