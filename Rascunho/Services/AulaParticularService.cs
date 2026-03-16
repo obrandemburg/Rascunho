@@ -1,9 +1,9 @@
 ﻿using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
-using Rascunho.Shared.DTOs;
 using Rascunho.Entities;
 using Rascunho.Exceptions;
+using Rascunho.Shared.DTOs;
 using Rascunho.Mappers;
 
 namespace Rascunho.Services;
@@ -27,7 +27,6 @@ public class AulaParticularService
         if (profDecoded.Length == 0 || ritmoDecoded.Length == 0)
             throw new RegraNegocioException("IDs inválidos.");
 
-        // Verifica se o professor existe
         var professor = await _context.Usuarios.FindAsync(profDecoded[0]);
         if (professor == null || professor.Tipo != "Professor")
             throw new RegraNegocioException("Professor não encontrado ou inválido.");
@@ -37,12 +36,11 @@ public class AulaParticularService
         _context.AulasParticulares.Add(aula);
         await _context.SaveChangesAsync();
 
-        // Recarrega os dados para exibir nomes no retorno
         await _context.Entry(aula).Reference(a => a.Professor).LoadAsync();
         await _context.Entry(aula).Reference(a => a.Ritmo).LoadAsync();
         await _context.Entry(aula).Reference(a => a.Aluno).LoadAsync();
 
-        return ObterAulaParticularResponse.DeEntidade(aula, _hashids);
+        return aula.ToResponse(_hashids);
     }
 
     public async Task ResponderSolicitacaoAsync(int professorLogadoId, int aulaId, bool aceitar)
@@ -62,15 +60,11 @@ public class AulaParticularService
         }
         else
         {
-            // PARADOXO DA ONIPRESENÇA: O professor está livre neste dia e horário?
-
-            // 1. Checa outras aulas particulares aceitas no mesmo horário
             bool choqueAulaParticular = await _context.AulasParticulares.AnyAsync(a =>
                 a.ProfessorId == professorLogadoId &&
                 a.Status == "Aceita" &&
                 (aula.DataHoraInicio < a.DataHoraFim && aula.DataHoraFim > a.DataHoraInicio));
 
-            // 2. Checa as Turmas oficiais da escola (Atenção para o dia da semana e o TimeSpan)
             var diaDaSemanaAula = aula.DataHoraInicio.DayOfWeek;
             var horarioInicioAula = aula.DataHoraInicio.TimeOfDay;
             var horarioFimAula = aula.DataHoraFim.TimeOfDay;
@@ -97,17 +91,14 @@ public class AulaParticularService
         var aula = await _context.AulasParticulares.FindAsync(aulaId)
             ?? throw new RegraNegocioException("Aula não encontrada.");
 
-        // Pode ser cancelada pelo Aluno, Professor ou Recepção/Gerente
         if (aula.AlunoId != usuarioLogadoId && aula.ProfessorId != usuarioLogadoId && roleLogado != "Recepção" && roleLogado != "Gerente")
             throw new RegraNegocioException("Sem permissão para cancelar.");
 
         if (aula.Status == "Cancelada" || aula.Status == "Recusada")
             throw new RegraNegocioException("Esta aula já está cancelada ou recusada.");
 
-        // Regra de Prazo de Cancelamento (ex: mínimo de 24 horas de antecedência)
         var horasParaAula = (aula.DataHoraInicio - DateTime.UtcNow).TotalHours;
 
-        // Se for o aluno cancelando faltando menos de 24h, aplicamos uma punição/bloqueio
         if (aula.AlunoId == usuarioLogadoId && horasParaAula < 24)
         {
             throw new RegraNegocioException("O cancelamento deve ser feito com pelo menos 24 horas de antecedência. Entre em contato com a recepção.");
@@ -117,7 +108,6 @@ public class AulaParticularService
         await _context.SaveChangesAsync();
     }
 
-    // Listagens
     public async Task<IEnumerable<ObterAulaParticularResponse>> ListarMinhasAulasAsync(int usuarioId, string role)
     {
         var query = _context.AulasParticulares
@@ -130,9 +120,8 @@ public class AulaParticularService
             query = query.Where(a => a.AlunoId == usuarioId);
         else if (role == "Professor")
             query = query.Where(a => a.ProfessorId == usuarioId);
-        // Gerente e Recepção veem tudo
 
         var aulas = await query.OrderByDescending(a => a.DataHoraInicio).ToListAsync();
-        return aulas.Select(a => ObterAulaParticularResponse.DeEntidade(a, _hashids));
+        return aulas.Select(a => a.ToResponse(_hashids));
     }
 }

@@ -4,7 +4,6 @@ using Rascunho.Shared.DTOs;
 using Rascunho.Infraestrutura;
 using Rascunho.Services;
 using System.Security.Claims;
-using static Rascunho.DTOs.ObterTurmaResponse;
 
 namespace Rascunho.Endpoints;
 

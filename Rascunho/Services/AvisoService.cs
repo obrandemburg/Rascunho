@@ -1,9 +1,9 @@
 ﻿using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
-using Rascunho.Shared.DTOs;
 using Rascunho.Entities;
 using Rascunho.Exceptions;
+using Rascunho.Shared.DTOs;
 using Rascunho.Mappers;
 
 namespace Rascunho.Services;
@@ -26,22 +26,20 @@ public class AvisoService
         _context.Avisos.Add(aviso);
         await _context.SaveChangesAsync();
 
-        // Carrega o autor para o DTO de resposta
         await _context.Entry(aviso).Reference(a => a.Autor).LoadAsync();
 
-        return ObterAvisoResponse.DeEntidade(aviso, _hashids);
+        return aviso.ToResponse(_hashids);
     }
 
-    // A MÁGICA DA AUTO-EXCLUSÃO ESTÁ NO '.Where(a => a.DataExpiracao > DateTime.UtcNow)'
     public async Task<IEnumerable<ObterAvisoResponse>> ListarAvisosAtivosAsync(string tipoVisibilidade)
     {
         var avisos = await _context.Avisos
             .Include(a => a.Autor)
             .Where(a => a.TipoVisibilidade == tipoVisibilidade && a.DataExpiracao > DateTime.UtcNow)
-            .OrderByDescending(a => a.DataPublicacao) // Os mais recentes primeiro
+            .OrderByDescending(a => a.DataPublicacao)
             .ToListAsync();
 
-        return avisos.Select(a => ObterAvisoResponse.DeEntidade(a, _hashids));
+        return avisos.Select(a => a.ToResponse(_hashids));
     }
 
     public async Task AtualizarAvisoAsync(int id, AtualizarAvisoRequest request)

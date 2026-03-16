@@ -1,6 +1,6 @@
 ﻿using HashidsNet;
-using Rascunho.Shared.DTOs;
 using Rascunho.Entities;
+using Rascunho.Shared.DTOs;
 
 namespace Rascunho.Mappers;
 

@@ -1,7 +1,7 @@
 ﻿using System.Linq;
 using HashidsNet;
-using Rascunho.Shared.DTOs;
 using Rascunho.Entities;
+using Rascunho.Shared.DTOs;
 
 namespace Rascunho.Mappers;
 
@@ -11,7 +11,7 @@ public static class EscolaMapper
         new ObterRitmoResponse(hashids.Encode(r.Id), r.Nome, r.Descricao, r.Modalidade, r.Ativo);
 
     public static ObterSalaResponse ToResponse(this Sala s, IHashids hashids) =>
-        new ObterSalaResponse(hashids.Encode(s.Id), s.Nome, s.CapacidadeMaxima, s.Ativa);
+        new ObterSalaResponse(hashids.Encode(s.Id), s.Nome, s.CapacidadeMaxima, s.Ativo);
 
     public static ObterTurmaResponse ToResponse(this Turma t, IHashids hashids) =>
         new ObterTurmaResponse(
@@ -27,11 +27,11 @@ public static class EscolaMapper
             t.Matriculas?.Count ?? 0,
             t.LinkWhatsApp,
             t.Ativa,
-            t.Professores?.Select(p => p.Professor?.Nome ?? "Desconhecido").ToList() ?? new()
+            t.Professores?.Select(p => p.Professor?.Nome ?? "Desconhecido").ToList() ?? new List<string>()
         );
 
     public static ObterEventoResponse ToResponse(this Evento e, IHashids hashids) =>
         new ObterEventoResponse(
-            hashids.Encode(e.Id), e.Nome, e.Descricao, e.DataHora, e.Tipo, e.Capacidade, e.Preco, e.Ingressos?.Count ?? 0
+            hashids.Encode(e.Id), e.Nome, e.Descricao, e.DataHora, e.Tipo, e.Capacidade, e.Preco, e.Ingressos?.Count(i => i.Status != "Cancelado") ?? 0
         );
 }

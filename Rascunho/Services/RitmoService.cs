@@ -1,9 +1,9 @@
 ﻿using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
-using Rascunho.Shared.DTOs;
 using Rascunho.Entities;
 using Rascunho.Exceptions;
+using Rascunho.Shared.DTOs;
 using Rascunho.Mappers;
 
 namespace Rascunho.Services;
@@ -21,28 +21,23 @@ public class RitmoService
 
     public async Task<ObterRitmoResponse> CriarRitmoAsync(CriarRitmoRequest request)
     {
-        // Regra: Não podemos ter dois ritmos com o mesmo nome (ex: dois "Forró")
-        bool ritmoJaExiste = await _context.Ritmos.AnyAsync(r => r.Nome.ToLower() == request.Nome.ToLower());
-        if (ritmoJaExiste)
-            throw new RegraNegocioException("Já existe um ritmo cadastrado com este nome.");
-
         var ritmo = new Ritmo(request.Nome, request.Descricao, request.Modalidade);
-
         _context.Ritmos.Add(ritmo);
         await _context.SaveChangesAsync();
-
-        return ObterRitmoResponse.DeEntidade(ritmo, _hashids);
+        return ritmo.ToResponse(_hashids);
     }
 
-    public async Task<IEnumerable<ObterRitmoResponse>> ListarTodosAsync(bool? ativo = null)
+    public async Task<IEnumerable<ObterRitmoResponse>> ListarRitmosAsync()
     {
-        var query = _context.Ritmos.AsQueryable();
+        var ritmos = await _context.Ritmos.ToListAsync();
+        return ritmos.Select(r => r.ToResponse(_hashids));
+    }
 
-        if (ativo.HasValue)
-            query = query.Where(r => r.Ativo == ativo.Value);
-
-        var ritmos = await query.ToListAsync();
-        return ritmos.Select(r => ObterRitmoResponse.DeEntidade(r, _hashids));
+    public async Task<ObterRitmoResponse> ObterRitmoPorIdAsync(int id)
+    {
+        var ritmo = await _context.Ritmos.FindAsync(id)
+            ?? throw new RegraNegocioException("Ritmo não encontrado.");
+        return ritmo.ToResponse(_hashids);
     }
 
     public async Task AtualizarRitmoAsync(int id, AtualizarRitmoRequest request)
@@ -50,34 +45,21 @@ public class RitmoService
         var ritmo = await _context.Ritmos.FindAsync(id)
             ?? throw new RegraNegocioException("Ritmo não encontrado.");
 
-        // Verifica se está tentando mudar o nome para um que já existe em outro ID
-        bool nomeEmUso = await _context.Ritmos.AnyAsync(r => r.Nome.ToLower() == request.Nome.ToLower() && r.Id != id);
-        if (nomeEmUso)
-            throw new RegraNegocioException("Já existe outro ritmo cadastrado com este nome.");
-
+        // CORREÇÃO: Utilizando a função exata da sua entidade
         ritmo.Atualizar(request.Nome, request.Descricao, request.Modalidade);
         await _context.SaveChangesAsync();
     }
 
-    public async Task AlterarStatusAsync(int id, bool ativar)
+    public async Task InativarRitmoAsync(int id)
     {
         var ritmo = await _context.Ritmos.FindAsync(id)
             ?? throw new RegraNegocioException("Ritmo não encontrado.");
 
-        if (ativar)
-        {
-            ritmo.Ativar();
-        }
-        else
-        {
-            // TODO: REGRA DE NEGÓCIO DA TURMA (Implementaremos no próximo passo)
-            // bool possuiTurmasAtivas = await _context.Turmas.AnyAsync(t => t.RitmoId == id && t.Ativa);
-            // if (possuiTurmasAtivas)
-            //     throw new RegraNegocioException("Não é possível desativar este ritmo, pois existem turmas ativas vinculadas a ele.");
+        bool emUso = await _context.Turmas.AnyAsync(t => t.RitmoId == id && t.Ativa);
+        if (emUso) throw new RegraNegocioException("Não é possível inativar um ritmo que possui turmas ativas.");
 
-            ritmo.Desativar();
-        }
-
+        // CORREÇÃO: Utilizando a função exata da sua entidade
+        ritmo.Desativar();
         await _context.SaveChangesAsync();
     }
 }

@@ -1,10 +1,10 @@
 ﻿using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
-using Rascunho.Shared.DTOs; // <-- NOVO NAMESPACE AQUI
 using Rascunho.Entities;
 using Rascunho.Exceptions;
-using Rascunho.Mappers;       // <-- IMPORTANDO OS SEUS MAPPERS
+using Rascunho.Shared.DTOs;
+using Rascunho.Mappers;
 
 namespace Rascunho.Services;
 
@@ -31,23 +31,21 @@ public class AulaExperimentalService
             ?? throw new RegraNegocioException("Turma não encontrada.");
 
         if (turma.Matriculas.Any(m => m.AlunoId == alunoId))
-            throw new RegraNegocioException("Você já é um aluno matriculado nesta turma.");
+            throw new RegraNegocioException("Você já é um aluno matriculado nesta turma. Não precisa de aula experimental.");
 
         if (turma.Matriculas.Count >= turma.LimiteAlunos)
-            throw new RegraNegocioException("Esta turma está cheia.");
+            throw new RegraNegocioException("Esta turma está cheia. Não há vagas para aulas experimentais no momento.");
 
         bool jaFezNesteRitmo = await _context.AulasExperimentais
             .Include(a => a.Turma)
-            .AnyAsync(a => a.AlunoId == alunoId && a.Turma.RitmoId == turma.RitmoId && a.Status != "Cancelada");
+            .AnyAsync(a => a.AlunoId == alunoId &&
+                           a.Turma.RitmoId == turma.RitmoId &&
+                           a.Status != "Cancelada");
 
         if (jaFezNesteRitmo)
             throw new RegraNegocioException("Você já solicitou ou realizou uma aula experimental para este ritmo.");
 
-        // ==========================================
-        // CRIAÇÃO DA ENTIDADE LIMPA
-        // ==========================================
         var experimental = new AulaExperimental(alunoId, turmaId, request.DataAula);
-
         _context.AulasExperimentais.Add(experimental);
         await _context.SaveChangesAsync();
 
@@ -55,9 +53,6 @@ public class AulaExperimentalService
         await _context.Entry(experimental).Reference(a => a.Turma).LoadAsync();
         await _context.Entry(experimental.Turma).Reference(t => t.Ritmo).LoadAsync();
 
-        // ==========================================
-        // USO DO MAPPER INTELIGENTE
-        // ==========================================
         return experimental.ToResponse(_hashids);
     }
 
