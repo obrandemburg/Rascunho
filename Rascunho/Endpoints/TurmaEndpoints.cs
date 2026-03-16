@@ -28,13 +28,14 @@ public static class TurmaEndpoints
         .RequireAuthorization();
 
         // 2. CRIAR TURMA (Apenas Recepção e Gerência)
-        group.MapPost("/criar", async (CriarTurmaRequest request, TurmaService turmaService, IHashids hashids) =>
+        group.MapPost("/criar", async (CriarTurmaRequest request, TurmaService turmaService) =>
         {
-            var turma = await turmaService.CriarTurmaAsync(request);
-            return Results.Created($"/api/turmas/{hashids.Encode(turma.Id)}", new { Mensagem = "Turma criada com sucesso!" });
+            // CORREÇÃO: Alteramos o nome da variável de 'turma' para 'response'
+            var response = await turmaService.CriarTurmaAsync(request);
+
+            return Results.Created($"/api/turmas/{response.IdHash}", response);
         })
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
-
         // ==========================================
         // ÁREA DO ALUNO (Auto-serviço)
         // ==========================================

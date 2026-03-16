@@ -27,11 +27,12 @@ public static class SalaEndpoints
         }).AllowAnonymous(); // Alunos precisam ver as salas para alugar, então liberamos a leitura
 
         // LISTAR SOMENTE ATIVAS
-        group.MapGet("/listar/ativas", async (SalaService salaService) =>
+        group.MapGet("/ativas", async (SalaService salaService) =>
         {
-            var response = await salaService.ListarTodasAsync(ativo: true);
+            // CORREÇÃO: Alterado de (ativo: true) para (apenasAtivas: true)
+            var response = await salaService.ListarTodasAsync(apenasAtivas: true);
             return Results.Ok(response);
-        }).AllowAnonymous();
+        });
 
         // ATUALIZAR
         group.MapPut("/atualizar/{idHash}", async (string idHash, AtualizarSalaRequest request, SalaService salaService, IHashids hashids) =>

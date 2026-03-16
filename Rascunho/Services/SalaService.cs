@@ -13,11 +13,7 @@ public class SalaService
     private readonly AppDbContext _context;
     private readonly IHashids _hashids;
 
-    public SalaService(AppDbContext context, IHashids hashids)
-    {
-        _context = context;
-        _hashids = hashids;
-    }
+    public SalaService(AppDbContext context, IHashids hashids) { _context = context; _hashids = hashids; }
 
     public async Task<ObterSalaResponse> CriarSalaAsync(CriarSalaRequest request)
     {
@@ -27,44 +23,45 @@ public class SalaService
         return sala.ToResponse(_hashids);
     }
 
-    public async Task<IEnumerable<ObterSalaResponse>> ListarSalasAsync()
+    public async Task<IEnumerable<ObterSalaResponse>> ListarTodasAsync(bool apenasAtivas = false)
     {
-        var salas = await _context.Salas.ToListAsync();
+        var query = _context.Salas.AsQueryable();
+
+        if (apenasAtivas) query = query.Where(s => s.Ativo);
+
+        var salas = await query.ToListAsync();
         return salas.Select(s => s.ToResponse(_hashids));
     }
 
     public async Task<ObterSalaResponse> ObterSalaPorIdAsync(int id)
     {
-        var sala = await _context.Salas.FindAsync(id)
-            ?? throw new RegraNegocioException("Sala não encontrada.");
+        var sala = await _context.Salas.FindAsync(id) ?? throw new RegraNegocioException("Sala não encontrada.");
         return sala.ToResponse(_hashids);
     }
 
     public async Task AtualizarSalaAsync(int id, AtualizarSalaRequest request)
     {
-        var sala = await _context.Salas.FindAsync(id)
-            ?? throw new RegraNegocioException("Sala não encontrada.");
-
+        var sala = await _context.Salas.FindAsync(id) ?? throw new RegraNegocioException("Sala não encontrada.");
         if (request.CapacidadeMaxima < sala.CapacidadeMaxima)
-        {
-            throw new RegraNegocioException("A capacidade de uma sala não pode ser reduzida por questões de segurança de turmas já ativas.");
-        }
+            throw new RegraNegocioException("A capacidade não pode ser reduzida por segurança das turmas ativas.");
 
-        // CORREÇÃO: Utilizando a função exata da sua entidade
         sala.Atualizar(request.Nome, request.CapacidadeMaxima);
         await _context.SaveChangesAsync();
     }
 
-    public async Task InativarSalaAsync(int id)
+    public async Task AlterarStatusAsync(int id, bool ativo)
     {
-        var sala = await _context.Salas.FindAsync(id)
-            ?? throw new RegraNegocioException("Sala não encontrada.");
-
-        bool emUso = await _context.Turmas.AnyAsync(t => t.SalaId == id && t.Ativa);
-        if (emUso) throw new RegraNegocioException("Não é possível inativar uma sala que possui turmas ativas.");
-
-        // CORREÇÃO: Utilizando a função exata da sua entidade
-        sala.Desativar();
+        var sala = await _context.Salas.FindAsync(id) ?? throw new RegraNegocioException("Sala não encontrada.");
+        if (ativo)
+        {
+            sala.Ativar();
+        }
+        else
+        {
+            bool emUso = await _context.Turmas.AnyAsync(t => t.SalaId == id && t.Ativa);
+            if (emUso) throw new RegraNegocioException("Não é possível inativar uma sala com turmas ativas.");
+            sala.Desativar();
+        }
         await _context.SaveChangesAsync();
     }
 }
