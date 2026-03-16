@@ -7,10 +7,11 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
 
-@* Configuração das Cores Oficiais do Ponto da Dança *@
+@* === COMPONENTES OBRIGATÓRIOS DO MUDBLAZOR (AQUI É O SEGREDO!) === *@
 <MudThemeProvider Theme="@CustomTheme" />
 <MudDialogProvider />
 <MudSnackbarProvider />
+<MudPopoverProvider /> @* <--- Este era o cara que estava faltando *@
 
 <MudLayout>
     @* BARRA SUPERIOR *@
@@ -22,11 +23,9 @@
         @* ÁREA DO USUÁRIO *@
         <AuthorizeView>
             <Authorized Context="authContext">
-                @* <--- CORREÇÃO: Demos o nome 'authContext' *@
                 <MudMenu ActivationEvent="@MouseEvent.LeftClick" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                     <ActivatorContent>
                         <MudAvatar Color="Color.Secondary">
-                            @* CORREÇÃO: Usando o nome novo aqui *@
                             @authContext.User.Identity?.Name?.FirstOrDefault()
                         </MudAvatar>
                     </ActivatorContent>
@@ -47,7 +46,7 @@
         <NavMenu />
     </MudDrawer>
 
-    @* CONTEÚDO PRINCIPAL (Onde o Login e outras telas vão renderizar) *@
+    @* CONTEÚDO PRINCIPAL *@
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pt-8 pb-8">
             @Body
@@ -65,21 +64,19 @@
 
     private async Task Sair()
     {
-        // Limpa o Token do navegador e avisa o sistema para fechar as portas
         await LocalStorage.RemoveItemAsync("authToken");
         ((CustomAuthStateProvider)AuthStateProvider).NotifyUserLogout();
         NavigationManager.NavigateTo("/login");
     }
 
-    // Identidade Visual: Verde forte como primário, Amarelo/Dourado como secundário para destaques
     MudTheme CustomTheme = new MudTheme()
     {
         PaletteLight = new PaletteLight()
         {
-            Primary = "#1b5e20", // Verde escuro elegante
-            Secondary = "#fbc02d", // Destaques (como a coroa/pontos)
+            Primary = "#1b5e20",
+            Secondary = "#fbc02d",
             AppbarBackground = "#1b5e20",
-            Background = "#f5f5f5", // Cinza bem claro para o fundo não cansar a vista
+            Background = "#f5f5f5",
             Surface = "#ffffff"
         }
     };
