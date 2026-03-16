@@ -1,7 +1,5 @@
 name: Deploy Automático para Produção (VPS)
 
-# 1. QUANDO O ROBÔ DEVE TRABALHAR?
-# Sempre que houver um "push" na branch "main"
 on:
   push:
     branches: [ "main" ]
@@ -14,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # Dá permissão para o robô salvar no ghcr.io
+      packages: write 
 
     steps:
       - name: Baixar o código do repositório
@@ -25,9 +23,8 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }} # O GitHub gera essa senha automaticamente
+          password: ${{ secrets.GITHUB_TOKEN }} 
 
-      # Constrói a API usando o Dockerfile padrão
       - name: Construir e Enviar a Imagem da API (Backend)
         uses: docker/build-push-action@v4
         with:
@@ -36,7 +33,6 @@ jobs:
           push: true
           tags: ghcr.io/obrandemburg/rascunho:latest
 
-      # Constrói o Frontend usando o Dockerfile.Client
       - name: Construir e Enviar a Imagem do Frontend (Blazor WebAssembly)
         uses: docker/build-push-action@v4
         with:
@@ -49,16 +45,16 @@ jobs:
   # FASE 2: ENTRAR NA VPS E ATUALIZAR O SISTEMA
   # =========================================================
   deploy:
-    needs: build-and-push # Só executa se a FASE 1 der certo
+    needs: build-and-push 
     runs-on: ubuntu-latest
     steps:
       - name: Conectar na VPS via SSH e Atualizar
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.VPS_HOST }}       # Ex: 5.161.202.169
-          username: ${{ secrets.VPS_USERNAME }} # Ex: root
-          key: ${{ secrets.VPS_SSH_KEY }}       # Sua chave privada
-          port: ${{ secrets.VPS_PORT }}         # Geralmente 22
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}    # <--- CORRIGIDO PARA O SEU SECRET EXATO
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22                             # Deixamos chumbado na porta padrão SSH
           script: |
             # 1. Navega até a pasta do seu projeto na VPS
             cd /home/usuario/pontodadanca
@@ -69,5 +65,5 @@ jobs:
             # 3. Baixa as imagens novas que a Fase 1 acabou de criar
             docker compose pull
             
-            # 4. Reinicia os contêineres aplicando as novidades (sem derrubar o banco de dados)
+            # 4. Reinicia os contêineres aplicando as novidades
             docker compose up -d
