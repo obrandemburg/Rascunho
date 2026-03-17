@@ -5,29 +5,11 @@
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.Components.Web.Virtualization
 @using Microsoft.AspNetCore.Components.WebAssembly.Http
-@using Microsoft.AspNetCore.Components.Authorization @using Rascunho.Client
+@using Microsoft.AspNetCore.Components.Authorization 
+@using Rascunho.Client
 @using Rascunho.Client.Layout
-@using Rascunho.Shared.DTOs @using MudBlazor ```
-
-
----
-
-### Passo CRÍTICO na sua API (CORS)
-
-Como a sua API vai rodar na porta `5000` (exemplo) e o Blazor vai rodar na porta `5100` (exemplo), o navegador **bloqueia** a comunicação por segurança (CORS - Cross-Origin Resource Sharing).
-Você **precisa** ir no `Program.cs` da sua **API** (`Rascunho`) e adicionar isto:
-
-```csharp
-// Antes do builder.Build()
-builder.Services.AddCors(options =>
-{
-options.AddPolicy("PermitirBlazor", builder =>
-builder.WithOrigins("https://localhost:5100", "http://localhost:5101") // Ajuste para as portas do seu Blazor
-.AllowAnyMethod()
-.AllowAnyHeader());
-});
-
-var app = builder.Build();
-
-// Logo após o builder.Build()
-app.UseCors("PermitirBlazor");
+@using Rascunho.Shared.DTOs 
+@using MudBlazor
+@using Blazored.LocalStorage
+@using Rascunho.Client.Security
+@using Rascunho.Client.Services
