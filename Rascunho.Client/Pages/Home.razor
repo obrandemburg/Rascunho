@@ -2,41 +2,169 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @attribute [Authorize]
-@* A anotação [Authorize] impede que pessoas não logadas vejam esta página. Elas são chutadas para o Login. *@
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    <MudText Typo="Typo.h3" Align="Align.Center" Color="Color.Primary" Class="mb-8 font-weight-bold">
-        Bem-vindo(a) ao Ponto da Dança!
-    </MudText>
-
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+    
+    @* Correção: Agora o texto de boas-vindas está dentro do escopo onde o "context" existe *@
     <AuthorizeView>
         <Authorized>
-            <MudGrid>
-                @* Destaque Geral *@
-                <MudItem xs="12" md="12">
-                    <MudPaper Elevation="2" Class="pa-6 rounded-xl" Style="background-color: #1b5e20; color: white;">
-                        <MudText Typo="Typo.h5">Olá, @context.User.Identity?.Name!</MudText>
-                        <MudText Typo="Typo.body1" Class="mt-2">Ficamos felizes em ter você aqui. Navegue pelo menu lateral para acessar suas opções.</MudText>
-                    </MudPaper>
+            <MudText Typo="Typo.h4" Color="Color.Success" Class="mb-2 font-weight-bold">
+                Olá, @context.User.Identity?.Name!
+            </MudText>
+        </Authorized>
+    </AuthorizeView>
+    
+    <MudText Typo="Typo.subtitle1" Class="mb-8">Seja bem-vindo(a) ao seu portal da Ponto da Dança.</MudText>
+
+    <MudGrid>
+        @* ==========================================
+           ÁREA DOS ALUNOS E BOLSISTAS
+           ========================================== *@
+        <AuthorizeView Roles="Aluno,Bolsista">
+            <Authorized Context="alunoContext">
+                <MudItem xs="12">
+                    <MudText Typo="Typo.h6" Class="mb-2">Acesso Rápido - Aluno</MudText>
+                    <MudDivider Class="mb-4" />
                 </MudItem>
 
-                @* Avisos Rápidos (Exemplo genérico) *@
-                <MudItem xs="12" md="6">
-                    <MudCard Elevation="2" Class="rounded-xl h-100">
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="3" Class="rounded-lg h-100 border-l-4 border-solid" Style="border-left-color: #4caf50;">
                         <MudCardHeader>
                             <CardHeaderContent>
-                                <MudText Typo="Typo.h6" Color="Color.Primary">Próximos Eventos</MudText>
+                                <MudText Typo="Typo.h6">Minhas Aulas</MudText>
                             </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudIcon Icon="@Icons.Material.Filled.EventAvailable" Color="Color.Success" />
+                            </CardHeaderActions>
                         </MudCardHeader>
                         <MudCardContent>
-                            <MudText Typo="Typo.body2">Fique de olho! Em breve teremos novidades no mural.</MudText>
+                            <MudText Typo="Typo.body2">Acesse os grupos de WhatsApp, avisos e detalhes das turmas em que você está matriculado.</MudText>
                         </MudCardContent>
                         <MudCardActions>
-                            <MudButton Variant="Variant.Text" Color="Color.Secondary">Ver Calendário</MudButton>
+                            <MudButton Variant="Variant.Text" Color="Color.Success" Href="/minhas-aulas">Acessar Turmas</MudButton>
                         </MudCardActions>
                     </MudCard>
                 </MudItem>
-            </MudGrid>
-        </Authorized>
-    </AuthorizeView>
+
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="3" Class="rounded-lg h-100 border-l-4 border-solid" Style="border-left-color: #4caf50;">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">Aulas Particulares</MudText>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudIcon Icon="@Icons.Material.Filled.PersonSearch" Color="Color.Success" />
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudText Typo="Typo.body2">Veja a agenda dos professores e solicite aulas particulares para acelerar seu aprendizado.</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Success" Href="/aulas-particulares">Solicitar Aula</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            </Authorized>
+        </AuthorizeView>
+
+        @* ==========================================
+           ÁREA DO PROFESSOR
+           ========================================== *@
+        <AuthorizeView Roles="Professor">
+            <Authorized Context="profContext">
+                <MudItem xs="12" Class="mt-4">
+                    <MudText Typo="Typo.h6" Class="mb-2">Painel Docente</MudText>
+                    <MudDivider Class="mb-4" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="3" Class="rounded-lg h-100 border-l-4 border-solid" Style="border-left-color: #ff9800;">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">Fazer Chamada</MudText>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudIcon Icon="@Icons.Material.Filled.Checklist" Color="Color.Warning" />
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudText Typo="Typo.body2">Acesse os diários de classe de hoje e registre a presença ou ausência dos seus alunos.</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Warning" Href="/fazer-chamada">Registrar Presença</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="3" Class="rounded-lg h-100 border-l-4 border-solid" Style="border-left-color: #ff9800;">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">Solicitações Particulares</MudText>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudIcon Icon="@Icons.Material.Filled.NotificationsActive" Color="Color.Warning" />
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudText Typo="Typo.body2">Gerencie convites de alunos para aulas particulares (Aceitar, Recusar ou Reagendar).</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Warning" Href="/aulas-particulares/gerenciar">Ver Agenda</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            </Authorized>
+        </AuthorizeView>
+
+        @* ==========================================
+           ÁREA ADMINISTRATIVA (Recepção e Gerente)
+           ========================================== *@
+        <AuthorizeView Roles="Recepção,Gerente">
+            <Authorized Context="adminContext">
+                <MudItem xs="12" Class="mt-4">
+                    <MudText Typo="Typo.h6" Class="mb-2">Painel Administrativo</MudText>
+                    <MudDivider Class="mb-4" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="3" Class="rounded-lg h-100 border-l-4 border-solid" Style="border-left-color: #2196f3;">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">Gerenciar Turmas</MudText>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudIcon Icon="@Icons.Material.Filled.ManageHistory" Color="Color.Info" />
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudText Typo="Typo.body2">Crie novas turmas, altere salas, matricule alunos e gerencie o quadro de horários da escola.</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Info" Href="/admin/turmas">Abrir Gestão</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="3" Class="rounded-lg h-100 border-l-4 border-solid" Style="border-left-color: #2196f3;">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">Mural de Avisos</MudText>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudIcon Icon="@Icons.Material.Filled.Campaign" Color="Color.Info" />
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudText Typo="Typo.body2">Envie recados para o quadro geral (Público) ou publique avisos restritos para a Equipe Interna.</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Info" Href="/admin/mural-avisos">Criar Aviso</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            </Authorized>
+        </AuthorizeView>
+    </MudGrid>
 </MudContainer>

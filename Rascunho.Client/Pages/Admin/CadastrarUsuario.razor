@@ -1,0 +1,115 @@
+﻿@page "/admin/usuarios/cadastrar"
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize(Roles = "Recepção,Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+    <MudText Typo="Typo.h3" Color="Color.Primary" Class="mb-6 font-weight-bold">Cadastro de Pessoas</MudText>
+    <MudText Typo="Typo.subtitle1" Class="mb-6">Adicione novos Alunos, Professores ou membros da Equipe ao sistema.</MudText>
+
+    <MudPaper Elevation="3" Class="pa-6 rounded-lg mb-8 border-l-4 border-solid" Style="border-left-color: var(--mud-palette-primary);">
+        @* CORREÇÃO 1: Alterado OnValidSubmit para "SalvarUsuario" *@
+        <EditForm Model="@novoUsuario" OnValidSubmit="SalvarUsuario">
+            <MudGrid>
+                @* TIPO DE USUÁRIO *@
+                <MudItem xs="12" md="12">
+                    <MudSelect T="string" Label="Perfil do Usuário (Cargo)" @bind-Value="novoUsuario.Tipo" Variant="Variant.Outlined" Required="true" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="string" Value="@("Aluno")" />
+                        <MudSelectItem T="string" Value="@("Professor")" />
+                        <MudSelectItem T="string" Value="@("Bolsista")" />
+                        <MudSelectItem T="string" Value="@("Recepção")" />
+                        
+                        <AuthorizeView Roles="Gerente" Context="authContext">
+                            <Authorized>
+                                <MudSelectItem T="string" Value="@("Gerente")" />
+                                <MudSelectItem T="string" Value="@("Líder")" />
+                            </Authorized>
+                        </AuthorizeView>
+                    </MudSelect>
+                </MudItem>
+
+                @* DADOS PESSOAIS *@
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="novoUsuario.Nome" Label="Nome Completo" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="novoUsuario.Email" Label="E-mail" InputType="InputType.Email" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="novoUsuario.Senha" Label="Senha Provisória" InputType="InputType.Password" Variant="Variant.Outlined" Required="true" HelperText="Mínimo 6 caracteres" />
+                </MudItem>
+
+                <MudItem xs="12" Class="d-flex justify-end mt-4">
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.PersonAdd" Disabled="@carregando">
+                        @if (carregando)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                            <MudText Class="ms-2">Processando...</MudText>
+                        }
+                        else
+                        {
+                            <MudText>Registrar @novoUsuario.Tipo</MudText>
+                        }
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private bool carregando = false;
+    private CadastroUsuarioModel novoUsuario = new() { Tipo = "Aluno" };
+
+    public class CadastroUsuarioModel
+    {
+        public string Nome { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Senha { get; set; } = "";
+        public string Tipo { get; set; } = "Aluno";
+    }
+
+    @* CORREÇÃO 2: O método agora se chama SalvarUsuario *@
+    private async Task SalvarUsuario()
+    {
+        carregando = true;
+
+        try
+        {
+            if (novoUsuario.Senha.Length < 6)
+            {
+                Snackbar.Add("A senha deve ter no mínimo 6 caracteres.", Severity.Warning);
+                return;
+            }
+
+            var response = await Http.PostAsJsonAsync("api/usuarios/cadastrar", novoUsuario);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"{novoUsuario.Tipo} cadastrado com sucesso!", Severity.Success);
+                novoUsuario = new CadastroUsuarioModel { Tipo = novoUsuario.Tipo };
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity)
+            {
+                Snackbar.Add("Este e-mail já está cadastrado no sistema.", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Falha na validação dos dados. Verifique os campos.", Severity.Error);
+            }
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Erro de comunicação com o servidor.", Severity.Error);
+        }
+        finally
+        {
+            carregando = false;
+        }
+    }
+}
