@@ -1,0 +1,61 @@
+﻿@page "/ritmos"
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+    <MudText Typo="Typo.h3" Color="Color.Primary" Class="mb-6 font-weight-bold">Nossas Modalidades</MudText>
+
+    <MudGrid>
+        @if (ritmos == null)
+        {
+            @for (int i = 0; i < 6; i++)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" Class="rounded-lg" />
+                </MudItem>
+            }
+        }
+        else
+        {
+            @foreach (var ritmo in ritmos)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="2" Class="rounded-lg h-100 border-b-4 border-solid" Style="border-bottom-color: #1b5e20;">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h5" Color="Color.Primary">@ritmo.Nome</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default">@ritmo.Modalidade</MudChip>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudText Typo="Typo.body2">@ritmo.Descricao</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" Href="@($"/quadro-turmas")">Ver Horários</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        }
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private List<RitmoDto>? ritmos;
+
+    public class RitmoDto
+    {
+        public string Nome { get; set; } = "";
+        public string Descricao { get; set; } = "";
+        public string Modalidade { get; set; } = ""; // Dança de Salão ou Solo
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            ritmos = await Http.GetFromJsonAsync<List<RitmoDto>>("api/ritmos/listar");
+        }
+        catch { /* Tratamento de erro */ }
+    }
+}

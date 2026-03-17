@@ -1,0 +1,67 @@
+﻿@page "/admin/mural-avisos"
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Recepção,Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+    <MudText Typo="Typo.h3" Color="Color.Primary" Class="mb-6 font-weight-bold">Mural Administrativo</MudText>
+
+    <MudPaper Elevation="3" Class="pa-6 rounded-lg border-l-8 border-solid" Style="border-left-color: #1b5e20;">
+        <MudText Typo="Typo.h5" Class="mb-4">Publicar Novo Aviso</MudText>
+        <EditForm Model="@novoAviso" OnValidSubmit="PublicarAviso">
+            <MudGrid>
+                <MudItem xs="12" md="8">
+                    <MudTextField @bind-Value="novoAviso.Titulo" Label="Título do Aviso" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="string" Label="Visibilidade" @bind-Value="novoAviso.TipoVisibilidade" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("Geral")" />
+                        <MudSelectItem Value="@("Equipe")" />
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="novoAviso.Mensagem" Label="Conteúdo do Recado" Variant="Variant.Outlined" Lines="4" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker Label="Data de Expiração" @bind-Date="dataExpiracao" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" Class="d-flex justify-end">
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Send">
+                        Publicar no Mural
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private AvisoRequest novoAviso = new() { TipoVisibilidade = "Geral" };
+    private DateTime? dataExpiracao = DateTime.Today.AddDays(7);
+
+    public class AvisoRequest
+    {
+        public string Titulo { get; set; } = "";
+        public string Mensagem { get; set; } = "";
+        public string TipoVisibilidade { get; set; } = "";
+        public DateTime DataExpiracao { get; set; }
+    }
+
+    private async Task PublicarAviso()
+    {
+        if (dataExpiracao.HasValue) novoAviso.DataExpiracao = dataExpiracao.Value;
+
+        var response = await Http.PostAsJsonAsync("api/avisos/admin/criar", novoAviso);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Aviso publicado! Ele desaparecerá automaticamente após a expiração.", Severity.Success);
+            novoAviso = new AvisoRequest { TipoVisibilidade = "Geral" };
+        }
+        else
+        {
+            Snackbar.Add("Erro ao publicar aviso. Verifique os campos.", Severity.Error);
+        }
+    }
+}

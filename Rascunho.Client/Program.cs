@@ -1,27 +1,29 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-using Rascunho.Client;
+using Microsoft.AspNetCore.Components.Authorization;
 using MudBlazor.Services;
 using Blazored.LocalStorage;
-using Microsoft.AspNetCore.Components.Authorization;
+using Rascunho.Client;
 using Rascunho.Client.Security;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-// APONTAMENTO FIXO: O Frontend sempre vai buscar dados na API da VPS (Hetzner)
-builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri("http://5.161.202.169:8080/") });
+// 1. INTEGRAÇÃO PRINCIPAL: Apontando para a API de Produção
+builder.Services.AddScoped(sp => new HttpClient
+{
+    BaseAddress = new Uri("http://5.161.202.169:8080/")
+});
 
-// Adiciona a biblioteca de Design Visual
+// 2. Registrando o MudBlazor (UI/UX)
 builder.Services.AddMudServices();
 
-// Adiciona o armazenamento local (para o Token JWT)
+// 3. REGISTRANDO O LOCAL STORAGE (A SOLUÇÃO DO SEU ERRO ESTÁ AQUI 👇)
 builder.Services.AddBlazoredLocalStorage();
 
-// Sistema de Autenticação
+// 4. Configuração de Segurança (JWT)
 builder.Services.AddAuthorizationCore();
 builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>();
 
 await builder.Build().RunAsync();
-
