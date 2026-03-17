@@ -1,5 +1,5 @@
 ﻿using BCrypt.Net;
-using EFCore.BulkExtensions; // RESTAURADO DA MAIN!
+using EFCore.BulkExtensions;
 using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
