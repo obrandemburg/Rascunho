@@ -1,25 +1,41 @@
-﻿<CascadingAuthenticationState> @* <--- ESSA LINHA É OBRIGATÓRIA *@
-    <Router AppAssembly="@typeof(Program).Assembly">
-        <Found Context="routeData">
-            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)">
-                <NotAuthorized>
-                    @if (context.User.Identity?.IsAuthenticated != true)
-                    {
-                        <RedirectToLogin />
-                    }
-                    else
-                    {
-                        <MudText>Você não tem permissão para acessar esta página.</MudText>
-                    }
-                </NotAuthorized>
-            </AuthorizeRouteView>
-            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-        </Found>
-        <NotFound>
-            <PageTitle>Não encontrado</PageTitle>
-            <LayoutView Layout="@typeof(Layout.MainLayout)">
-                <MudText Typo="Typo.h4" Align="Align.Center">Desculpe, não há nada neste endereço.</MudText>
-            </LayoutView>
-        </NotFound>
-    </Router>
-</CascadingAuthenticationState>
+﻿@* 
+  FLUXO: App.razor é o ponto de entrada do Blazor.
+  Router intercepta a URL e encontra o componente correto via [Page "/rota"].
+  NotFound é exibido quando nenhuma rota bate.
+  
+  AuthorizeRouteView garante que páginas com [Authorize] redirecionem
+  para /login automaticamente quando o usuário não está autenticado.
+  Isso substitui o antigo RouteView + lógica manual.
+*@
+
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        @*
+          AuthorizeRouteView combina autorização + roteamento.
+          Se a página tiver [Authorize] e o usuário não estiver logado,
+          o Blazor exibe o bloco <NotAuthorized> abaixo.
+        *@
+        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+            <NotAuthorized>
+                @* Redireciona visitantes não autenticados para o login *@
+                <RedirectToLogin />
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>404 — Página não encontrada</PageTitle>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <MudContainer Class="mt-16 text-center">
+                <MudText Typo="Typo.h3">🕺 Ops!</MudText>
+                <MudText Typo="Typo.h5" Class="mt-4">
+                    Esta página não existe.
+                </MudText>
+                <MudButton Href="/painel" Color="Color.Primary"
+                           Variant="Variant.Filled" Class="mt-8">
+                    Voltar ao Painel
+                </MudButton>
+            </MudContainer>
+        </LayoutView>
+    </NotFound>
+</Router>

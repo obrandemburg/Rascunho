@@ -1,0 +1,158 @@
+﻿@* 
+  ARQUIVO: Rascunho.Client/Pages/Perfil.razor  ← CRIAR ESTE ARQUIVO
+  
+  CAUSA DO 404: Esta página não existia. O MainLayout tem um link
+  Href="/perfil" no menu do avatar, mas nenhum componente tinha
+  @page "/perfil" registrado no roteador do Blazor.
+  
+  FUNCIONALIDADE:
+  - Exibe dados do usuário logado (lidos do JWT via AuthState)
+  - Permite editar Nome Social e Biografia
+  - PUT /api/usuarios/meu-perfil/atualizar
+  
+  O token JWT já identifica o usuário — não precisamos passar ID.
+*@
+
+@page "/perfil"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Meu Perfil — Ponto da Dança</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+
+    <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-6 font-weight-bold">
+        <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />
+        Meu Perfil
+    </MudText>
+
+    @* Cabeçalho com avatar e nome *@
+    <MudPaper Elevation="3" Class="pa-6 rounded-xl mb-6">
+        <div class="d-flex align-center gap-4 mb-4">
+            <MudAvatar Color="Color.Primary"
+                       Style="width: 64px; height: 64px; font-size: 1.8rem;">
+                @nomeInicial
+            </MudAvatar>
+            <div>
+                <MudText Typo="Typo.h5" Class="font-weight-bold">
+                    @nomeCompleto
+                </MudText>
+                <MudChip T="string"
+                         Size="Size.Small"
+                         Color="Color.Primary"
+                         Variant="Variant.Filled">
+                    @role
+                </MudChip>
+            </div>
+        </div>
+        <MudDivider Class="mb-4" />
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" Class="mr-1" />
+            @email
+        </MudText>
+    </MudPaper>
+
+    @* Formulário de edição *@
+    <MudPaper Elevation="3" Class="pa-6 rounded-xl">
+        <MudText Typo="Typo.h6" Class="mb-4">Editar Informações</MudText>
+
+        <EditForm Model="@form" OnValidSubmit="SalvarPerfil">
+
+            <MudTextField @bind-Value="form.NomeSocial"
+                          Label="Nome Social (como prefere ser chamado)"
+                          Variant="Variant.Outlined"
+                          Class="mb-4"
+                          MaxLength="100"
+                          HelperText="Opcional — deixe em branco para usar o nome completo" />
+
+            <MudTextField @bind-Value="form.Biografia"
+                          Label="Biografia"
+                          Variant="Variant.Outlined"
+                          Lines="4"
+                          Class="mb-6"
+                          MaxLength="500"
+                          HelperText="Conte um pouco sobre você (máx. 500 caracteres)" />
+
+            <MudButton ButtonType="ButtonType.Submit"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Disabled="@salvando"
+                       StartIcon="@Icons.Material.Filled.Save">
+                @(salvando ? "Salvando..." : "Salvar Alterações")
+            </MudButton>
+        </EditForm>
+    </MudPaper>
+
+</MudContainer>
+
+@code {
+    // CascadingParameter para ler dados do usuário logado sem chamar a API
+    // Os dados básicos (nome, role, email) já estão no JWT
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    private bool salvando = false;
+    private string nomeCompleto = "";
+    private string nomeInicial = "?";
+    private string email = "";
+    private string role = "";
+
+    private EditarPerfilForm form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthStateTask == null) return;
+
+        var authState = await AuthStateTask;
+        var user = authState.User;
+
+        // Lê as claims do JWT que foram decodificadas pelo CustomAuthStateProvider
+        nomeCompleto = user.Identity?.Name ?? "Usuário";
+        nomeInicial = nomeCompleto.FirstOrDefault().ToString().ToUpper();
+        email = user.FindFirst(c => c.Type == "email" ||
+                                    c.Type == System.Security.Claims.ClaimTypes.Email)
+                    ?.Value ?? "";
+        role = user.FindFirst(c => c.Type == System.Security.Claims.ClaimTypes.Role)
+                    ?.Value ?? "";
+    }
+
+    private async Task SalvarPerfil()
+    {
+        salvando = true;
+        try
+        {
+            // PUT /api/usuarios/meu-perfil/atualizar
+            // O token JWT identifica o usuário — não precisamos passar ID
+            var response = await Http.PutAsJsonAsync(
+                "api/usuarios/meu-perfil/atualizar", form);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Perfil atualizado com sucesso! ✅", Severity.Success);
+            }
+            else if ((int)response.StatusCode == 400)
+            {
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Dados inválidos: {erro}", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Erro ao salvar. Tente novamente.", Severity.Error);
+            }
+        }
+        finally { salvando = false; }
+    }
+
+    // DTO espelhando o EditarPerfilRequest do backend
+    public class EditarPerfilForm
+    {
+        public string? NomeSocial { get; set; }
+        public string? Biografia { get; set; }
+    }
+}

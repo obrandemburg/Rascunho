@@ -1,0 +1,235 @@
+﻿@* 
+  ROTA: /gerencia/usuarios
+  ACESSO: Gerente
+  
+  CORREÇÕES APLICADAS:
+  - MudSwitch T="bool" explícito
+  - ValueChanged substituído por handler separado para evitar CS0411/CS1662
+  - @using Rascunho.Client.Shared para resolver ConfirmDialog
+  - Null check em result.Canceled para resolver CS8602
+*@
+
+@page "/gerencia/usuarios"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@using Rascunho.Client.Shared
+@attribute [Authorize(Roles = "Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Gestão de Usuários — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.ManageAccounts" Class="mr-2" />
+    Gestão de Usuários
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Gerencie todos os usuários cadastrados no sistema.
+</MudText>
+
+@* Barra de filtros *@
+<MudPaper Elevation="1" Class="pa-4 mb-4 rounded-lg">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="filtroNome"
+                          Label="Buscar por nome"
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="string"
+                       @bind-Value="filtroTipo"
+                       Label="Tipo"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+                <MudSelectItem T="string" Value="@("Aluno")">Aluno</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Professor")">Professor</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Bolsista")">Bolsista</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Recepção")">Recepção</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Gerente")">Gerente</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="string"
+                       @bind-Value="filtroStatus"
+                       Label="Status"
+                       Variant="Variant.Outlined">
+                <MudSelectItem T="string" Value="@("todos")">Todos</MudSelectItem>
+                <MudSelectItem T="string" Value="@("ativos")">Ativos</MudSelectItem>
+                <MudSelectItem T="string" Value="@("desativados")">Desativados</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-end">
+            <MudButton OnClick="CarregarUsuarios"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true">
+                Filtrar
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudDataGrid T="UsuarioDto"
+                 Items="@usuariosFiltrados"
+                 Sortable="true"
+                 Filterable="false"
+                 Hover="true"
+                 Dense="true"
+                 Elevation="3"
+                 Class="rounded-xl">
+        <Columns>
+            <PropertyColumn Property="u => u.Nome" Title="Nome" Sortable="true" />
+            <PropertyColumn Property="u => u.Email" Title="E-mail" />
+            <TemplateColumn Title="Tipo">
+                <CellTemplate Context="cell">
+                    <MudChip T="string"
+                             Size="Size.Small"
+                             Color="@CorTipo(cell.Item.Tipo)"
+                             Variant="Variant.Filled">
+                        @cell.Item.Tipo
+                    </MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Status">
+                <CellTemplate Context="cell">
+                    @*
+                      CORREÇÃO CS0411 + CS1662:
+                      Removemos ValueChanged com lambda inline.
+                      Usamos evento OnChange separado que recebe bool diretamente.
+                      MudSwitch T="bool" explícito resolve a inferência.
+                    *@
+                    <MudSwitch T="bool"
+                               Value="@cell.Item.Ativo"
+                               ValueChanged="@((bool v) => OnStatusChanged(cell.Item, v))"
+                               Color="Color.Success"
+                               Label="@(cell.Item.Ativo ? "Ativo" : "Inativo")" />
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Ações" CellClass="d-flex justify-end">
+                <CellTemplate Context="cell">
+                    <MudTooltip Text="Excluir permanentemente">
+                        <MudIconButton Icon="@Icons.Material.Filled.DeleteForever"
+                                       Color="Color.Error"
+                                       Size="Size.Small"
+                                       OnClick="@(() => ConfirmarExclusao(cell.Item))" />
+                    </MudTooltip>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+}
+
+@code {
+    private bool carregando = true;
+    private string filtroNome = "";
+    private string filtroTipo = "";
+    private string filtroStatus = "todos";
+    private List<UsuarioDto> usuarios = new();
+
+    private IEnumerable<UsuarioDto> usuariosFiltrados => usuarios
+        .Where(u => string.IsNullOrEmpty(filtroNome)
+                    || u.Nome.Contains(filtroNome, StringComparison.OrdinalIgnoreCase))
+        .Where(u => string.IsNullOrEmpty(filtroTipo) || u.Tipo == filtroTipo)
+        .Where(u => filtroStatus == "todos"
+                    || (filtroStatus == "ativos" && u.Ativo)
+                    || (filtroStatus == "desativados" && !u.Ativo));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarUsuarios();
+    }
+
+    private async Task CarregarUsuarios()
+    {
+        carregando = true;
+        try
+        {
+            usuarios = await Http.GetFromJsonAsync<List<UsuarioDto>>(
+                "api/usuarios/listar") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar usuários.", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    // CORREÇÃO CS0411/CS1662:
+    // Handler separado com assinatura explícita Task(UsuarioDto, bool)
+    // Isso evita a ambiguidade do compilador ao inferir T na lambda inline.
+    private async Task OnStatusChanged(UsuarioDto usuario, bool novoStatus)
+    {
+        var response = await Http.PutAsJsonAsync(
+            $"api/usuarios/status/{usuario.IdHash}", novoStatus);
+
+        if (response.IsSuccessStatusCode)
+        {
+            usuario.Ativo = novoStatus;
+            Snackbar.Add(
+                $"{usuario.Nome} {(novoStatus ? "ativado" : "desativado")}.",
+                Severity.Success);
+        }
+        else
+        {
+            // Reverte: volta ao valor anterior e força re-render
+            usuario.Ativo = !novoStatus;
+            Snackbar.Add("Erro ao alterar status.", Severity.Error);
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConfirmarExclusao(UsuarioDto usuario)
+    {
+        var parametros = new DialogParameters
+        {
+            { "ContentText", $"⚠️ ATENÇÃO: Excluir {usuario.Nome} é permanente e irreversível.\n\nDeseja continuar?" },
+            { "ButtonText", "Excluir Permanentemente" },
+            { "Color", Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(
+            "Confirmar Exclusão", parametros);
+        var result = await dialog.Result;
+
+        // CORREÇÃO CS8602: verificação de nulo antes de acessar .Canceled
+        if (result != null && !result.Canceled)
+        {
+            var response = await Http.DeleteAsync(
+                $"api/usuarios/deletar/{usuario.IdHash}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                usuarios.Remove(usuario);
+                Snackbar.Add($"{usuario.Nome} excluído permanentemente.", Severity.Warning);
+            }
+        }
+    }
+
+    private Color CorTipo(string tipo) => tipo switch
+    {
+        "Gerente" => Color.Error,
+        "Recepção" => Color.Warning,
+        "Professor" => Color.Info,
+        "Bolsista" => Color.Secondary,
+        _ => Color.Default
+    };
+
+    public class UsuarioDto
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Tipo { get; set; } = "";
+        public bool Ativo { get; set; }
+    }
+}

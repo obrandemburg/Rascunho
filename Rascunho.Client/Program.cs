@@ -1,29 +1,28 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-using Microsoft.AspNetCore.Components.Authorization;
-using MudBlazor.Services;
-using Blazored.LocalStorage;
 using Rascunho.Client;
+using Blazored.LocalStorage;
+using Microsoft.AspNetCore.Components.Authorization;
 using Rascunho.Client.Security;
+using Rascunho.Client.Services;
+using MudBlazor.Services; // 1. Adicionamos a referência do MudBlazor
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-// 1. INTEGRAÇÃO PRINCIPAL: Apontando para a API de Produção
-builder.Services.AddScoped(sp => new HttpClient
-{
-    BaseAddress = new Uri("http://5.161.202.169:8080/")
-});
+// Apontamento FIXO para a API em Produção
+builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri("http://5.161.202.169:8080/") });
 
-// 2. Registrando o MudBlazor (UI/UX)
-builder.Services.AddMudServices();
-
-// 3. REGISTRANDO O LOCAL STORAGE (A SOLUÇÃO DO SEU ERRO ESTÁ AQUI 👇)
+// Adicionando LocalStorage e Autorização Core
 builder.Services.AddBlazoredLocalStorage();
-
-// 4. Configuração de Segurança (JWT)
 builder.Services.AddAuthorizationCore();
+
+// Injetando nossos serviços customizados
 builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>();
+builder.Services.AddScoped<AuthService>();
+
+// 2. Devolvendo o registro do MudBlazor para a interface funcionar
+builder.Services.AddMudServices();
 
 await builder.Build().RunAsync();

@@ -1,0 +1,232 @@
+﻿@* 
+  ROTA: /aulas-particulares
+  ACESSO: Aluno
+  
+  CORREÇÃO: MudChip T="string" em todos os usos do componente.
+*@
+
+@page "/aulas-particulares"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Aluno")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Aulas Particulares — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-6 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />
+    Aulas Particulares
+</MudText>
+
+<MudGrid>
+    @* ============================================================
+       COLUNA ESQUERDA: Formulário de solicitação
+    ============================================================ *@
+    <MudItem xs="12" md="5">
+        <MudPaper Elevation="3" Class="pa-6 rounded-xl">
+            <MudText Typo="Typo.h6" Class="mb-4">Solicitar Nova Aula</MudText>
+
+            <EditForm Model="@novaAula" OnValidSubmit="SolicitarAula">
+                <MudSelect T="string"
+                           @bind-Value="novaAula.ProfessorIdHash"
+                           Label="Professor"
+                           Variant="Variant.Outlined"
+                           Class="mb-4">
+                    @foreach (var prof in professores)
+                    {
+                        <MudSelectItem T="string" Value="@prof.IdHash">@prof.Nome</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudDatePicker @bind-Date="dataInicio"
+                               Label="Data da Aula"
+                               Variant="Variant.Outlined"
+                               Class="mb-4"
+                               MinDate="@DateTime.Today.AddDays(1)"
+                               DateFormat="dd/MM/yyyy" />
+
+                <MudTimePicker @bind-Time="horaInicio"
+                               Label="Horário de Início"
+                               Variant="Variant.Outlined"
+                               Class="mb-4"
+                               AmPm="false" />
+
+                <MudTimePicker @bind-Time="horaFim"
+                               Label="Horário de Fim"
+                               Variant="Variant.Outlined"
+                               Class="mb-4"
+                               AmPm="false" />
+
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           Disabled="@enviando">
+                    @(enviando ? "Solicitando..." : "Solicitar Aula")
+                </MudButton>
+            </EditForm>
+        </MudPaper>
+    </MudItem>
+
+    @* ============================================================
+       COLUNA DIREITA: Lista de aulas existentes
+    ============================================================ *@
+    <MudItem xs="12" md="7">
+        @if (carregando)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else if (!aulasParticulares.Any())
+        {
+            <MudAlert Severity="Severity.Info">
+                Nenhuma aula particular solicitada ainda.
+            </MudAlert>
+        }
+        else
+        {
+            @foreach (var aula in aulasParticulares)
+            {
+                <MudCard Elevation="2" Class="rounded-lg mb-3">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle1">
+                                Prof. @aula.ProfessorNome
+                            </MudText>
+                            <MudText Typo="Typo.caption">
+                                @aula.DataHoraInicio.ToString("dd/MM/yyyy — HH:mm")
+                            </MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            @*
+                              CORREÇÃO: T="string" obrigatório no MudBlazor v6+
+                            *@
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Color="@StatusCor(aula.Status)"
+                                     Variant="Variant.Filled">
+                                @aula.Status
+                            </MudChip>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    @if (aula.Status == "Pendente" || aula.Status == "Aceita")
+                    {
+                        <MudCardActions>
+                            <MudButton Color="Color.Error"
+                                       Variant="Variant.Text"
+                                       OnClick="@(() => Cancelar(aula.IdHash))">
+                                Cancelar
+                            </MudButton>
+                        </MudCardActions>
+                    }
+                </MudCard>
+            }
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool carregando = true;
+    private bool enviando = false;
+    private List<AulaParticularDto> aulasParticulares = new();
+    private List<ProfessorSimples> professores = new();
+
+    private SolicitarAulaRequest novaAula = new();
+    private DateTime? dataInicio;
+    private TimeSpan? horaInicio;
+    private TimeSpan? horaFim;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Carrega professores e aulas em paralelo
+        var profTask = Http.GetFromJsonAsync<List<ProfessorSimples>>(
+            "api/usuarios/tipo/Professor/ativos");
+        var aulasTask = Http.GetFromJsonAsync<List<AulaParticularDto>>(
+            "api/aulas-particulares/minhas");
+
+        await Task.WhenAll(profTask, aulasTask);
+
+        professores = profTask.Result ?? new();
+        aulasParticulares = aulasTask.Result ?? new();
+        carregando = false;
+    }
+
+    private async Task SolicitarAula()
+    {
+        if (dataInicio == null || horaInicio == null || horaFim == null) return;
+
+        enviando = true;
+        try
+        {
+            novaAula.DataHoraInicio = dataInicio.Value.Date + horaInicio.Value;
+            novaAula.DataHoraFim = dataInicio.Value.Date + horaFim.Value;
+
+            var response = await Http.PostAsJsonAsync(
+                "api/aulas-particulares/solicitar", novaAula);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Solicitação enviada! Aguarde o professor aceitar.", Severity.Success);
+                novaAula = new();
+                dataInicio = null;
+                horaInicio = null;
+                horaFim = null;
+                aulasParticulares = await Http.GetFromJsonAsync<List<AulaParticularDto>>(
+                    "api/aulas-particulares/minhas") ?? new();
+            }
+            else
+            {
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Erro: {erro}", Severity.Error);
+            }
+        }
+        finally { enviando = false; }
+    }
+
+    private async Task Cancelar(string idHash)
+    {
+        var response = await Http.DeleteAsync(
+            $"api/aulas-particulares/{idHash}/cancelar");
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Aula cancelada.", Severity.Info);
+            aulasParticulares = await Http.GetFromJsonAsync<List<AulaParticularDto>>(
+                "api/aulas-particulares/minhas") ?? new();
+        }
+        else
+        {
+            var msg = await response.Content.ReadAsStringAsync();
+            Snackbar.Add(msg, Severity.Warning);
+        }
+    }
+
+    private Color StatusCor(string status) => status switch
+    {
+        "Aceita" => Color.Success,
+        "Recusada" => Color.Error,
+        "Cancelada" => Color.Default,
+        _ => Color.Warning   // Pendente
+    };
+
+    public class SolicitarAulaRequest
+    {
+        public string ProfessorIdHash { get; set; } = "";
+        public DateTime DataHoraInicio { get; set; }
+        public DateTime DataHoraFim { get; set; }
+    }
+
+    public class AulaParticularDto
+    {
+        public string IdHash { get; set; } = "";
+        public string ProfessorNome { get; set; } = "";
+        public DateTime DataHoraInicio { get; set; }
+        public string Status { get; set; } = "";
+    }
+
+    public class ProfessorSimples
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+    }
+}
