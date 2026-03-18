@@ -1,0 +1,158 @@
+﻿@* 
+  ROTA: /admin/avisos
+  ACESSO: Recepção, Gerente
+  
+  FLUXO:
+  1. Formulário com Título, Conteúdo, Tipo (Geral/Equipe), DataExpiração
+  2. POST /api/avisos/admin/criar
+  
+  LÓGICA DE EXPIRAÇÃO DA API:
+  O AvisoService usa Auto-Exclusão Lógica: queries de leitura
+  já filtram por DataExpiracao > UtcNow. Não há CRON job.
+  Portanto: sempre defina uma DataExpiração futura.
+  
+  TIPOS DE VISIBILIDADE:
+  - "Geral": visível no site público (sem login)
+  - "Equipe": visível apenas para professores, bolsistas, staff
+*@
+
+@page "/admin/avisos"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Recepção,Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Criar Aviso — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-6 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Campaign" Class="mr-2" />
+    Publicar Aviso no Mural
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="7">
+        <MudPaper Elevation="4" Class="pa-8 rounded-xl">
+            <EditForm Model="@novoAviso" OnValidSubmit="PublicarAviso">
+
+                <MudTextField @bind-Value="novoAviso.Titulo"
+                              Label="Título do Aviso"
+                              Variant="Variant.Outlined"
+                              Class="mb-4"
+                              MaxLength="200" />
+
+                <MudTextField @bind-Value="novoAviso.Conteudo"
+                              Label="Conteúdo"
+                              Variant="Variant.Outlined"
+                              Lines="5"
+                              Class="mb-4" />
+
+                @*
+                  RadioGroup para tipo de visibilidade.
+                  Valores exatos que a API aceita (case-sensitive!).
+                *@
+                <MudText Typo="Typo.body1" Class="mb-2">Visibilidade:</MudText>
+                <MudRadioGroup T="string" @bind-Value="novoAviso.TipoVisibilidade" Class="mb-4">
+                    <MudRadio Value="@("Geral")" Color="Color.Primary">
+                        🌐 Geral (visível no site público, sem login)
+                    </MudRadio>
+                    <MudRadio Value="@("Equipe")" Color="Color.Info">
+                        🔒 Equipe (apenas professores, bolsistas e staff)
+                    </MudRadio>
+                </MudRadioGroup>
+
+                @*
+                  Data de expiração: OBRIGATÓRIO e deve ser no futuro.
+                  A API rejeita datas passadas com 400.
+                  Sugestão: padrão de 30 dias.
+                *@
+                <MudDatePicker @bind-Date="dataExpiracao"
+                               Label="Válido até"
+                               Variant="Variant.Outlined"
+                               Class="mb-6"
+                               MinDate="@DateTime.Today.AddDays(1)"
+                               DateFormat="dd/MM/yyyy"
+                               HelperText="O aviso desaparece automaticamente após essa data" />
+
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           Size="Size.Large"
+                           Disabled="@publicando"
+                           StartIcon="@Icons.Material.Filled.Send">
+                    @(publicando ? "Publicando..." : "Publicar Aviso")
+                </MudButton>
+            </EditForm>
+        </MudPaper>
+    </MudItem>
+
+    @* Preview do aviso *@
+    <MudItem xs="12" md="5">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">Pré-visualização:</MudText>
+        <MudCard Elevation="3" Class="rounded-lg">
+            <div style="height: 4px; background: #1b5e20; border-radius: 8px 8px 0 0;" />
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">
+                        @(string.IsNullOrEmpty(novoAviso.Titulo) ? "Título do aviso" : novoAviso.Titulo)
+                    </MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        Publicado hoje · Expira: @(dataExpiracao?.ToString("dd/MM/yyyy") ?? "—")
+                    </MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.body2">
+                    @(string.IsNullOrEmpty(novoAviso.Conteudo) ? "Conteúdo do aviso aparecerá aqui..." : novoAviso.Conteudo)
+                </MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool publicando = false;
+    private DateTime? dataExpiracao = DateTime.Today.AddDays(30); // Padrão 30 dias
+    private CriarAvisoForm novoAviso = new();
+
+    private async Task PublicarAviso()
+    {
+        if (dataExpiracao == null) return;
+        publicando = true;
+
+        try
+        {
+            // Monta o payload conforme a API espera
+            var payload = new
+            {
+                novoAviso.Titulo,
+                novoAviso.Conteudo,
+                novoAviso.TipoVisibilidade,
+                DataExpiracao = dataExpiracao.Value
+            };
+
+            // POST /api/avisos/admin/criar
+            var response = await Http.PostAsJsonAsync("api/avisos/admin/criar", payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Aviso publicado com sucesso! 📢", Severity.Success);
+                novoAviso = new CriarAvisoForm();
+                dataExpiracao = DateTime.Today.AddDays(30);
+            }
+            else
+            {
+                Snackbar.Add("Erro ao publicar aviso. Verifique os dados.", Severity.Error);
+            }
+        }
+        finally { publicando = false; }
+    }
+
+    public class CriarAvisoForm
+    {
+        public string Titulo { get; set; } = "";
+        public string Conteudo { get; set; } = "";
+        public string TipoVisibilidade { get; set; } = "Geral"; // Padrão: público
+    }
+}

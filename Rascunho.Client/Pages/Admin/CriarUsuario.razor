@@ -1,0 +1,154 @@
+﻿@* 
+  ROTA: /admin/usuarios
+  ACESSO: Recepção, Gerente
+  
+  CORREÇÃO RZ9999:
+  O EditForm usa @context internamente como parâmetro padrão.
+  O AuthorizeView dentro dele também tenta usar @context.
+  SOLUÇÃO: AuthorizeView com Context="authCtx" (nome diferente).
+  Isso elimina a ambiguidade de escopo reportada pelo compilador.
+*@
+
+@page "/admin/usuarios"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@using System.ComponentModel.DataAnnotations
+@attribute [Authorize(Roles = "Recepção,Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Criar Usuário — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-6 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Class="mr-2" />
+    Cadastrar Novo Usuário
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="7" lg="6">
+        <MudPaper Elevation="4" Class="pa-8 rounded-xl">
+            <EditForm Model="@novoUsuario" OnValidSubmit="CadastrarUsuario">
+                <DataAnnotationsValidator />
+
+                <MudTextField @bind-Value="novoUsuario.Nome"
+                              Label="Nome Completo"
+                              Variant="Variant.Outlined"
+                              Class="mb-4"
+                              For="@(() => novoUsuario.Nome)"
+                              Immediate="true" />
+
+                <MudTextField @bind-Value="novoUsuario.Email"
+                              Label="E-mail"
+                              InputType="InputType.Email"
+                              Variant="Variant.Outlined"
+                              Class="mb-4"
+                              For="@(() => novoUsuario.Email)" />
+
+                <MudTextField @bind-Value="novoUsuario.Senha"
+                              Label="Senha"
+                              InputType="InputType.Password"
+                              Variant="Variant.Outlined"
+                              Class="mb-4"
+                              For="@(() => novoUsuario.Senha)"
+                              HelperText="Mínimo 6 caracteres" />
+
+                <MudSelect T="string"
+                           @bind-Value="novoUsuario.Tipo"
+                           Label="Tipo de Usuário"
+                           Variant="Variant.Outlined"
+                           Class="mb-6"
+                           For="@(() => novoUsuario.Tipo)">
+                    <MudSelectItem T="string" Value="@("Aluno")">Aluno</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Professor")">Professor</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Bolsista")">Bolsista</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Líder")">Líder</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Recepção")">Recepção</MudSelectItem>
+
+                    @*
+                      CORREÇÃO RZ9999:
+                      Context="authCtx" — nome diferente do @context do EditForm.
+                      Sem isso o compilador não consegue distinguir qual "context"
+                      pertence ao EditForm e qual pertence ao AuthorizeView.
+                    *@
+                    <AuthorizeView Roles="Gerente" Context="authCtx">
+                        <Authorized>
+                            <MudSelectItem T="string" Value="@("Gerente")">Gerente</MudSelectItem>
+                        </Authorized>
+                    </AuthorizeView>
+                </MudSelect>
+
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Disabled="@salvando"
+                           StartIcon="@Icons.Material.Filled.PersonAdd">
+                    @(salvando ? "Cadastrando..." : "Cadastrar Usuário")
+                </MudButton>
+            </EditForm>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="5" lg="6">
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            <MudText Typo="Typo.body2">
+                <strong>Sobre os tipos de usuário:</strong><br />
+                • <b>Aluno:</b> acessa suas turmas e aulas particulares<br />
+                • <b>Professor:</b> faz chamada e gerencia aulas<br />
+                • <b>Bolsista:</b> acesso híbrido aluno + equipe<br />
+                • <b>Líder:</b> representante de turma<br />
+                • <b>Recepção:</b> administração geral
+            </MudText>
+        </MudAlert>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool salvando = false;
+    private CriarUsuarioForm novoUsuario = new();
+
+    private async Task CadastrarUsuario()
+    {
+        salvando = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/usuarios/cadastrar", novoUsuario);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"Usuário {novoUsuario.Nome} cadastrado com sucesso! 🎉",
+                             Severity.Success);
+                novoUsuario = new CriarUsuarioForm();
+            }
+            else if ((int)response.StatusCode == 422)
+            {
+                Snackbar.Add("Este e-mail já está cadastrado no sistema.", Severity.Warning);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                var erros = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Verifique os dados: {erros}", Severity.Error);
+            }
+        }
+        finally { salvando = false; }
+    }
+
+    public class CriarUsuarioForm
+    {
+        [Required(ErrorMessage = "Nome é obrigatório")]
+        [MinLength(3, ErrorMessage = "Nome deve ter ao menos 3 caracteres")]
+        public string Nome { get; set; } = "";
+
+        [Required(ErrorMessage = "E-mail é obrigatório")]
+        [EmailAddress(ErrorMessage = "E-mail inválido")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Senha é obrigatória")]
+        [MinLength(6, ErrorMessage = "Senha deve ter ao menos 6 caracteres")]
+        public string Senha { get; set; } = "";
+
+        [Required(ErrorMessage = "Tipo é obrigatório")]
+        public string Tipo { get; set; } = "";
+    }
+}

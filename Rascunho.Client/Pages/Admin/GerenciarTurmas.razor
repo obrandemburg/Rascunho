@@ -1,0 +1,423 @@
+﻿@* 
+  ARQUIVO: Rascunho.Client/Pages/Admin/GerenciarTurmas.razor
+  
+  PROBLEMAS CORRIGIDOS:
+  1. Não listava turmas existentes
+     → Adicionada seção de listagem com MudDataGrid + GET /api/turmas/listar-ativas
+  
+  2. Campos de criação eram texto livre (sem dados da API)
+     → OnInitializedAsync agora carrega professores, ritmos e salas em paralelo
+     → Cada campo de seleção usa MudSelect com dados reais vindos da API
+  
+  ROTA: /admin/turmas
+  ACESSO: Recepção, Gerente
+*@
+
+@page "/admin/turmas"
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Recepção,Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+    <MudText Typo="Typo.h3" Color="Color.Primary" Class="mb-6 font-weight-bold">
+        Gerenciar Turmas
+    </MudText>
+
+    @* ══════════════════════════════════════════════════
+       SEÇÃO 1: FORMULÁRIO — ABRIR NOVA TURMA
+    ══════════════════════════════════════════════════ *@
+    <MudPaper Elevation="3"
+              Class="pa-6 rounded-lg mb-8 border-t-4 border-solid"
+              Style="border-top-color: #1b5e20;">
+        <MudText Typo="Typo.h5" Class="mb-4">Abrir Nova Turma</MudText>
+
+        @if (carregandoDependencias)
+        {
+            <div class="d-flex align-center gap-2">
+                <MudProgressCircular Color="Color.Primary"
+                                     Indeterminate="true"
+                                     Size="Size.Small" />
+                <MudText>Carregando ritmos, professores e salas...</MudText>
+            </div>
+        }
+        else
+        {
+            <EditForm Model="@novaTurma" OnValidSubmit="CriarTurma">
+                <MudGrid>
+
+                    @* ── RITMO (dados da API) ── *@
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudSelect T="string"
+                                   Label="Ritmo"
+                                   @bind-Value="novaTurma.RitmoIdHash"
+                                   Variant="Variant.Outlined"
+                                   Required="true"
+                                   AnchorOrigin="Origin.BottomCenter">
+                            @foreach (var ritmo in ritmos)
+                            {
+                                <MudSelectItem T="string" Value="@ritmo.IdHash">
+                                    @ritmo.Nome
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    @* ── PROFESSOR (dados da API — só Professores ativos) ── *@
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudSelect T="string"
+                                   Label="Professor"
+                                   @bind-Value="novaTurma.ProfessorIdHash"
+                                   Variant="Variant.Outlined"
+                                   Required="true"
+                                   AnchorOrigin="Origin.BottomCenter">
+                            @foreach (var prof in professores)
+                            {
+                                <MudSelectItem T="string" Value="@prof.IdHash">
+                                    @prof.Nome
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    @* ── SALA (dados da API — mostra capacidade) ── *@
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudSelect T="string"
+                                   Label="Sala"
+                                   @bind-Value="novaTurma.SalaIdHash"
+                                   Variant="Variant.Outlined"
+                                   Required="true"
+                                   AnchorOrigin="Origin.BottomCenter">
+                            @foreach (var sala in salas)
+                            {
+                                <MudSelectItem T="string" Value="@sala.IdHash">
+                                    @sala.Nome (cap. @sala.CapacidadeMaxima)
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    @* ── DIA DA SEMANA ── *@
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect T="string"
+                                   Label="Dia da Semana"
+                                   @bind-Value="novaTurma.DiaSemana"
+                                   Variant="Variant.Outlined"
+                                   Required="true"
+                                   AnchorOrigin="Origin.BottomCenter">
+                            <MudSelectItem T="string" Value="@("Segunda-feira")">Segunda-feira</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Terça-feira")">Terça-feira</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Quarta-feira")">Quarta-feira</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Quinta-feira")">Quinta-feira</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Sexta-feira")">Sexta-feira</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Sábado")">Sábado</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    @* ── NÍVEL ── *@
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect T="string"
+                                   Label="Nível"
+                                   @bind-Value="novaTurma.Nivel"
+                                   Variant="Variant.Outlined"
+                                   Required="true"
+                                   AnchorOrigin="Origin.BottomCenter">
+                            <MudSelectItem T="string" Value="@("Iniciante")">Iniciante</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Intermediário")">Intermediário</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Avançado")">Avançado</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    @* ── HORÁRIOS ── *@
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTimePicker @bind-Time="horarioInicio"
+                                       Label="Horário de Início"
+                                       Variant="Variant.Outlined"
+                                       AmPm="false"
+                                       Required="true" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTimePicker @bind-Time="horarioFim"
+                                       Label="Horário de Fim"
+                                       Variant="Variant.Outlined"
+                                       AmPm="false"
+                                       Required="true" />
+                    </MudItem>
+
+                    @* ── DATA DE INÍCIO ── *@
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudDatePicker @bind-Date="dataInicio"
+                                       Label="Data de Início"
+                                       Variant="Variant.Outlined"
+                                       DateFormat="dd/MM/yyyy"
+                                       MinDate="@DateTime.Today" />
+                    </MudItem>
+
+                    @* ── LIMITE DE ALUNOS ── *@
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudNumericField T="int"
+                                         @bind-Value="novaTurma.LimiteAlunos"
+                                         Label="Limite de Alunos"
+                                         Variant="Variant.Outlined"
+                                         Min="1"
+                                         Required="true" />
+                    </MudItem>
+
+                    @* ── LINK WHATSAPP ── *@
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="novaTurma.LinkWhatsApp"
+                                      Label="Link do Grupo WhatsApp"
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Chat"
+                                      HelperText="Opcional" />
+                    </MudItem>
+
+                    @* ── BOTÃO CRIAR ── *@
+                    <MudItem xs="12" Class="d-flex justify-end mt-4">
+                        <MudButton ButtonType="ButtonType.Submit"
+                                   Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Size="Size.Large"
+                                   Disabled="@criando"
+                                   StartIcon="@Icons.Material.Filled.Add">
+                            @(criando ? "Criando..." : "Criar Turma na Grade")
+                        </MudButton>
+                    </MudItem>
+
+                </MudGrid>
+            </EditForm>
+        }
+    </MudPaper>
+
+    @* ══════════════════════════════════════════════════
+       SEÇÃO 2: LISTAGEM DAS TURMAS EXISTENTES
+       (era o que faltava — problema reportado)
+    ══════════════════════════════════════════════════ *@
+    <MudText Typo="Typo.h5" Class="mb-4 font-weight-bold">
+        Turmas Cadastradas
+        <MudChip T="string" Size="Size.Small" Color="Color.Primary"
+                 Variant="Variant.Filled" Class="ml-2">
+            @turmas.Count
+        </MudChip>
+    </MudText>
+
+    @if (carregandoTurmas)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (!turmas.Any())
+    {
+        <MudAlert Severity="Severity.Info">
+            Nenhuma turma cadastrada ainda. Use o formulário acima para criar a primeira!
+        </MudAlert>
+    }
+    else
+    {
+        <MudDataGrid T="TurmaListaDto"
+                     Items="@turmas"
+                     Sortable="true"
+                     Hover="true"
+                     Dense="true"
+                     Elevation="3"
+                     Class="rounded-xl">
+            <Columns>
+                <PropertyColumn Property="t => t.RitmoNome"
+                                Title="Ritmo"
+                                Sortable="true" />
+                <PropertyColumn Property="t => t.DiaSemana"
+                                Title="Dia" />
+                <TemplateColumn Title="Horário">
+                    <CellTemplate Context="cell">
+                        <MudText Typo="Typo.body2">
+                            @cell.Item.HorarioInicio — @cell.Item.HorarioFim
+                        </MudText>
+                    </CellTemplate>
+                </TemplateColumn>
+                <PropertyColumn Property="t => t.SalaNome"
+                                Title="Sala" />
+                <PropertyColumn Property="t => t.Nivel"
+                                Title="Nível" />
+                <TemplateColumn Title="Vagas">
+                    <CellTemplate Context="cell">
+                        @* Barra de progresso visual de ocupação *@
+                        <div class="d-flex align-center gap-2">
+                            <MudText Typo="Typo.caption">
+                                @cell.Item.QuantidadeMatriculados / @cell.Item.LimiteAlunos
+                            </MudText>
+                            <MudProgressLinear Color="@(cell.Item.QuantidadeMatriculados >= cell.Item.LimiteAlunos
+                                                                                                                    ? Color.Error : Color.Success)"
+                                               Value="@(cell.Item.LimiteAlunos > 0
+                                                                                                     ? (double)cell.Item.QuantidadeMatriculados / cell.Item.LimiteAlunos * 100
+                                                                                                     : 0)"
+                                               Style="width: 60px;"
+                                               Rounded="true" />
+                        </div>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Status">
+                    <CellTemplate Context="cell">
+                        <MudChip T="string"
+                                 Size="Size.Small"
+                                 Color="@(cell.Item.Ativa ? Color.Success : Color.Default)"
+                                 Variant="Variant.Filled">
+                            @(cell.Item.Ativa ? "Ativa" : "Inativa")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    }
+
+</MudContainer>
+
+@code {
+    // ── Estado de carregamento ──────────────────────────────────
+    private bool carregandoDependencias = true;
+    private bool carregandoTurmas = true;
+    private bool criando = false;
+
+    // ── Dados do formulário ────────────────────────────────────
+    private TurmaRequest novaTurma = new() { LimiteAlunos = 30 };
+    private TimeSpan? horarioInicio;
+    private TimeSpan? horarioFim;
+    private DateTime? dataInicio = DateTime.Today;
+
+    // ── Listas para os dropdowns (carregadas da API) ───────────
+    private List<ItemSimplesDto> professores = new();
+    private List<ItemSimplesDto> ritmos = new();
+    private List<SalaDto> salas = new();
+
+    // ── Lista de turmas existentes ─────────────────────────────
+    private List<TurmaListaDto> turmas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Dispara TODAS as requisições em paralelo — 4x mais rápido que sequencial
+        var profTask = Http.GetFromJsonAsync<List<ItemSimplesDto>>("api/usuarios/tipo/Professor/ativos");
+        var ritmoTask = Http.GetFromJsonAsync<List<ItemSimplesDto>>("api/ritmos/listar");
+        var salaTask = Http.GetFromJsonAsync<List<SalaDto>>("api/salas/listar");
+        var turmasTask = Http.GetFromJsonAsync<List<TurmaListaDto>>("api/turmas/listar-ativas");
+
+        await Task.WhenAll(profTask, ritmoTask, salaTask, turmasTask);
+
+        professores = profTask.Result ?? new();
+        ritmos = ritmoTask.Result ?? new();
+        salas = salaTask.Result ?? new();
+        turmas = turmasTask.Result ?? new();
+
+        carregandoDependencias = false;
+        carregandoTurmas = false;
+    }
+
+    private async Task CriarTurma()
+    {
+        // Validação local dos campos de tempo antes de enviar
+        if (horarioInicio == null || horarioFim == null || dataInicio == null)
+        {
+            Snackbar.Add("Preencha data de início e os horários.", Severity.Warning);
+            return;
+        }
+
+        criando = true;
+        try
+        {
+            // Monta o payload alinhado com CriarTurmaRequest do backend:
+            // record CriarTurmaRequest(RitmoIdHash, SalaIdHash, DataInicio,
+            //   DiaDaSemana, HorarioInicio, HorarioFim, Nivel,
+            //   LimiteAlunos, LinkWhatsApp, ProfessoresIdsHash)
+            var payload = new
+            {
+                RitmoIdHash = novaTurma.RitmoIdHash,
+                SalaIdHash = novaTurma.SalaIdHash,
+                DataInicio = dataInicio.Value,
+                DiaDaSemana = DiaSemanaParaInt(novaTurma.DiaSemana),
+                HorarioInicio = horarioInicio.Value,
+                HorarioFim = horarioFim.Value,
+                Nivel = novaTurma.Nivel,
+                LimiteAlunos = novaTurma.LimiteAlunos,
+                LinkWhatsApp = novaTurma.LinkWhatsApp ?? "",
+                ProfessoresIdsHash = new List<string> { novaTurma.ProfessorIdHash }
+            };
+
+            var response = await Http.PostAsJsonAsync("api/turmas/criar", payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Turma criada com sucesso! ✅", Severity.Success);
+                // Reseta formulário
+                novaTurma = new TurmaRequest { LimiteAlunos = 30 };
+                horarioInicio = null;
+                horarioFim = null;
+                dataInicio = DateTime.Today;
+                // Recarrega a lista de turmas
+                turmas = await Http.GetFromJsonAsync<List<TurmaListaDto>>(
+                    "api/turmas/listar-ativas") ?? new();
+            }
+            else if ((int)response.StatusCode == 422)
+            {
+                // Regra violada: choque de sala, professor, ou limite excede capacidade
+                var msg = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Não foi possível criar: {msg}", Severity.Error);
+            }
+            else
+            {
+                Snackbar.Add("Erro ao criar turma. Verifique os dados.", Severity.Warning);
+            }
+        }
+        finally { criando = false; }
+    }
+
+    // Converte string do dia para int (DayOfWeek): Domingo=0, Segunda=1...
+    private int DiaSemanaParaInt(string dia) => dia switch
+    {
+        "Segunda-feira" => 1,
+        "Terça-feira" => 2,
+        "Quarta-feira" => 3,
+        "Quinta-feira" => 4,
+        "Sexta-feira" => 5,
+        "Sábado" => 6,
+        _ => 0
+    };
+
+    // ── DTOs ─────────────────────────────────────────────────────
+
+    public class TurmaRequest
+    {
+        public string RitmoIdHash { get; set; } = "";
+        public string ProfessorIdHash { get; set; } = "";
+        public string SalaIdHash { get; set; } = "";
+        public string DiaSemana { get; set; } = "";
+        public string Nivel { get; set; } = "";
+        public int LimiteAlunos { get; set; }
+        public string? LinkWhatsApp { get; set; }
+    }
+
+    public class ItemSimplesDto
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+    }
+
+    public class SalaDto : ItemSimplesDto
+    {
+        public int CapacidadeMaxima { get; set; }
+    }
+
+    // DTO espelhando ObterTurmaResponse da API
+    public class TurmaListaDto
+    {
+        public string IdHash { get; set; } = "";
+        public string RitmoNome { get; set; } = "";
+        public string SalaNome { get; set; } = "";
+        public string DiaSemana { get; set; } = "";
+        public string HorarioInicio { get; set; } = "";
+        public string HorarioFim { get; set; } = "";
+        public string Nivel { get; set; } = "";
+        public int LimiteAlunos { get; set; }
+        public int QuantidadeMatriculados { get; set; }
+        public bool Ativa { get; set; }
+    }
+}

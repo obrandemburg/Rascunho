@@ -1,0 +1,204 @@
+﻿@* 
+  ROTA: /minhas-aulas
+  ACESSO: Aluno, Bolsista
+  
+  FLUXO:
+  1. GET /api/turmas/minhas-turmas → turmas do aluno via token JWT
+  2. Cards com horário, sala, link WhatsApp
+  3. Botão desmatricular → diálogo de confirmação → DELETE /api/turmas/{idHash}/desmatricular
+  
+  CORREÇÕES APLICADAS:
+  - MudList<TurmaMatriculadaDto> → tipo genérico explícito
+  - MudListItem<TurmaMatriculadaDto> → tipo genérico explícito  
+  - MudChip T="string" → tipo inferência explícita
+  - using adicionado para ConfirmDialog
+  - Nullable warnings resolvidos com operador ?
+*@
+
+@page "/minhas-aulas"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@using Rascunho.Client.Shared
+@attribute [Authorize(Roles = "Aluno,Bolsista")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Minhas Aulas — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.EventAvailable" Class="mr-2" />
+    Minhas Aulas
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Turmas em que você está matriculado.
+</MudText>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!turmas.Any())
+{
+    <MudAlert Severity="Severity.Info">
+        Você não está matriculado em nenhuma turma ainda.
+        <MudLink Href="/turmas" Color="Color.Primary"> Veja as turmas disponíveis!</MudLink>
+    </MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var turma in turmas)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="3" Class="rounded-lg">
+                    <div style="height: 6px; background: #1b5e20; border-radius: 8px 8px 0 0;" />
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@turma.RitmoNome</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                Nível: @turma.Nivel
+                            </MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            @*
+                              CORREÇÃO: MudChip T="string" — obrigatório no MudBlazor v6+
+                              O compilador não consegue inferir T sem esse parâmetro explícito
+                            *@
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Color="Color.Primary"
+                                     Variant="Variant.Filled">
+                                @DiaDaSemana(turma.DiaDaSemana)
+                            </MudChip>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @*
+                          CORREÇÃO: MudList T="string" e MudListItem T="string"
+                          MudBlazor v6 tornou esses componentes genéricos.
+                          Sem o T explícito o compilador lança RZ10001.
+                        *@
+                        <MudList T="string" Dense="true">
+                            <MudListItem T="string"
+                                         IconSize="Size.Small"
+                                         Icon="@Icons.Material.Filled.AccessTime">
+                                @turma.HorarioInicio.ToString(@"hh\:mm") — @turma.HorarioFim.ToString(@"hh\:mm")
+                            </MudListItem>
+                            <MudListItem T="string"
+                                         IconSize="Size.Small"
+                                         Icon="@Icons.Material.Filled.MeetingRoom">
+                                Sala: @turma.SalaNome
+                            </MudListItem>
+                            @if (!string.IsNullOrEmpty(turma.LinkWhatsApp))
+                            {
+                                <MudListItem T="string"
+                                             IconSize="Size.Small"
+                                             Icon="@Icons.Material.Filled.Chat">
+                                    <MudLink Href="@turma.LinkWhatsApp"
+                                             Target="_blank"
+                                             Color="Color.Success">
+                                        Grupo WhatsApp
+                                    </MudLink>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    </MudCardContent>
+                    <MudCardActions Class="justify-space-between">
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Error"
+                                   StartIcon="@Icons.Material.Filled.ExitToApp"
+                                   OnClick="@(() => ConfirmarDesmatricula(turma))">
+                            Cancelar Matrícula
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private bool carregando = true;
+    private List<TurmaMatriculadaDto> turmas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarTurmas();
+    }
+
+    private async Task CarregarTurmas()
+    {
+        carregando = true;
+        try
+        {
+            turmas = await Http.GetFromJsonAsync<List<TurmaMatriculadaDto>>(
+                "api/turmas/minhas-turmas") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar suas turmas.", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    private async Task ConfirmarDesmatricula(TurmaMatriculadaDto turma)
+    {
+        var parametros = new DialogParameters
+        {
+            { "ContentText", $"Deseja cancelar a matrícula em {turma.RitmoNome}?" },
+            { "ButtonText", "Cancelar Matrícula" },
+            { "Color", Color.Error }
+        };
+
+        // ShowAsync retorna IDialogReference — await Result para aguardar o usuário
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirmar", parametros);
+        var result = await dialog.Result;
+
+        // CORREÇÃO CS8602: result pode ser null — verificação explícita
+        if (result != null && !result.Canceled)
+        {
+            await Desmatricular(turma.IdHash);
+        }
+    }
+
+    private async Task Desmatricular(string turmaIdHash)
+    {
+        var response = await Http.DeleteAsync($"api/turmas/{turmaIdHash}/desmatricular");
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Matrícula cancelada com sucesso.", Severity.Success);
+            await CarregarTurmas();
+        }
+        else
+        {
+            var msg = await response.Content.ReadAsStringAsync();
+            Snackbar.Add($"Erro: {msg}", Severity.Error);
+        }
+    }
+
+    private string DiaDaSemana(int dia) => dia switch
+    {
+        0 => "Dom",
+        1 => "Seg",
+        2 => "Ter",
+        3 => "Qua",
+        4 => "Qui",
+        5 => "Sex",
+        6 => "Sáb",
+        _ => "—"
+    };
+
+    public class TurmaMatriculadaDto
+    {
+        public string IdHash { get; set; } = "";
+        public string RitmoNome { get; set; } = "";
+        public string SalaNome { get; set; } = "";
+        public string Nivel { get; set; } = "";
+        public int DiaDaSemana { get; set; }
+        public TimeSpan HorarioInicio { get; set; }
+        public TimeSpan HorarioFim { get; set; }
+        public string? LinkWhatsApp { get; set; }
+    }
+}

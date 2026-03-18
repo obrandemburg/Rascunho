@@ -1,0 +1,113 @@
+﻿@page "/login"
+@layout Rascunho.Client.Layout.AuthLayout
+@using Rascunho.Shared.DTOs
+@using Rascunho.Client.Services
+@using System.ComponentModel.DataAnnotations
+
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<MudPaper Elevation="4" Class="pa-8" Style="width: 100%; max-width: 400px; border-top: 5px solid #1b5e20; border-radius: 8px;">
+    
+    <div class="d-flex justify-center mb-4">
+        @* Ícone temporário representando a logo da escola *@
+        <MudIcon Icon="@Icons.Material.Filled.DirectionsWalk" Size="Size.Large" Style="color: #1b5e20;" />
+    </div>
+    
+    <MudText Typo="Typo.h5" Align="Align.Center" Class="mb-6" Style="color: #1b5e20; font-weight: bold;">
+        Ponto da Dança
+    </MudText>
+
+    @* EditForm é o formulário nativo do Blazor. Ele aciona o RealizarLogin apenas se passar nas validações *@
+    <EditForm Model="@_loginModel" OnValidSubmit="RealizarLogin">
+        <DataAnnotationsValidator />
+
+        <MudTextField @bind-Value="_loginModel.Email"
+                      Label="E-mail"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Class="mb-4"
+                      For="@(() => _loginModel.Email)" />
+
+        <MudTextField @bind-Value="_loginModel.Senha"
+                      Label="Senha"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      InputType="@_passwordInput"
+                      Adornment="Adornment.End"
+                      AdornmentIcon="@_passwordInputIcon"
+                      OnAdornmentClick="TogglePasswordVisibility"
+                      Class="mb-6"
+                      For="@(() => _loginModel.Senha)" />
+
+        <MudButton ButtonType="ButtonType.Submit"
+                   Variant="Variant.Filled"
+                   FullWidth="true"
+                   Size="Size.Large"
+                   Disabled="@_isLoading"
+                   Style="background-color: #1b5e20; color: white; font-weight: bold;">
+            @if (_isLoading)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <MudText Class="ms-2">Validando...</MudText>
+            }
+            else
+            {
+                <MudText>ENTRAR</MudText>
+            }
+        </MudButton>
+    </EditForm>
+</MudPaper>
+
+@code {
+    private LoginViewModel _loginModel = new();
+    private bool _isLoading = false;
+    
+    // Controle para exibir/ocultar a senha digitada
+    private bool _isShowPassword;
+    private InputType _passwordInput = InputType.Password;
+    private string _passwordInputIcon = Icons.Material.Filled.VisibilityOff;
+
+    private void TogglePasswordVisibility()
+    {
+        _isShowPassword = !_isShowPassword;
+        _passwordInputIcon = _isShowPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff;
+        _passwordInput = _isShowPassword ? InputType.Text : InputType.Password;
+    }
+
+    private async Task RealizarLogin()
+    {
+        _isLoading = true;
+        
+        // Mapeia o modelo da tela para o DTO que a sua API espera
+        var request = new LoginRequest(_loginModel.Email, _loginModel.Senha);
+        
+        // Envia para o servidor http://5.161.202.169:8080/api/auth/login
+        var erro = await AuthService.LoginAsync(request);
+
+        if (erro == null)
+        {
+            // Login deu certo! Redireciona o usuário para a Home (Dashboard)
+            NavigationManager.NavigateTo("/");
+        }
+        else
+        {
+            // Login falhou (senha incorreta, etc). Mostra a notificação vermelha no canto da tela.
+            Snackbar.Add(erro, Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    // Classe local apenas para controlar a digitação e validação na tela
+    private class LoginViewModel
+    {
+        [Required(ErrorMessage = "O e-mail é obrigatório.")]
+        [EmailAddress(ErrorMessage = "Formato de e-mail inválido.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "A senha é obrigatória.")]
+        public string Senha { get; set; } = string.Empty;
+    }
+}

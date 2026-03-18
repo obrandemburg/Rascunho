@@ -1,0 +1,14 @@
+﻿@* 
+  Componente auxiliar: redireciona para /login preservando a URL original
+  via returnUrl, para que após o login o usuário volte para onde estava.
+*@
+@inject NavigationManager NavigationManager
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Captura a URL atual e passa como parâmetro para o login
+        var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
+        NavigationManager.NavigateTo($"/login?returnUrl={returnUrl}");
+    }
+}

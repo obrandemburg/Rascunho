@@ -1,60 +1,187 @@
-﻿@using Microsoft.AspNetCore.Components.Authorization
+﻿@* 
+  FLUXO: NavMenu é renderizado dentro do Drawer.
+  Cada <AuthorizeView Roles="X,Y"> filtra os links por perfil.
+  Links visíveis para todos os logados ficam fora do AuthorizeView.
+  
+  SEGURANÇA: Mesmo que alguém force a URL direto no browser,
+  a página final tem [Authorize(Roles="...")] impedindo o acesso.
+  O NavMenu é apenas camada de UX, não de segurança real.
+*@
+
+@using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
 
 <MudNavMenu>
-    <MudNavLink Href="/painel" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Início</MudNavLink>
+    @* ----------------------------------------
+       LINKS PÚBLICOS — Visíveis sem login
+    ---------------------------------------- *@
+    <MudNavLink Href="/" Match="NavLinkMatch.All"
+                Icon="@Icons.Material.Filled.Home">
+        Início
+    </MudNavLink>
+    <MudNavLink Href="/turmas"
+                Icon="@Icons.Material.Filled.Groups">
+        Quadro de Turmas
+    </MudNavLink>
 
-    @* ==========================================
-       ÁREA DOS ALUNOS / BOLSISTAS / LÍDERES
-       ========================================== *@
-    <AuthorizeView Roles="Aluno,Bolsista,Líder">
+    @* ----------------------------------------
+       LINKS PARA USUÁRIOS AUTENTICADOS
+    ---------------------------------------- *@
+    <AuthorizeView>
         <Authorized>
-            <MudNavGroup Title="Área do Aluno" Icon="@Icons.Material.Filled.Person" Expanded="true">
-                <MudNavLink Href="/quadro-turmas" Icon="@Icons.Material.Filled.TableChart">Quadro de Turmas</MudNavLink>
-                <MudNavLink Href="/minhas-aulas" Icon="@Icons.Material.Filled.EventAvailable">Minhas Aulas</MudNavLink>
-                <MudNavLink Href="/aulas-particulares" Icon="@Icons.Material.Filled.PersonSearch">Aulas Particulares</MudNavLink>
-                <MudNavLink Href="/mural-avisos" Icon="@Icons.Material.Filled.Campaign">Quadro de Avisos</MudNavLink>
-            </MudNavGroup>
+            <MudNavLink Href="/painel"
+                        Icon="@Icons.Material.Filled.Dashboard">
+                Meu Painel
+            </MudNavLink>
+            <MudNavLink Href="/perfil"
+                        Icon="@Icons.Material.Filled.Person">
+                Meu Perfil
+            </MudNavLink>
         </Authorized>
     </AuthorizeView>
 
-    @* ==========================================
-       ÁREA DOS PROFESSORES
-       ========================================== *@
+    @* ----------------------------------------
+       ALUNO E BOLSISTA
+    ---------------------------------------- *@
+    <AuthorizeView Roles="Aluno,Bolsista">
+        <Authorized>
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.overline" Class="px-4 py-1 mud-text-secondary">
+                Minha Área
+            </MudText>
+            <MudNavLink Href="/minhas-aulas"
+                        Icon="@Icons.Material.Filled.EventAvailable">
+                Minhas Aulas
+            </MudNavLink>
+            <MudNavLink Href="/aulas-particulares"
+                        Icon="@Icons.Material.Filled.Person">
+                Aulas Particulares
+            </MudNavLink>
+            <MudNavLink Href="/quadro-avisos"
+                        Icon="@Icons.Material.Filled.Campaign">
+                Quadro de Avisos
+            </MudNavLink>
+            <MudNavLink Href="/reagendar"
+                        Icon="@Icons.Material.Filled.EventRepeat">
+                Reagendar Aula
+            </MudNavLink>
+            <MudNavLink Href="/aula-experimental"
+                        Icon="@Icons.Material.Filled.Science">
+                Aula Experimental
+            </MudNavLink>
+            <MudNavLink Href="/ingressos"
+                        Icon="@Icons.Material.Filled.ConfirmationNumber">
+                Comprar Ingressos
+            </MudNavLink>
+        </Authorized>
+    </AuthorizeView>
+
+    @* ----------------------------------------
+       PROFESSOR
+    ---------------------------------------- *@
     <AuthorizeView Roles="Professor">
         <Authorized>
-            <MudNavGroup Title="Portal do Professor" Icon="@Icons.Material.Filled.School" Expanded="true">
-                <MudNavLink Href="/minhas-turmas" Icon="@Icons.Material.Filled.Groups">Minhas Turmas</MudNavLink>
-                <MudNavLink Href="/fazer-chamada" Icon="@Icons.Material.Filled.Checklist">Fazer Chamada</MudNavLink>
-                <MudNavLink Href="/aulas-particulares" Icon="@Icons.Material.Filled.AccessTime">Aulas Particulares</MudNavLink>
-            </MudNavGroup>
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.overline" Class="px-4 py-1 mud-text-secondary">
+                Professor
+            </MudText>
+            <MudNavLink Href="/professor/minhas-turmas"
+                        Icon="@Icons.Material.Filled.School">
+                Minhas Turmas
+            </MudNavLink>
+            <MudNavLink Href="/professor/chamada"
+                        Icon="@Icons.Material.Filled.Checklist">
+                Fazer Chamada
+            </MudNavLink>
+            <MudNavLink Href="/professor/aulas-particulares"
+                        Icon="@Icons.Material.Filled.PersonSearch">
+                Aulas Particulares
+            </MudNavLink>
+            <MudNavLink Href="/avisos-equipe"
+                        Icon="@Icons.Material.Filled.Announcement">
+                Avisos da Equipe
+            </MudNavLink>
         </Authorized>
     </AuthorizeView>
 
-    @* ==========================================
-       ÁREA ADMINISTRATIVA (RECEPÇÃO E GERÊNCIA)
-       ========================================== *@
+    @* ----------------------------------------
+       BOLSISTA — itens extras além do Aluno
+    ---------------------------------------- *@
+    <AuthorizeView Roles="Bolsista">
+        <Authorized>
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.overline" Class="px-4 py-1 mud-text-secondary">
+                Bolsista
+            </MudText>
+            <MudNavLink Href="/bolsista/turmas-recomendadas"
+                        Icon="@Icons.Material.Filled.Recommend">
+                Turmas Recomendadas
+            </MudNavLink>
+            <MudNavLink Href="/avisos-equipe"
+                        Icon="@Icons.Material.Filled.Announcement">
+                Avisos da Equipe
+            </MudNavLink>
+            <MudNavLink Href="/bolsista/minhas-habilidades"
+                        Icon="@Icons.Material.Filled.Stars">
+                Minhas Habilidades
+            </MudNavLink>
+            <MudNavLink Href="/bolsista/relatorio-horas"
+                        Icon="@Icons.Material.Filled.Timer">
+                Relatório de Horas
+            </MudNavLink>
+        </Authorized>
+    </AuthorizeView>
+
+    @* ----------------------------------------
+       RECEPÇÃO E GERENTE — Menu Administrativo
+    ---------------------------------------- *@
     <AuthorizeView Roles="Recepção,Gerente">
         <Authorized>
-            <MudNavGroup Title="Administração" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="true">
-                <MudNavLink Href="/admin/mural-avisos" Icon="@Icons.Material.Filled.Campaign">Mural de Avisos</MudNavLink>
-                <MudNavLink Href="/admin/turmas" Icon="@Icons.Material.Filled.ManageHistory">Gerenciar Turmas</MudNavLink>
-                <MudNavLink Href="/admin/salas" Icon="@Icons.Material.Filled.MeetingRoom">Salas & Aluguéis</MudNavLink>
-                <MudNavLink Href="/admin/eventos" Icon="@Icons.Material.Filled.EventNote">Gerenciar Eventos</MudNavLink>
+            <MudDivider Class="my-2" />
+            <MudNavGroup Title="Administração"
+                         Icon="@Icons.Material.Filled.AdminPanelSettings"
+                         Expanded="true">
+                <MudNavLink Href="/admin/usuarios"
+                            Icon="@Icons.Material.Filled.PersonAdd">
+                    Criar Usuário
+                </MudNavLink>
+                <MudNavLink Href="/admin/turmas"
+                            Icon="@Icons.Material.Filled.ManageHistory">
+                    Gerir Turmas
+                </MudNavLink>
+                <MudNavLink Href="/admin/salas"
+                            Icon="@Icons.Material.Filled.MeetingRoom">
+                    Salas & Aluguéis
+                </MudNavLink>
+                <MudNavLink Href="/admin/avisos"
+                            Icon="@Icons.Material.Filled.Campaign">
+                    Criar Avisos
+                </MudNavLink>
+                <MudNavLink Href="/admin/eventos"
+                            Icon="@Icons.Material.Filled.EventNote">
+                    Gerenciar Eventos
+                </MudNavLink>
             </MudNavGroup>
         </Authorized>
     </AuthorizeView>
 
-    @* ==========================================
-       EXCLUSIVO GERÊNCIA
-       ========================================== *@
+    @* ----------------------------------------
+       GERENTE — Gerência Estratégica
+    ---------------------------------------- *@
     <AuthorizeView Roles="Gerente">
         <Authorized>
-            <MudNavGroup Title="Gerência Estratégica" Icon="@Icons.Material.Filled.Insights" Expanded="false">
-                <MudNavLink Href="/gerencia/dashboard" Icon="@Icons.Material.Filled.QueryStats">Dashboard Financeiro</MudNavLink>
-                <MudNavLink Href="/gerencia/usuarios" Icon="@Icons.Material.Filled.ManageAccounts">Gestão de Usuários</MudNavLink>
+            <MudNavGroup Title="Gerência Estratégica"
+                         Icon="@Icons.Material.Filled.Insights"
+                         Expanded="false">
+                <MudNavLink Href="/gerencia/dashboard"
+                            Icon="@Icons.Material.Filled.QueryStats">
+                    Dashboard
+                </MudNavLink>
+                <MudNavLink Href="/gerencia/usuarios"
+                            Icon="@Icons.Material.Filled.ManageAccounts">
+                    Gestão de Usuários
+                </MudNavLink>
             </MudNavGroup>
         </Authorized>
     </AuthorizeView>
-
 </MudNavMenu>

@@ -1,4 +1,12 @@
-﻿@inherits LayoutComponentBase
+﻿@* 
+  FLUXO: MainLayout é o layout raiz. Ele envolve todas as páginas via @Body.
+  MudThemeProvider aplica as cores globalmente via CSS Variables do MudBlazor.
+  
+  SEGURANÇA: AuthorizeView aqui controla o que aparece na AppBar dependendo
+  do estado de autenticação. Nenhuma dado sensível fica exposto antes do login.
+*@
+
+@inherits LayoutComponentBase
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
 @using Rascunho.Client.Security
@@ -15,35 +23,65 @@
 
 <MudLayout>
     <MudAppBar Elevation="1" Color="Color.Primary">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+        <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                       Color="Color.Inherit"
+                       Edge="Edge.Start"
+                       OnClick="@(() => _drawerOpen = !_drawerOpen)" />
+        
+        @* Logo + Nome da escola *@
         <MudText Typo="Typo.h5" Class="ml-3 font-weight-bold">Ponto da Dança</MudText>
         <MudSpacer />
         
+        @*
+          AuthorizeView renderiza filhos diferentes com base na autenticação.
+          Authorized → usuário logado.
+          NotAuthorized → visitante.
+          Isso evita flash de conteúdo errado.
+        *@
         <AuthorizeView>
             <Authorized Context="authContext">
-                @* Botão de Logout Direto para facilitar os testes *@
                 <MudTooltip Text="Encerrar Sessão">
-                    <MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Inherit" OnClick="Sair" Class="mr-2" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Logout"
+                                   Color="Color.Inherit"
+                                   OnClick="Sair"
+                                   Class="mr-2" />
                 </MudTooltip>
-
-                <MudMenu ActivationEvent="@MouseEvent.LeftClick" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                <MudMenu ActivationEvent="@MouseEvent.LeftClick"
+                         AnchorOrigin="Origin.BottomRight"
+                         TransformOrigin="Origin.TopRight">
                     <ActivatorContent>
+                        @* Avatar com inicial do nome — identificação visual rápida *@
                         <MudAvatar Color="Color.Secondary">
                             @authContext.User.Identity?.Name?.FirstOrDefault()
                         </MudAvatar>
                     </ActivatorContent>
                     <ChildContent>
-                        <MudMenuItem Href="/perfil" Icon="@Icons.Material.Filled.Person">Meu Perfil</MudMenuItem>
-                        <MudMenuItem OnClick="Sair" Icon="@Icons.Material.Filled.Logout">Sair</MudMenuItem>
+                        <MudMenuItem Href="/perfil"
+                                     Icon="@Icons.Material.Filled.Person">
+                            Meu Perfil
+                        </MudMenuItem>
+                        <MudMenuItem OnClick="Sair"
+                                     Icon="@Icons.Material.Filled.Logout">
+                            Sair
+                        </MudMenuItem>
                     </ChildContent>
                 </MudMenu>
             </Authorized>
             <NotAuthorized>
-                <MudButton Color="Color.Inherit" Variant="Variant.Outlined" Href="/login">Entrar</MudButton>
+                <MudButton Color="Color.Inherit"
+                           Variant="Variant.Outlined"
+                           Href="/login">
+                    Entrar
+                </MudButton>
             </NotAuthorized>
         </AuthorizeView>
     </MudAppBar>
 
+    @*
+      Drawer = gaveta lateral esquerda com a NavMenu.
+      ClipMode.Always faz a gaveta deslizar sob a AppBar.
+      @bind-Open faz two-way binding com _drawerOpen.
+    *@
     <MudDrawer @bind-Open="_drawerOpen" Elevation="2" ClipMode="DrawerClipMode.Always">
         <NavMenu />
     </MudDrawer>
@@ -57,25 +95,34 @@
 
 @code {
     private bool _drawerOpen = true;
-    private void DrawerToggle() => _drawerOpen = !_drawerOpen;
 
     private async Task Sair()
     {
+        // 1. Remove token do localStorage (invalida sessão local)
         await LocalStorage.RemoveItemAsync("authToken");
+        
+        // 2. Notifica o CustomAuthStateProvider que não há mais usuário
+        //    Isso força re-render de todos os AuthorizeView da aplicação
         ((CustomAuthStateProvider)AuthStateProvider).NotifyUserLogout();
+        
         Snackbar.Add("Sessão encerrada com sucesso.", Severity.Info);
         NavigationManager.NavigateTo("/login");
     }
 
+    // Tema centralizado — altere aqui para refletir em toda a aplicação
     MudTheme PontoDaDancaTheme = new MudTheme()
     {
         PaletteLight = new PaletteLight()
         {
-            Primary = "#1b5e20",      // Verde Ponto da Dança
-            Secondary = "#fbc02d",
+            Primary = "#1b5e20",         // Verde escuro da identidade visual
+            Secondary = "#fbc02d",        // Amarelo para destaques e CTAs
             AppbarBackground = "#1b5e20",
-            Background = "#f5f5f5",
-            Surface = "#ffffff"
+            Background = "#f5f5f5",       // Fundo levemente acinzentado
+            Surface = "#ffffff",          // Cards e painéis brancos
+            Success = "#4caf50",
+            Info = "#2196f3",
+            Warning = "#ff9800",
+            Error = "#f44336"
         }
     };
 }

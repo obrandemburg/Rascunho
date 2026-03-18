@@ -1,0 +1,124 @@
+﻿@* 
+  ROTA: /turmas
+  ACESSO: Anônimo
+  
+  CORREÇÃO: MudChip T="string" e MudChipSet T="string".
+  MudBlazor v6 exige o tipo genérico explícito nesses componentes.
+*@
+
+@page "/turmas"
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<PageTitle>Turmas — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Groups" Class="mr-2" />
+    Nossas Turmas
+</MudText>
+<MudText Typo="Typo.body1" Class="mb-6 mud-text-secondary">
+    Conheça os ritmos que ensinamos e encontre a turma perfeita para você!
+</MudText>
+
+@* 
+  CORREÇÃO: MudChipSet T="string" — tipo genérico explícito.
+  SelectedValues recebe IReadOnlyCollection<string>.
+*@
+<MudChipSet T="string"
+            @bind-SelectedValues="modalidadesSelecionadas"
+            MultiSelection="true"
+            Class="mb-6">
+    <MudChip T="string"
+             Value="@("Dança de salão")"
+             Color="Color.Primary"
+             Variant="Variant.Outlined">
+        Dança de Salão
+    </MudChip>
+    <MudChip T="string"
+             Value="@("Dança solo")"
+             Color="Color.Info"
+             Variant="Variant.Outlined">
+        Dança Solo
+    </MudChip>
+</MudChipSet>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+}
+else
+{
+    <MudGrid>
+        @foreach (var ritmo in ritmosFiltrados)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="4" Class="rounded-lg h-100"
+                         Style="@($"border-top: 4px solid {(ritmo.Modalidade == "Dança de salão" ? "#1b5e20" : "#2196f3")};")">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@ritmo.Nome</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            @* CORREÇÃO: T="string" *@
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Color="@(ritmo.Modalidade == "Dança de salão" ? Color.Success : Color.Info)"
+                                     Variant="Variant.Filled">
+                                @ritmo.Modalidade
+                            </MudChip>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2">
+                            @(string.IsNullOrEmpty(ritmo.Descricao)
+                                ? "Em breve mais informações sobre este ritmo!"
+                                : ritmo.Descricao)
+                        </MudText>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Href="/login"
+                                   Variant="Variant.Text"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Login">
+                            Quero me matricular
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private bool carregando = true;
+    private List<RitmoDto> ritmos = new();
+    // CORREÇÃO: tipo explícito da coleção para MudChipSet T="string"
+    private IReadOnlyCollection<string> modalidadesSelecionadas = Array.Empty<string>();
+
+    private IEnumerable<RitmoDto> ritmosFiltrados =>
+        modalidadesSelecionadas.Any()
+            ? ritmos.Where(r => modalidadesSelecionadas.Contains(r.Modalidade))
+            : ritmos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            ritmos = await Http.GetFromJsonAsync<List<RitmoDto>>("api/ritmos/listar") ?? new();
+        }
+        catch
+        {
+            // Silencioso — não quebra página pública
+        }
+        finally { carregando = false; }
+    }
+
+    public class RitmoDto
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string? Descricao { get; set; }
+        public string Modalidade { get; set; } = "";
+        public bool Ativo { get; set; }
+    }
+}

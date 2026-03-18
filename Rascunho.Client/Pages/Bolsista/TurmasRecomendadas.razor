@@ -1,0 +1,149 @@
+﻿@* 
+  ROTA: /bolsista/turmas-recomendadas
+  ACESSO: Bolsista
+  
+  CORREÇÃO: T="string" em todos os MudChip desta página.
+*@
+
+@page "/bolsista/turmas-recomendadas"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Bolsista")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Turmas Recomendadas — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Recommend" Class="mr-2" />
+    Turmas que Precisam de Você Hoje
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Turmas analisadas pelo sistema com base no equilíbrio de papéis.
+</MudText>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!analises.Any())
+{
+    <MudAlert Severity="Severity.Success">
+        Todas as turmas de hoje estão balanceadas! 🎉
+    </MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var analise in analises)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="3" Class="rounded-lg"
+                         Style="@($"border-left: 4px solid {CorStatus(analise.Status)};")">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@analise.TurmaIdHash</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudIcon Icon="@IconeStatus(analise.Status)"
+                                     Style="@($"color: {CorStatus(analise.Status)}")" />
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @* CORREÇÃO: T="string" obrigatório *@
+                        <MudChip T="string"
+                                 Color="@ChipCor(analise.Status)"
+                                 Size="Size.Small"
+                                 Variant="Variant.Filled"
+                                 Class="mb-3">
+                            @analise.Status
+                        </MudChip>
+
+                        @if (analise.QuantidadeFaltante > 0)
+                        {
+                            <MudText Typo="Typo.body2" Class="mb-2">
+                                Precisamos de <strong>@analise.QuantidadeFaltante</strong>
+                                @(analise.Status.Contains("Condutor") ? "condutor(es)" : "conduzido(s)")
+                            </MudText>
+                        }
+
+                        @if (analise.Sugestoes.Any())
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary mb-1">
+                                Bolsistas disponíveis:
+                            </MudText>
+                            @foreach (var sug in analise.Sugestoes.Take(3))
+                            {
+                                @* CORREÇÃO: T="string" obrigatório *@
+                                <MudChip T="string"
+                                         Size="Size.Small"
+                                         Variant="Variant.Outlined"
+                                         Color="Color.Primary">
+                                    @sug.Nome (@sug.PapelDominante)
+                                </MudChip>
+                            }
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private bool carregando = true;
+    private List<SugestaoBalanceamentoDto> analises = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            analises = await Http.GetFromJsonAsync<List<SugestaoBalanceamentoDto>>(
+                "api/bolsistas/turmas-recomendadas") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar turmas recomendadas.", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    private string CorStatus(string status) => status switch
+    {
+        "Balanceada" => "#4caf50",
+        "Faltam Condutores" => "#f44336",
+        "Faltam Conduzidos" => "#ff9800",
+        _ => "#9e9e9e"
+    };
+
+    private string IconeStatus(string status) => status switch
+    {
+        "Balanceada" => Icons.Material.Filled.CheckCircle,
+        _ => Icons.Material.Filled.Warning
+    };
+
+    private Color ChipCor(string status) => status switch
+    {
+        "Balanceada" => Color.Success,
+        "Faltam Condutores" => Color.Error,
+        _ => Color.Warning
+    };
+
+    public class SugestaoBalanceamentoDto
+    {
+        public string TurmaIdHash { get; set; } = "";
+        public int TotalCondutores { get; set; }
+        public int TotalConduzidos { get; set; }
+        public string Status { get; set; } = "";
+        public int QuantidadeFaltante { get; set; }
+        public List<BolsistaSugeridoDto> Sugestoes { get; set; } = new();
+    }
+
+    public class BolsistaSugeridoDto
+    {
+        public string BolsistaIdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string PapelDominante { get; set; } = "";
+        public string Nivel { get; set; } = "";
+    }
+}

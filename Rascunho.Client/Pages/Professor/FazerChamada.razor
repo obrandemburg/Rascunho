@@ -1,0 +1,249 @@
+﻿@* 
+  ROTA: /professor/chamada
+  ACESSO: Professor, Assistente, Recepção, Gerente
+  
+  CORREÇÕES APLICADAS:
+  - MudList<AlunoChamadaDto> com T explícito
+  - MudListItem<AlunoChamadaDto> com T explícito
+  - MudSwitch T="bool" explícito — obrigatório no MudBlazor v6
+  
+  ALTERNATIVA MAIS ROBUSTA: MudTable (sem problema de inferência)
+  usado para a lista de alunos — já é o padrão do projeto existente
+  (veja FazerChamada.razor já no repositório).
+*@
+
+@page "/professor/chamada"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Professor,Assistente,Recepção,Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Fazer Chamada — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-6 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Checklist" Class="mr-2" />
+    Fazer Chamada
+</MudText>
+
+@* ============================================================
+   SELEÇÃO DE TURMA E DATA
+============================================================ *@
+<MudPaper Elevation="2" Class="pa-6 rounded-xl mb-6">
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudSelect T="string"
+                       @bind-Value="turmaSelecionadaHash"
+                       Label="Selecione a Turma"
+                       Variant="Variant.Outlined"
+                       Adornment="Adornment.Start"
+                       AdornmentIcon="@Icons.Material.Filled.School">
+                @foreach (var turma in minhasTurmas)
+                {
+                    <MudSelectItem T="string" Value="@turma.IdHash">
+                        @turma.RitmoNome — @DiaDaSemana(turma.DiaDaSemana)
+                        @turma.HorarioInicio.ToString(@"hh\:mm")
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudDatePicker @bind-Date="dataAula"
+                           Label="Data da Aula"
+                           Variant="Variant.Outlined"
+                           DateFormat="dd/MM/yyyy"
+                           MaxDate="@DateTime.Today" />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-end">
+            <MudButton OnClick="CarregarChamada"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Disabled="@(string.IsNullOrEmpty(turmaSelecionadaHash))"
+                       StartIcon="@Icons.Material.Filled.Search">
+                Carregar
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* ============================================================
+   TABELA DE ALUNOS COM PRESENÇA
+   Usando MudTable ao invés de MudList — evita problemas de
+   inferência genérica e já é o padrão do projeto existente.
+============================================================ *@
+@if (carregandoChamada)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (alunos.Any())
+{
+    <MudPaper Elevation="3" Class="rounded-xl">
+        @* Contador no topo *@
+        <div class="pa-4 d-flex justify-space-between align-center">
+            <MudText>
+                <b>@alunos.Count</b> alunos ·
+                <b>@alunos.Count(a => a.Presente)</b> presentes
+            </MudText>
+            <MudButton Size="Size.Small"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="MarcarTodos">
+                Marcar Todos Presentes
+            </MudButton>
+        </div>
+        <MudDivider />
+
+        @*
+          MudTable: mais estável para listas com binding bidirecional.
+          RowTemplate usa Context explícito para evitar ambiguidade.
+        *@
+        <MudTable T="AlunoPresencaDto"
+                  Items="@alunos"
+                  Hover="true"
+                  Breakpoint="Breakpoint.Sm"
+                  Elevation="0">
+            <HeaderContent>
+                <MudTh>Aluno</MudTh>
+                <MudTh>Papel</MudTh>
+                <MudTh>Presença</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="aluno">
+                <MudTd DataLabel="Aluno">
+                    <MudText>@aluno.NomeAluno</MudText>
+                </MudTd>
+                <MudTd DataLabel="Papel">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        @aluno.Papel
+                    </MudText>
+                </MudTd>
+                <MudTd DataLabel="Presença">
+                    @*
+                      CORREÇÃO: MudSwitch T="bool" — tipo explícito obrigatório.
+                      @bind-Value (não @bind-Checked) é o padrão no MudBlazor v6+.
+                    *@
+                    <MudSwitch T="bool"
+                               @bind-Value="aluno.Presente"
+                               Color="Color.Success"
+                               UnCheckedColor="Color.Error"
+                               Label="@(aluno.Presente ? "Presente" : "Faltou")" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @* Botão salvar no rodapé *@
+        <div class="pa-4">
+            <MudButton OnClick="SalvarChamada"
+                       Variant="Variant.Filled"
+                       Color="Color.Success"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       StartIcon="@Icons.Material.Filled.Save"
+                       Disabled="@salvando">
+                @(salvando ? "Salvando..." : "Salvar Chamada")
+            </MudButton>
+        </div>
+    </MudPaper>
+}
+
+@code {
+    private string turmaSelecionadaHash = "";
+    private DateTime? dataAula = DateTime.Today;
+    private bool carregandoChamada = false;
+    private bool salvando = false;
+    private List<TurmaSimples> minhasTurmas = new();
+    private List<AlunoPresencaDto> alunos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            minhasTurmas = await Http.GetFromJsonAsync<List<TurmaSimples>>(
+                "api/turmas/minhas-turmas") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar suas turmas.", Severity.Error);
+        }
+    }
+
+    private async Task CarregarChamada()
+    {
+        if (string.IsNullOrEmpty(turmaSelecionadaHash) || dataAula == null) return;
+
+        carregandoChamada = true;
+        alunos = new(); // Limpa lista anterior
+        try
+        {
+            var dataFormatada = dataAula.Value.ToString("yyyy-MM-dd");
+            alunos = await Http.GetFromJsonAsync<List<AlunoPresencaDto>>(
+                $"api/turmas/{turmaSelecionadaHash}/chamada?dataAula={dataFormatada}") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar lista de alunos.", Severity.Error);
+        }
+        finally { carregandoChamada = false; }
+    }
+
+    private void MarcarTodos()
+    {
+        alunos.ForEach(a => a.Presente = true);
+        // StateHasChanged para forçar re-render dos switches
+        StateHasChanged();
+    }
+
+    private async Task SalvarChamada()
+    {
+        salvando = true;
+        try
+        {
+            var request = new
+            {
+                Alunos = alunos.Select(a => new
+                {
+                    AlunoIdHash = a.AlunoIdHash,
+                    Presente = a.Presente
+                }).ToList()
+            };
+
+            var response = await Http.PostAsJsonAsync(
+                $"api/turmas/{turmaSelecionadaHash}/chamada", request);
+
+            if (response.IsSuccessStatusCode)
+                Snackbar.Add("Chamada salva com sucesso! ✅", Severity.Success);
+            else
+                Snackbar.Add("Erro ao salvar. Verifique se você é professor desta turma.", Severity.Error);
+        }
+        finally { salvando = false; }
+    }
+
+    private string DiaDaSemana(int dia) => dia switch
+    {
+        0 => "Dom",
+        1 => "Seg",
+        2 => "Ter",
+        3 => "Qua",
+        4 => "Qui",
+        5 => "Sex",
+        6 => "Sáb",
+        _ => "—"
+    };
+
+    // Classe com campo mutável para o binding bidirecional do switch
+    public class AlunoPresencaDto
+    {
+        public string AlunoIdHash { get; set; } = "";
+        public string NomeAluno { get; set; } = "";
+        public string Papel { get; set; } = "";
+        public bool Presente { get; set; }   // two-way bind com MudSwitch
+    }
+
+    public class TurmaSimples
+    {
+        public string IdHash { get; set; } = "";
+        public string RitmoNome { get; set; } = "";
+        public int DiaDaSemana { get; set; }
+        public TimeSpan HorarioInicio { get; set; }
+    }
+}
