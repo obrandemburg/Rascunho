@@ -27,9 +27,11 @@
                        Color="Color.Inherit"
                        Edge="Edge.Start"
                        OnClick="@(() => _drawerOpen = !_drawerOpen)" />
+        @* INÍCIO DA ALTERAÇÃO: Logo + Nome da escola *@
+        <img src="icon-192.png" alt="Logo Ponto da Dança" style="height: 40px; margin-left: 16px; margin-right: 8px;" />
+        <MudText Typo="Typo.h5" Class="font-weight-bold">Ponto da Dança</MudText>
+        @* FIM DA ALTERAÇÃO *@
         
-        @* Logo + Nome da escola *@
-        <MudText Typo="Typo.h5" Class="ml-3 font-weight-bold">Ponto da Dança</MudText>
         <MudSpacer />
         
         @*
