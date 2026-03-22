@@ -24,7 +24,9 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         if (string.IsNullOrWhiteSpace(token))
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
 
-        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        // Define o header em TODAS as chamadas subsequentes do HttpClient
+        _httpClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", token);
 
         var claims = ParseClaimsFromJwt(token);
         var identity = new ClaimsIdentity(claims, "jwt");
@@ -35,17 +37,47 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 
     public void NotifyUserAuthentication(string token)
     {
-        var authenticatedUser = new ClaimsPrincipal(new ClaimsIdentity(ParseClaimsFromJwt(token), "jwt"));
-        NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(authenticatedUser)));
+        // Aplica o header imediatamente após o login, sem esperar
+        // a próxima chamada de GetAuthenticationStateAsync
+        _httpClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", token);
+
+        var authenticatedUser = new ClaimsPrincipal(
+            new ClaimsIdentity(ParseClaimsFromJwt(token), "jwt"));
+
+        NotifyAuthenticationStateChanged(
+            Task.FromResult(new AuthenticationState(authenticatedUser)));
     }
 
     public void NotifyUserLogout()
     {
+        // Remove o header de autorização ao sair
+        _httpClient.DefaultRequestHeaders.Authorization = null;
+
         var anonymousUser = new ClaimsPrincipal(new ClaimsIdentity());
-        NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(anonymousUser)));
+        NotifyAuthenticationStateChanged(
+            Task.FromResult(new AuthenticationState(anonymousUser)));
     }
 
-    // CORREÇÃO: Tradução inteligente das Claims do JWT para o formato nativo do C#
+    // ──────────────────────────────────────────────────────────────
+    // CORREÇÃO: Mapeamento completo e robusto dos claims do JWT
+    //
+    // O JwtSecurityTokenHandler do .NET serializa ClaimTypes longos
+    // para nomes curtos no JWT:
+    //   ClaimTypes.Role           → "role"
+    //   ClaimTypes.NameIdentifier → "nameid"
+    //   ClaimTypes.Name           → "unique_name"
+    //   ClaimTypes.Email          → "email"
+    //
+    // Este parser reconhece AMBOS os formatos (curto e longo) para
+    // garantir compatibilidade com qualquer versão do .NET.
+    //
+    // Por que isso importa?
+    //   - [Authorize(Roles = "Gerente")] verifica ClaimTypes.Role
+    //   - user.Identity?.Name usa ClaimTypes.Name
+    //   - user.FindFirst(ClaimTypes.NameIdentifier) usa o URI longo
+    //   Se não mapearmos corretamente, essas verificações falham.
+    // ──────────────────────────────────────────────────────────────
     private IEnumerable<Claim> ParseClaimsFromJwt(string jwt)
     {
         var claims = new List<Claim>();
@@ -53,53 +85,87 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         var jsonBytes = ParseBase64WithoutPadding(payload);
         var keyValuePairs = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonBytes);
 
-        if (keyValuePairs != null)
+        if (keyValuePairs == null) return claims;
+
+        // ── ROLE: "role" ou o URI longo → ClaimTypes.Role ────────
+        // O Blazor usa ClaimTypes.Role para [Authorize(Roles = "X")]
+        ExtractAndMapClaim(keyValuePairs, claims, "role", ClaimTypes.Role);
+        // Fallback: se o JWT usar o URI longo diretamente
+        ExtractAndMapClaim(keyValuePairs, claims, ClaimTypes.Role, ClaimTypes.Role);
+
+        // ── NAMEIDENTIFIER: "nameid" / "sub" → ClaimTypes.NameIdentifier ──
+        // O servidor usa FindFirst(ClaimTypes.NameIdentifier) para obter o ID do usuário
+        ExtractAndMapClaim(keyValuePairs, claims, "nameid", ClaimTypes.NameIdentifier);
+        ExtractAndMapClaim(keyValuePairs, claims, "sub", ClaimTypes.NameIdentifier);
+        // Fallback URI longo
+        ExtractAndMapClaim(keyValuePairs, claims, ClaimTypes.NameIdentifier, ClaimTypes.NameIdentifier);
+
+        // ── NAME: "unique_name" / "name" → ClaimTypes.Name ───────
+        // Usado por user.Identity?.Name na AppBar e telas de saudação
+        ExtractAndMapClaim(keyValuePairs, claims, "unique_name", ClaimTypes.Name);
+        ExtractAndMapClaim(keyValuePairs, claims, "name", ClaimTypes.Name);
+        // Fallback URI longo
+        ExtractAndMapClaim(keyValuePairs, claims, ClaimTypes.Name, ClaimTypes.Name);
+
+        // ── EMAIL: "email" → ClaimTypes.Email ─────────────────────
+        ExtractAndMapClaim(keyValuePairs, claims, "email", ClaimTypes.Email);
+        ExtractAndMapClaim(keyValuePairs, claims, ClaimTypes.Email, ClaimTypes.Email);
+
+        // ── Demais claims (exp, nbf, iss, aud, etc.) ─────────────
+        // Adicionados com seus tipos originais para inspeção caso necessário
+        foreach (var kvp in keyValuePairs)
         {
-            // O .NET envia o nome do usuário e a Role com chaves curtas no JSON.
-            // Aqui nós mapeamos essas chaves curtas para os Tipos Nativos do C#.
-            ExtractAndMapClaim(keyValuePairs, claims, "role", ClaimTypes.Role);
-            ExtractAndMapClaim(keyValuePairs, claims, ClaimTypes.Role, ClaimTypes.Role);
-
-            ExtractAndMapClaim(keyValuePairs, claims, "unique_name", ClaimTypes.Name);
-            ExtractAndMapClaim(keyValuePairs, claims, "name", ClaimTypes.Name);
-
-            // Adiciona o restante das claims que vierem no token
-            foreach (var kvp in keyValuePairs)
-            {
+            if (kvp.Value != null)
                 claims.Add(new Claim(kvp.Key, kvp.Value.ToString()!));
-            }
         }
+
         return claims;
     }
 
-    private void ExtractAndMapClaim(Dictionary<string, object> dict, List<Claim> claims, string jsonKey, string claimType)
+    // Extrai um claim do dicionário, mapeia para o tipo correto do .NET
+    // e REMOVE do dicionário para que não seja adicionado duplicado no loop final
+    private void ExtractAndMapClaim(
+        Dictionary<string, object> dict,
+        List<Claim> claims,
+        string jsonKey,
+        string claimType)
     {
-        if (dict.TryGetValue(jsonKey, out var value) && value != null)
+        if (!dict.TryGetValue(jsonKey, out var value) || value == null)
+            return;
+
+        var strValue = value.ToString()!.Trim();
+
+        // Suporta arrays de roles (ex: usuário com múltiplos papéis)
+        if (strValue.StartsWith("["))
         {
-            var strValue = value.ToString()!.Trim();
-            if (strValue.StartsWith("["))
+            var parsedValues = JsonSerializer.Deserialize<string[]>(strValue);
+            if (parsedValues != null)
             {
-                var parsedValues = JsonSerializer.Deserialize<string[]>(strValue);
-                if (parsedValues != null)
-                {
-                    foreach (var val in parsedValues) claims.Add(new Claim(claimType, val));
-                }
+                foreach (var val in parsedValues)
+                    claims.Add(new Claim(claimType, val));
             }
-            else
-            {
-                claims.Add(new Claim(claimType, strValue));
-            }
-            dict.Remove(jsonKey);
         }
+        else
+        {
+            claims.Add(new Claim(claimType, strValue));
+        }
+
+        // Remove do dict para não duplicar no loop final
+        dict.Remove(jsonKey);
     }
 
-    private byte[] ParseBase64WithoutPadding(string base64)
+    // Decodifica Base64Url (sem padding) para bytes
+    private static byte[] ParseBase64WithoutPadding(string base64)
     {
+        // Substitui caracteres Base64Url para Base64 padrão
+        base64 = base64.Replace('-', '+').Replace('_', '/');
+
         switch (base64.Length % 4)
         {
             case 2: base64 += "=="; break;
             case 3: base64 += "="; break;
         }
+
         return Convert.FromBase64String(base64);
     }
 }

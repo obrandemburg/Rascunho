@@ -43,6 +43,27 @@ var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // ══════════════════════════════════════════════════════════════════
+        // CORREÇÃO CRÍTICA: MapInboundClaims e RoleClaimType
+        //
+        // PROBLEMA: O TokenService gera o JWT com ClaimTypes.Role (URI longo).
+        // O JwtSecurityTokenHandler serializa esse claim para o nome curto "role"
+        // no payload do JWT. No .NET 8+, o JsonWebTokenHandler (novo padrão)
+        // NÃO mapeia automaticamente "role" de volta para ClaimTypes.Role ao
+        // ler o token. Isso faz com que:
+        //   - RequireRole("Gerente") procura ClaimTypes.Role → não encontra "role"
+        //   - Resultado: 403 Forbidden para usuários autenticados com role válido
+        //
+        // SOLUÇÃO 1: MapInboundClaims = true (restaura comportamento antigo)
+        //   → mapeia "role" → ClaimTypes.Role, "unique_name" → ClaimTypes.Name, etc.
+        //
+        // SOLUÇÃO 2 (mais explícita e robusta): definir RoleClaimType = "role"
+        //   → diz ao framework "o claim de role se chama 'role' neste token"
+        //
+        // Usamos AMBAS as soluções para garantir compatibilidade com .NET 10.
+        // ══════════════════════════════════════════════════════════════════
+        options.MapInboundClaims = true;
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -51,7 +72,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
-            IssuerSigningKey = new SymmetricSecurityKey(keyBytes)
+            IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
+
+            // Define explicitamente qual claim carrega o papel (role) do usuário.
+            // O TokenService usa ClaimTypes.Role que o JwtSecurityTokenHandler
+            // serializa como "role" no JWT. Ao ler, mapeamos "role" de volta.
+            // Sem isso, RequireRole() falha com 403 mesmo com token válido.
+            RoleClaimType = System.Security.Claims.ClaimTypes.Role,
+
+            // Define qual claim carrega o nome do usuário.
+            // ClaimTypes.Name é serializado como "unique_name" no JWT pelo .NET.
+            NameClaimType = System.Security.Claims.ClaimTypes.Name,
+
+            // ClockSkew padrão é 5 minutos — mantemos para tolerância de relógio
+            ClockSkew = TimeSpan.FromMinutes(5)
         };
     });
 
@@ -73,7 +107,7 @@ builder.Services.AddScoped<ProfessorDisponibilidadeService>();
 builder.Services.AddScoped<ReposicaoService>();
 
 // ConfiguracaoService é Singleton porque mantém estado em memória
-// (as alterações feitas pelo Gerente devem persistir durante a sessão do servidor)
+// (alterações feitas pelo Gerente persistem durante a sessão do servidor)
 builder.Services.AddSingleton<ConfiguracaoService>();
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -96,14 +130,13 @@ using (var scope = app.Services.CreateScope())
 
 app.UseExceptionHandler();
 
-// Scalar/OpenAPI apenas em desenvolvimento — evita exposição em produção
 //if (app.Environment.IsDevelopment())
 //{
-    app.MapOpenApi();
-    app.MapScalarApiReference(options =>
-        options.WithTitle("Ponto da Dança API")
-               .WithTheme(ScalarTheme.DeepSpace)
-               .WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Axios));
+app.MapOpenApi();
+app.MapScalarApiReference(options =>
+    options.WithTitle("Ponto da Dança API")
+           .WithTheme(ScalarTheme.DeepSpace)
+           .WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Axios));
 //}
 
 app.UseCors("PermitirFrontend");
@@ -124,6 +157,6 @@ app.MapEventoEndpoints();
 app.MapAulaExperimentalEndpoints();
 app.MapProfessorEndpoints();
 app.MapReposicaoEndpoints();
-app.MapGerenteEndpoints();  // NOVO Sprint 3
+app.MapGerenteEndpoints();
 
 app.Run();
