@@ -1,7 +1,69 @@
-﻿namespace Rascunho.Shared.DTOs;
+﻿// Localização: Rascunho.Shared/DTOs/UsuarioDTOs.cs
+//
+// ATENÇÃO: Este arquivo pertence ao projeto Rascunho.SHARED
+// Caminho correto: Rascunho.Shared/DTOs/UsuarioDTOs.cs
+// NÃO colocar em Rascunho/DTOs/ — lá não existe e o compilador não o encontra.
+namespace Rascunho.Shared.DTOs;
 
-public record CriarUsuarioRequest(string Nome, string Email, string Senha, string Tipo);
+/// <summary>
+/// Request de criação de usuário.
+///
+/// CAMPOS OBRIGATÓRIOS PARA TODOS:
+///   Nome, Email, Senha, Tipo, DataNascimento
+///
+/// CAMPOS OPCIONAIS PARA TODOS:
+///   Telefone, FotoUrl, Cpf
+///
+/// CAMPOS OBRIGATÓRIOS POR TIPO:
+///   Professor → RitmosIdHash (pelo menos 1)
+///   Bolsista  → PapelDominante + DiaObrigatorio1 + DiaObrigatorio2
+/// </summary>
+public record CriarUsuarioRequest(
+    string Nome,
+    string Email,
+    string Senha,
+    string Tipo,
+    DateOnly DataNascimento,
+
+    // Opcionais para todos os perfis
+    string? Telefone,
+    string? FotoUrl,
+    string? Cpf,
+
+    // Apenas para Professor
+    List<string>? RitmosIdHash,
+
+    // Apenas para Bolsista
+    string? PapelDominante,   // "Condutor" | "Conduzido" | "Ambos"
+    int? DiaObrigatorio1,  // 0=Dom ... 6=Sáb
+    int? DiaObrigatorio2
+);
+
 public record EditarPerfilRequest(string NomeSocial, string Biografia, string FotoUrl);
-public record ObterUsuarioResponse(string IdHash, string Nome, string Email, string Tipo, string NomeSocial, string Biografia, string FotoUrl, bool Ativo);
+
+public record ObterUsuarioResponse(
+    string IdHash,
+    string Nome,
+    string Email,
+    string Tipo,
+    string NomeSocial,
+    string Biografia,
+    string FotoUrl,
+    bool Ativo,
+    string? Telefone,
+    DateOnly DataNascimento,
+    string? Cpf            // Retornado formatado: "123.456.789-01"
+);
+
 public record LoginRequest(string Email, string Senha);
 public record LoginResponse(string Token, string Nome, string Tipo, string FotoUrl);
+
+/// <summary>
+/// Retornado pelo POST /api/upload/foto.
+/// O frontend salva a Url e a inclui no campo FotoUrl ao criar o usuário.
+/// </summary>
+public record UploadFotoResponse(
+    string Url,           // http://IP:8080/uploads/fotos/uuid.jpg
+    string NomeArquivo,
+    long TamanhoBytes
+);
