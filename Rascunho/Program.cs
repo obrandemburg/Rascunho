@@ -97,14 +97,14 @@ using (var scope = app.Services.CreateScope())
 app.UseExceptionHandler();
 
 // Scalar/OpenAPI apenas em desenvolvimento — evita exposição em produção
-if (app.Environment.IsDevelopment())
-{
+//if (app.Environment.IsDevelopment())
+//{
     app.MapOpenApi();
     app.MapScalarApiReference(options =>
         options.WithTitle("Ponto da Dança API")
                .WithTheme(ScalarTheme.DeepSpace)
                .WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Axios));
-}
+//}
 
 app.UseCors("PermitirFrontend");
 app.UseAuthentication();
