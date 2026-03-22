@@ -1,5 +1,6 @@
 ﻿using HashidsNet;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Rascunho.Data;
 using Rascunho.Entities;
 using Rascunho.Exceptions;
@@ -12,23 +13,19 @@ public class AulaParticularService
 {
     private readonly AppDbContext _context;
     private readonly IHashids _hashids;
+    private readonly IConfiguration _configuration;
 
-    public AulaParticularService(AppDbContext context, IHashids hashids)
+    public AulaParticularService(AppDbContext context, IHashids hashids, IConfiguration configuration)
     {
         _context = context;
         _hashids = hashids;
+        _configuration = configuration;
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    // SOLICITAR AULA PARTICULAR (aluno envia pedido ao professor)
-    //
-    // CORREÇÕES neste método:
-    // 1. RN-AP06: Adicionada verificação de choque de horário para o ALUNO
-    //    (antes só era verificado para o professor na aceitação)
-    // 2. OTIMIZAÇÃO: Os 3 LoadAsync separados foram substituídos por uma única
-    //    query com Include — reduz roundtrips ao banco de 3 para 1
-    // ──────────────────────────────────────────────────────────────────────
-    public async Task<ObterAulaParticularResponse> SolicitarAulaAsync(int alunoId, SolicitarAulaParticularRequest request)
+    // ── SOLICITAR ────────────────────────────────────────────────
+    public async Task<ObterAulaParticularResponse> SolicitarAulaAsync(
+        int alunoId,
+        SolicitarAulaParticularRequest request)
     {
         var profDecoded = _hashids.Decode(request.ProfessorIdHash);
         var ritmoDecoded = _hashids.Decode(request.RitmoIdHash);
@@ -40,51 +37,67 @@ public class AulaParticularService
         if (professor == null || professor.Tipo != "Professor")
             throw new RegraNegocioException("Professor não encontrado ou inválido.");
 
-        // RN-AP06: Verifica se o ALUNO já tem outra aula particular ACEITA no mesmo horário
-        // Antes desta correção, um aluno podia ter múltiplas aulas particulares sobrepostas.
-        // Só verificamos aulas com Status == "Aceita" — "Pendente" não bloqueia (pode ser recusada).
+        // RN-BOL05: Bolsista não pode agendar dança solo no dia obrigatório
+        var bolsista = await _context.Usuarios
+            .OfType<Bolsista>()
+            .FirstOrDefaultAsync(b => b.Id == alunoId);
+
+        bool ehBolsista = bolsista != null;
+
+        if (ehBolsista)
+        {
+            var ritmo = await _context.Ritmos.FindAsync(ritmoDecoded[0])
+                ?? throw new RegraNegocioException("Ritmo não encontrado.");
+
+            bool ehSolo = ritmo.Modalidade.Equals("Dança solo", StringComparison.OrdinalIgnoreCase);
+
+            if (ehSolo)
+            {
+                var diaDaAula = request.DataHoraInicio.DayOfWeek;
+                bool eDiaObrigatorio =
+                    (bolsista!.DiaObrigatorio1.HasValue && bolsista.DiaObrigatorio1.Value == diaDaAula) ||
+                    (bolsista.DiaObrigatorio2.HasValue && bolsista.DiaObrigatorio2.Value == diaDaAula);
+
+                if (eDiaObrigatorio)
+                    throw new RegraNegocioException(
+                        "Bolsistas não podem agendar aulas particulares de dança solo " +
+                        "nos seus dias obrigatórios. [RN-BOL05]");
+            }
+        }
+
+        // RN-AP06: Aluno já tem outra particular aceita no mesmo horário?
         bool choqueAluno = await _context.AulasParticulares.AnyAsync(a =>
             a.AlunoId == alunoId &&
             a.Status == "Aceita" &&
-            request.DataHoraInicio < a.DataHoraFim &&   // nova começa antes da existente terminar
-            request.DataHoraFim > a.DataHoraInicio);  // nova termina depois da existente começar
+            request.DataHoraInicio < a.DataHoraFim &&
+            request.DataHoraFim > a.DataHoraInicio);
 
         if (choqueAluno)
             throw new RegraNegocioException(
-                "Você já possui uma aula particular agendada neste horário. " +
-                "Verifique seus agendamentos antes de fazer uma nova solicitação.");
+                "Você já possui uma aula particular agendada neste horário.");
 
-        // Cria a entidade — começa sempre como "Pendente"
+        // RN-BOL03: Calcula valor com desconto para bolsistas
+        decimal precoPadrao = _configuration.GetValue<decimal>("AulaParticular:PrecoPadrao", 80.00m);
+        decimal valorCobrado = ehBolsista ? precoPadrao * 0.5m : precoPadrao;
+
         var aula = new AulaParticular(
-            alunoId,
-            profDecoded[0],
-            ritmoDecoded[0],
-            request.DataHoraInicio,
-            request.DataHoraFim,
-            request.Observacao);
+            alunoId, profDecoded[0], ritmoDecoded[0],
+            request.DataHoraInicio, request.DataHoraFim,
+            request.Observacao, valorCobrado);
 
         _context.AulasParticulares.Add(aula);
         await _context.SaveChangesAsync();
 
-        // OTIMIZAÇÃO: Antes existiam 3 LoadAsync separados, gerando 3 queries SQL distintas:
-        //   await _context.Entry(aula).Reference(a => a.Professor).LoadAsync();  // Query 1
-        //   await _context.Entry(aula).Reference(a => a.Ritmo).LoadAsync();      // Query 2
-        //   await _context.Entry(aula).Reference(a => a.Aluno).LoadAsync();      // Query 3
-        //
-        // Agora uma única query com JOINs faz o mesmo trabalho:
         var aulaCompleta = await _context.AulasParticulares
-            .Include(a => a.Professor) // JOIN com tabela Usuarios para o professor
-            .Include(a => a.Aluno)     // JOIN com tabela Usuarios para o aluno
-            .Include(a => a.Ritmo)     // JOIN com tabela Ritmos
+            .Include(a => a.Professor)
+            .Include(a => a.Aluno)
+            .Include(a => a.Ritmo)
             .FirstAsync(a => a.Id == aula.Id);
 
         return aulaCompleta.ToResponse(_hashids);
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    // RESPONDER SOLICITAÇÃO (professor aceita ou recusa)
-    // Sem alterações — lógica já correta
-    // ──────────────────────────────────────────────────────────────────────
+    // ── RESPONDER SOLICITAÇÃO ─────────────────────────────────────
     public async Task ResponderSolicitacaoAsync(int professorLogadoId, int aulaId, bool aceitar)
     {
         var aula = await _context.AulasParticulares.FindAsync(aulaId)
@@ -102,13 +115,12 @@ public class AulaParticularService
         }
         else
         {
-            // Verifica choque com outras aulas particulares do professor
             bool choqueAulaParticular = await _context.AulasParticulares.AnyAsync(a =>
                 a.ProfessorId == professorLogadoId &&
                 a.Status == "Aceita" &&
-                (aula.DataHoraInicio < a.DataHoraFim && aula.DataHoraFim > a.DataHoraInicio));
+                aula.DataHoraInicio < a.DataHoraFim &&
+                aula.DataHoraFim > a.DataHoraInicio);
 
-            // Verifica choque com turmas regulares do professor (RN-AP01)
             var diaDaSemanaAula = aula.DataHoraInicio.DayOfWeek;
             var horarioInicioAula = aula.DataHoraInicio.TimeOfDay;
             var horarioFimAula = aula.DataHoraFim.TimeOfDay;
@@ -119,10 +131,12 @@ public class AulaParticularService
                     tp.ProfessorId == professorLogadoId &&
                     tp.Turma.Ativa &&
                     tp.Turma.DiaDaSemana == diaDaSemanaAula &&
-                    (horarioInicioAula < tp.Turma.HorarioFim && horarioFimAula > tp.Turma.HorarioInicio));
+                    horarioInicioAula < tp.Turma.HorarioFim &&
+                    horarioFimAula > tp.Turma.HorarioInicio);
 
             if (choqueAulaParticular || choqueTurma)
-                throw new RegraNegocioException("Você já tem uma aula particular ou turma marcada para este horário.");
+                throw new RegraNegocioException(
+                    "Você já tem uma aula ou turma neste horário.");
 
             aula.Aceitar();
         }
@@ -130,29 +144,12 @@ public class AulaParticularService
         await _context.SaveChangesAsync();
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    // CANCELAR AULA PARTICULAR
-    //
-    // CORREÇÃO: Janela de cancelamento alterada de 24h para 12h.
-    //
-    // Antes:  if (aula.AlunoId == usuarioLogadoId && horasParaAula < 24)
-    // Depois: if (aula.AlunoId == usuarioLogadoId && horasParaAula < 12)
-    //
-    // Por que essa regra existe:
-    // - Com menos de 12h, o professor provavelmente já organizou seu tempo.
-    // - Cancelamentos de última hora são prejudiciais para a escola.
-    // - Professor e staff (Recepção/Gerente) podem cancelar a qualquer momento (RN-AP04)
-    //   pois há sempre um motivo legítimo (doença, emergência, etc.)
-    // ──────────────────────────────────────────────────────────────────────
+    // ── CANCELAR ─────────────────────────────────────────────────
     public async Task CancelarAulaAsync(int usuarioLogadoId, string roleLogado, int aulaId)
     {
         var aula = await _context.AulasParticulares.FindAsync(aulaId)
             ?? throw new RegraNegocioException("Aula não encontrada.");
 
-        // Verifica se o usuário tem permissão para cancelar:
-        // - O próprio aluno pode cancelar sua aula
-        // - O próprio professor pode cancelar a aula dele
-        // - Recepção e Gerente podem cancelar qualquer aula
         bool temPermissao = aula.AlunoId == usuarioLogadoId
             || aula.ProfessorId == usuarioLogadoId
             || roleLogado == "Recepção"
@@ -166,24 +163,106 @@ public class AulaParticularService
 
         var horasParaAula = (aula.DataHoraInicio - DateTime.UtcNow).TotalHours;
 
-        // CORREÇÃO: Era 24h, agora é 12h conforme RN-AP03 do planejamento.
-        // A regra se aplica APENAS para o aluno/bolsista — não para professor nem staff.
-        // Professor (RN-AP04) e staff podem cancelar a qualquer momento.
         if (aula.AlunoId == usuarioLogadoId && horasParaAula < 12)
-        {
             throw new RegraNegocioException(
-                "O cancelamento deve ser feito com pelo menos 12 horas de antecedência. " +
-                "Entre em contato diretamente com o professor ou com a recepção.");
-        }
+                "Cancelamento com menos de 12 horas de antecedência não é permitido. " +
+                "Entre em contato com o professor ou a recepção. [RN-AP03]");
 
         aula.Cancelar();
         await _context.SaveChangesAsync();
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    // LISTAR MINHAS AULAS (sem alterações)
-    // ──────────────────────────────────────────────────────────────────────
-    public async Task<IEnumerable<ObterAulaParticularResponse>> ListarMinhasAulasAsync(int usuarioId, string role)
+    // ── REAGENDAR ────────────────────────────────────────────────
+    // NOVO Sprint 4
+    //
+    // Fluxo de reagendamento:
+    //   1. Valida que o aluno é o dono da aula
+    //   2. Valida status (só Pendente ou Aceita podem ser reagendadas)
+    //   3. Aplica regra de 12h para aulas Aceitas (igual ao cancelar)
+    //   4. Valida que não há choque para o novo horário
+    //   5. Cancela a aula atual
+    //   6. Cria nova solicitação com os mesmos professor/ritmo/valor
+    //      mas com as novas datas — volta para "Pendente"
+    //
+    // Por que volta para "Pendente"?
+    //   O professor aceitou o horário original, não o novo. Para garantir
+    //   que ele está ciente da mudança, precisa aceitar novamente.
+    // ────────────────────────────────────────────────────────────
+    public async Task<ObterAulaParticularResponse> ReagendarAulaAsync(
+        int alunoId,
+        int aulaId,
+        ReagendarAulaParticularRequest request)
+    {
+        var aulaAtual = await _context.AulasParticulares
+            .FirstOrDefaultAsync(a => a.Id == aulaId)
+            ?? throw new RegraNegocioException("Aula não encontrada.");
+
+        if (aulaAtual.AlunoId != alunoId)
+            throw new RegraNegocioException("Sem permissão para reagendar esta aula.");
+
+        if (aulaAtual.Status != "Aceita" && aulaAtual.Status != "Pendente")
+            throw new RegraNegocioException(
+                "Só é possível reagendar aulas com status Pendente ou Aceita.");
+
+        // Aplica regra de 12h apenas para aulas já aceitas pelo professor
+        if (aulaAtual.Status == "Aceita")
+        {
+            var horasParaAula = (aulaAtual.DataHoraInicio - DateTime.UtcNow).TotalHours;
+            if (horasParaAula < 12)
+                throw new RegraNegocioException(
+                    "Não é possível reagendar com menos de 12 horas de antecedência. " +
+                    "Entre em contato diretamente com o professor. [RN-AP03]");
+        }
+
+        // Validação das novas datas
+        if (request.NovaDataHoraInicio >= request.NovaDataHoraFim)
+            throw new RegraNegocioException(
+                "O horário de início deve ser anterior ao horário de fim.");
+
+        if (request.NovaDataHoraInicio <= DateTime.UtcNow)
+            throw new RegraNegocioException("O novo horário deve ser no futuro.");
+
+        // RN-AP06: Verifica choque no NOVO horário (excluindo a aula atual)
+        bool choqueAluno = await _context.AulasParticulares.AnyAsync(a =>
+            a.AlunoId == alunoId &&
+            a.Id != aulaId &&
+            a.Status == "Aceita" &&
+            request.NovaDataHoraInicio < a.DataHoraFim &&
+            request.NovaDataHoraFim > a.DataHoraInicio);
+
+        if (choqueAluno)
+            throw new RegraNegocioException(
+                "Você já possui uma aula agendada no novo horário solicitado.");
+
+        // Cancela a aula atual
+        aulaAtual.Cancelar();
+
+        // Cria nova solicitação com as mesmas características,
+        // mas novas datas e mantendo o ValorCobrado original
+        var novaAula = new AulaParticular(
+            alunoId,
+            aulaAtual.ProfessorId,
+            aulaAtual.RitmoId,
+            request.NovaDataHoraInicio,
+            request.NovaDataHoraFim,
+            aulaAtual.ObservacaoAluno,
+            aulaAtual.ValorCobrado);  // Mantém o preço original
+
+        _context.AulasParticulares.Add(novaAula);
+        await _context.SaveChangesAsync();
+
+        var aulaCompleta = await _context.AulasParticulares
+            .Include(a => a.Professor)
+            .Include(a => a.Aluno)
+            .Include(a => a.Ritmo)
+            .FirstAsync(a => a.Id == novaAula.Id);
+
+        return aulaCompleta.ToResponse(_hashids);
+    }
+
+    // ── LISTAR MINHAS AULAS ───────────────────────────────────────
+    public async Task<IEnumerable<ObterAulaParticularResponse>> ListarMinhasAulasAsync(
+        int usuarioId, string role)
     {
         var query = _context.AulasParticulares
             .Include(a => a.Professor)
@@ -195,7 +274,6 @@ public class AulaParticularService
             query = query.Where(a => a.AlunoId == usuarioId);
         else if (role == "Professor")
             query = query.Where(a => a.ProfessorId == usuarioId);
-        // Recepção e Gerente veem todas → sem filtro adicional
 
         var aulas = await query.OrderByDescending(a => a.DataHoraInicio).ToListAsync();
         return aulas.Select(a => a.ToResponse(_hashids));

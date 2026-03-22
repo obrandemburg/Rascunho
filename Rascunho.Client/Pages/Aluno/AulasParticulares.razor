@@ -1,14 +1,20 @@
 ﻿@* 
-  ROTA: /aulas-particulares
-  ACESSO: Aluno
-  
-  CORREÇÃO: MudChip T="string" em todos os usos do componente.
+  ARQUIVO: Rascunho.Client/Pages/Aluno/AulasParticulares.razor
+  ROTA:    /aulas-particulares
+  ACESSO:  Aluno, Bolsista
+
+  NOVIDADES Sprint 4:
+  - Exibe ValorCobrado com indicador de desconto para bolsistas
+  - Botão "Reagendar" para aulas Pendentes ou Aceitas
+    → Abre dialog com seletor de data e horário
+    → Chama PUT /api/aulas-particulares/{id}/reagendar
 *@
 
 @page "/aulas-particulares"
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using System.Net.Http.Json
-@attribute [Authorize(Roles = "Aluno")]
+@attribute [Authorize(Roles = "Aluno,Bolsista")]
 @inject HttpClient Http
 @inject ISnackbar Snackbar
 
@@ -20,9 +26,7 @@
 </MudText>
 
 <MudGrid>
-    @* ============================================================
-       COLUNA ESQUERDA: Formulário de solicitação
-    ============================================================ *@
+    @* ── COLUNA ESQUERDA: Formulário de solicitação ─────────────── *@
     <MudItem xs="12" md="5">
         <MudPaper Elevation="3" Class="pa-6 rounded-xl">
             <MudText Typo="Typo.h6" Class="mb-4">Solicitar Nova Aula</MudText>
@@ -36,6 +40,19 @@
                     @foreach (var prof in professores)
                     {
                         <MudSelectItem T="string" Value="@prof.IdHash">@prof.Nome</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudSelect T="string"
+                           @bind-Value="novaAula.RitmoIdHash"
+                           Label="Ritmo"
+                           Variant="Variant.Outlined"
+                           Class="mb-4">
+                    @foreach (var ritmo in ritmos)
+                    {
+                        <MudSelectItem T="string" Value="@ritmo.IdHash">
+                            @ritmo.Nome (@ritmo.Modalidade)
+                        </MudSelectItem>
                     }
                 </MudSelect>
 
@@ -58,6 +75,25 @@
                                Class="mb-4"
                                AmPm="false" />
 
+                @* Preview do valor que será cobrado *@
+                @if (!string.IsNullOrEmpty(novaAula.RitmoIdHash))
+                {
+                    <MudAlert Severity="@(ehBolsista? Severity.Success: Severity.Info)"
+                              Dense="true" Class="mb-4">
+                        @if (ehBolsista)
+                        {
+                            <span>
+                                💰 Seu valor: <b>R$ @((precoBase * 0.5m).ToString("F2"))</b>
+                                <small>(50% de desconto bolsista)</small>
+                            </span>
+                        }
+                        else
+                        {
+                            <span>💰 Valor: <b>R$ @precoBase.ToString("F2")</b></span>
+                        }
+                    </MudAlert>
+                }
+
                 <MudButton ButtonType="ButtonType.Submit"
                            Variant="Variant.Filled"
                            Color="Color.Primary"
@@ -69,9 +105,7 @@
         </MudPaper>
     </MudItem>
 
-    @* ============================================================
-       COLUNA DIREITA: Lista de aulas existentes
-    ============================================================ *@
+    @* ── COLUNA DIREITA: Lista de aulas existentes ───────────────── *@
     <MudItem xs="12" md="7">
         @if (carregando)
         {
@@ -91,16 +125,25 @@
                     <MudCardHeader>
                         <CardHeaderContent>
                             <MudText Typo="Typo.subtitle1">
-                                Prof. @aula.ProfessorNome
+                                Prof. <b>@aula.ProfessorNome</b> — @aula.RitmoNome
                             </MudText>
-                            <MudText Typo="Typo.caption">
-                                @aula.DataHoraInicio.ToString("dd/MM/yyyy — HH:mm")
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                📅 @aula.DataHoraInicio.ToString("dd/MM/yyyy — HH:mm")
+                                até @aula.DataHoraFim.ToString("HH:mm")
+                            </MudText>
+                            @* NOVO: Exibição do valor cobrado *@
+                            <MudText Typo="Typo.caption"
+                                     Style="@(ehBolsista && aula.ValorCobrado < precoBase ? "color: #4caf50; font-weight: bold;" : "")">
+                                💰 @(aula.ValorCobrado == 0
+                                                                       ? "Gratuito"
+                                                                       : $"R$ {aula.ValorCobrado:F2}")
+                                @if (ehBolsista && aula.ValorCobrado < precoBase)
+                                {
+                                    <text> (50% desconto bolsista)</text>
+                                }
                             </MudText>
                         </CardHeaderContent>
                         <CardHeaderActions>
-                            @*
-                              CORREÇÃO: T="string" obrigatório no MudBlazor v6+
-                            *@
                             <MudChip T="string"
                                      Size="Size.Small"
                                      Color="@StatusCor(aula.Status)"
@@ -109,45 +152,132 @@
                             </MudChip>
                         </CardHeaderActions>
                     </MudCardHeader>
-                    @if (aula.Status == "Pendente" || aula.Status == "Aceita")
-                    {
-                        <MudCardActions>
-                            <MudButton Color="Color.Error"
+                    <MudCardActions Class="justify-space-between">
+                        <MudButton Color="Color.Error"
+                                   Variant="Variant.Text"
+                                   Disabled="@(aula.Status != "Pendente" && aula.Status != "Aceita")"
+                                   OnClick="@(() => Cancelar(aula.IdHash))">
+                            Cancelar
+                        </MudButton>
+
+                        @* NOVO: Botão Reagendar *@
+                        @if (aula.Status == "Pendente" || aula.Status == "Aceita")
+                        {
+                            <MudButton Color="Color.Info"
                                        Variant="Variant.Text"
-                                       OnClick="@(() => Cancelar(aula.IdHash))">
-                                Cancelar
+                                       StartIcon="@Icons.Material.Filled.EventRepeat"
+                                       OnClick="@(() => AbrirDialogReagendar(aula))">
+                                Reagendar
                             </MudButton>
-                        </MudCardActions>
-                    }
+                        }
+                    </MudCardActions>
                 </MudCard>
             }
         }
     </MudItem>
 </MudGrid>
 
+@* ── DIALOG DE REAGENDAMENTO ─────────────────────────────────────── *@
+@if (aulaParaReagendar != null)
+{
+    <MudDialog @bind-IsVisible="dialogReagendarAberto"
+               Options="@(new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true })">
+        <TitleContent>
+            <MudText Typo="Typo.h6">
+                Reagendar — Prof. @aulaParaReagendar.ProfessorNome
+            </MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">
+                A aula reagendada volta para <b>Pendente</b> e o professor
+                precisará aceitar o novo horário.
+            </MudAlert>
+
+            <MudDatePicker @bind-Date="novaDataReagendar"
+                           Label="Nova Data"
+                           Variant="Variant.Outlined"
+                           DateFormat="dd/MM/yyyy"
+                           MinDate="@DateTime.Today.AddDays(1)"
+                           Class="mb-4" />
+
+            <MudTimePicker @bind-Time="novaHoraInicioReagendar"
+                           Label="Novo Horário de Início"
+                           Variant="Variant.Outlined"
+                           AmPm="false"
+                           Class="mb-4" />
+
+            <MudTimePicker @bind-Time="novaHoraFimReagendar"
+                           Label="Novo Horário de Fim"
+                           Variant="Variant.Outlined"
+                           AmPm="false"
+                           Class="mb-4" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => dialogReagendarAberto = false)"
+                       Variant="Variant.Text">Cancelar</MudButton>
+            <MudButton OnClick="ConfirmarReagendar"
+                       Variant="Variant.Filled"
+                       Color="Color.Info"
+                       Disabled="@(novaDataReagendar == null || novaHoraInicioReagendar == null || novaHoraFimReagendar == null || processando)">
+                @(processando ? "Reagendando..." : "Confirmar")
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
     private bool carregando = true;
     private bool enviando = false;
+    private bool processando = false;
+    private bool dialogReagendarAberto = false;
+    private bool ehBolsista = false;
+    private decimal precoBase = 80.00m;
+
     private List<AulaParticularDto> aulasParticulares = new();
     private List<ProfessorSimples> professores = new();
+    private List<RitmoSimples> ritmos = new();
+    private AulaParticularDto? aulaParaReagendar;
 
     private SolicitarAulaRequest novaAula = new();
     private DateTime? dataInicio;
     private TimeSpan? horaInicio;
     private TimeSpan? horaFim;
+    private DateTime? novaDataReagendar;
+    private TimeSpan? novaHoraInicioReagendar;
+    private TimeSpan? novaHoraFimReagendar;
 
     protected override async Task OnInitializedAsync()
     {
-        // Carrega professores e aulas em paralelo
-        var profTask = Http.GetFromJsonAsync<List<ProfessorSimples>>(
-            "api/usuarios/tipo/Professor/ativos");
-        var aulasTask = Http.GetFromJsonAsync<List<AulaParticularDto>>(
-            "api/aulas-particulares/minhas");
+        // Verifica role do usuário para exibir preços corretos
+        if (AuthStateTask != null)
+        {
+            var authState = await AuthStateTask;
+            ehBolsista = authState.User.IsInRole("Bolsista");
+        }
 
-        await Task.WhenAll(profTask, aulasTask);
+        // Carrega dados em paralelo
+        var profTask = Http.GetFromJsonAsync<List<ProfessorSimples>>("api/usuarios/tipo/Professor/ativos/lista");
+        var ritmoTask = Http.GetFromJsonAsync<List<RitmoSimples>>("api/ritmos/listar");
+        var aulasTask = Http.GetFromJsonAsync<List<AulaParticularDto>>("api/aulas-particulares/minhas");
+        var configTask = Http.GetFromJsonAsync<ConfigDto>("api/gerente/configuracoes");
+
+        await Task.WhenAll(profTask, ritmoTask, aulasTask);
 
         professores = profTask.Result ?? new();
+        ritmos = (ritmoTask.Result ?? new()).Where(r => r.Ativo).ToList();
         aulasParticulares = aulasTask.Result ?? new();
+
+        // Tenta obter preço atualizado (pode falhar se não for Gerente)
+        try
+        {
+            var config = await configTask;
+            if (config != null) precoBase = config.PrecoAulaParticular;
+        }
+        catch { /* usa preço padrão */ }
+
         carregando = false;
     }
 
@@ -158,26 +288,29 @@
         enviando = true;
         try
         {
-            novaAula.DataHoraInicio = dataInicio.Value.Date + horaInicio.Value;
-            novaAula.DataHoraFim = dataInicio.Value.Date + horaFim.Value;
+            var payload = new
+            {
+                novaAula.ProfessorIdHash,
+                novaAula.RitmoIdHash,
+                DataHoraInicio = dataInicio.Value.Date + horaInicio.Value,
+                DataHoraFim = dataInicio.Value.Date + horaFim.Value,
+                Observacao = ""
+            };
 
-            var response = await Http.PostAsJsonAsync(
-                "api/aulas-particulares/solicitar", novaAula);
+            var response = await Http.PostAsJsonAsync("api/aulas-particulares/solicitar", payload);
 
             if (response.IsSuccessStatusCode)
             {
-                Snackbar.Add("Solicitação enviada! Aguarde o professor aceitar.", Severity.Success);
+                Snackbar.Add("Solicitação enviada! Aguarde o professor aceitar. ✅", Severity.Success);
                 novaAula = new();
-                dataInicio = null;
-                horaInicio = null;
-                horaFim = null;
+                dataInicio = null; horaInicio = null; horaFim = null;
                 aulasParticulares = await Http.GetFromJsonAsync<List<AulaParticularDto>>(
                     "api/aulas-particulares/minhas") ?? new();
             }
             else
             {
                 var erro = await response.Content.ReadAsStringAsync();
-                Snackbar.Add($"Erro: {erro}", Severity.Error);
+                Snackbar.Add(erro, Severity.Error);
             }
         }
         finally { enviando = false; }
@@ -185,9 +318,7 @@
 
     private async Task Cancelar(string idHash)
     {
-        var response = await Http.DeleteAsync(
-            $"api/aulas-particulares/{idHash}/cancelar");
-
+        var response = await Http.DeleteAsync($"api/aulas-particulares/{idHash}/cancelar");
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Aula cancelada.", Severity.Info);
@@ -201,32 +332,94 @@
         }
     }
 
+    private void AbrirDialogReagendar(AulaParticularDto aula)
+    {
+        aulaParaReagendar = aula;
+        novaDataReagendar = null;
+        novaHoraInicioReagendar = aula.DataHoraInicio.TimeOfDay;
+        novaHoraFimReagendar = aula.DataHoraFim.TimeOfDay;
+        dialogReagendarAberto = true;
+    }
+
+    private async Task ConfirmarReagendar()
+    {
+        if (aulaParaReagendar == null || novaDataReagendar == null ||
+            novaHoraInicioReagendar == null || novaHoraFimReagendar == null) return;
+
+        processando = true;
+        try
+        {
+            var decodedHash = aulaParaReagendar.IdHash;
+            var payload = new
+            {
+                NovaDataHoraInicio = novaDataReagendar.Value.Date + novaHoraInicioReagendar.Value,
+                NovaDataHoraFim = novaDataReagendar.Value.Date + novaHoraFimReagendar.Value
+            };
+
+            var response = await Http.PutAsJsonAsync(
+                $"api/aulas-particulares/{decodedHash}/reagendar", payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(
+                    "Aula reagendada! O professor receberá a nova solicitação. ✅",
+                    Severity.Success);
+                dialogReagendarAberto = false;
+                aulasParticulares = await Http.GetFromJsonAsync<List<AulaParticularDto>>(
+                    "api/aulas-particulares/minhas") ?? new();
+            }
+            else
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(msg, Severity.Warning);
+            }
+        }
+        finally { processando = false; }
+    }
+
     private Color StatusCor(string status) => status switch
     {
         "Aceita" => Color.Success,
         "Recusada" => Color.Error,
         "Cancelada" => Color.Default,
-        _ => Color.Warning   // Pendente
+        _ => Color.Warning  // Pendente
     };
 
     public class SolicitarAulaRequest
     {
         public string ProfessorIdHash { get; set; } = "";
-        public DateTime DataHoraInicio { get; set; }
-        public DateTime DataHoraFim { get; set; }
+        public string RitmoIdHash { get; set; } = "";
     }
 
     public class AulaParticularDto
     {
         public string IdHash { get; set; } = "";
+        public string ProfessorIdHash { get; set; } = "";
         public string ProfessorNome { get; set; } = "";
+        public string RitmoNome { get; set; } = "";
         public DateTime DataHoraInicio { get; set; }
+        public DateTime DataHoraFim { get; set; }
         public string Status { get; set; } = "";
+        public decimal ValorCobrado { get; set; }    // NOVO Sprint 3/4
     }
 
     public class ProfessorSimples
     {
         public string IdHash { get; set; } = "";
         public string Nome { get; set; } = "";
+    }
+
+    public class RitmoSimples
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string Modalidade { get; set; } = "";
+        public bool Ativo { get; set; }
+    }
+
+    // Para leitura do preço atual (tentativa)
+    public class ConfigDto
+    {
+        public decimal PrecoAulaParticular { get; set; }
     }
 }

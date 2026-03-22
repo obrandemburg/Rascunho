@@ -237,20 +237,67 @@ public class BolsistaService
             _hashids.Encode(turma.Id), condutores, conduzidos, status, quantidadeFaltante, sugestoes);
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // RELATÓRIO DE HORAS SEMANAIS — CORRIGIDO (RN-BOL09)
+    //
+    // PROBLEMA ANTERIOR: usava apenas Matriculas para calcular horas.
+    // Bolsistas em turmas de SALÃO não têm Matricula formal (RN-BOL09),
+    // então suas horas de salão nunca eram contabilizadas. Bug crítico.
+    //
+    // CORREÇÃO:
+    //   → Horas de turmas SOLO: via Matriculas (bolsista é formalmente matriculado)
+    //   → Horas de turmas de SALÃO: via RegistroPresença da semana atual
+    //     (bolsista frequenta sem matrícula; a chamada registra a presença)
+    // ──────────────────────────────────────────────────────────────────────
     public async Task<RelatorioHorasBolsistaResponse> RelatorioHorasSemanaisAsync(int bolsistaId)
     {
         var bolsista = await _context.Usuarios.FindAsync(bolsistaId)
             ?? throw new RegraNegocioException("Bolsista não encontrado.");
 
-        var matriculas = await _context.Matriculas
-            .Include(m => m.Turma)
-            .Where(m => m.AlunoId == bolsistaId && m.Turma.Ativa)
+        // ── 1. Horas de turmas SOLO (via Matriculas) ─────────────────
+        // Bolsista SE MATRICULA em turmas de dança solo — as horas vêm da grade
+        var matriculasSolo = await _context.Matriculas
+            .Include(m => m.Turma).ThenInclude(t => t.Ritmo)
+            .Where(m => m.AlunoId == bolsistaId &&
+                        m.Turma.Ativa &&
+                        m.Turma.Ritmo.Modalidade.ToLower() == "dança solo")
             .ToListAsync();
 
-        double totalHoras = matriculas.Sum(mat => (mat.Turma.HorarioFim - mat.Turma.HorarioInicio).TotalHours);
+        // Soma a duração de cada turma solo (HorarioFim - HorarioInicio em horas)
+        double horasSolo = matriculasSolo.Sum(m =>
+            (m.Turma.HorarioFim - m.Turma.HorarioInicio).TotalHours);
+
+        // ── 2. Horas de turmas de SALÃO (via RegistroPresença) ───────
+        // Bolsista NÃO se matricula em salão — presença é via chamada do professor.
+        // Contamos apenas a semana corrente para mostrar o progresso atual.
+        //
+        // "Início da semana" = domingo anterior ao dia de hoje.
+        // DayOfWeek.Sunday = 0, então subtrai 0 a 6 dias para achar o domingo.
+        var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
+        var inicioSemana = hoje.AddDays(-(int)hoje.DayOfWeek);   // retrocede ao Domingo
+        var fimSemana = inicioSemana.AddDays(7);                  // próximo Domingo (exclusive)
+
+        var presencasSalao = await _context.RegistrosPresencas
+            .Include(rp => rp.Turma).ThenInclude(t => t.Ritmo)
+            .Where(rp => rp.AlunoId == bolsistaId &&
+                         rp.Presente &&                           // só presença confirmada
+                         rp.DataAula >= inicioSemana &&
+                         rp.DataAula < fimSemana &&
+                         rp.Turma.Ritmo.Modalidade.ToLower() == "dança de salão")
+            .ToListAsync();
+
+        double horasSalao = presencasSalao.Sum(rp =>
+            (rp.Turma.HorarioFim - rp.Turma.HorarioInicio).TotalHours);
+
+        // ── 3. Total e cálculo de meta ────────────────────────────────
+        double totalHoras = horasSolo + horasSalao;
+        const double metaSemanal = 6.0;
 
         return new RelatorioHorasBolsistaResponse(
-            _hashids.Encode(bolsista.Id), bolsista.Nome,
-            Math.Round(totalHoras, 1), Math.Max(0, 6 - totalHoras), totalHoras >= 6);
+            _hashids.Encode(bolsista.Id),
+            bolsista.Nome,
+            Math.Round(totalHoras, 1),
+            Math.Max(0, metaSemanal - totalHoras),
+            totalHoras >= metaSemanal);
     }
 }

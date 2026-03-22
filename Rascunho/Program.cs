@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿// Localização: Rascunho/Program.cs
+using FluentValidation;
 using HashidsNet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -31,9 +32,12 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
 
-var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key ausente.");
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer ausente.");
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new InvalidOperationException("Jwt:Audience ausente.");
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key ausente.");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"]
+    ?? throw new InvalidOperationException("Jwt:Issuer ausente.");
+var jwtAudience = builder.Configuration["Jwt:Audience"]
+    ?? throw new InvalidOperationException("Jwt:Audience ausente.");
 var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -53,7 +57,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// ── Serviços ──────────────────────────────────────────────────────
+// ── Serviços de domínio ───────────────────────────────────────────
 builder.Services.AddScoped<UsuarioService>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<RitmoService>();
@@ -65,8 +69,12 @@ builder.Services.AddScoped<AulaParticularService>();
 builder.Services.AddScoped<BolsistaService>();
 builder.Services.AddScoped<EventoService>();
 builder.Services.AddScoped<AulaExperimentalService>();
-// NOVO Sprint 2
 builder.Services.AddScoped<ProfessorDisponibilidadeService>();
+builder.Services.AddScoped<ReposicaoService>();
+
+// ConfiguracaoService é Singleton porque mantém estado em memória
+// (as alterações feitas pelo Gerente devem persistir durante a sessão do servidor)
+builder.Services.AddSingleton<ConfiguracaoService>();
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
@@ -88,6 +96,7 @@ using (var scope = app.Services.CreateScope())
 
 app.UseExceptionHandler();
 
+// Scalar/OpenAPI apenas em desenvolvimento — evita exposição em produção
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -101,6 +110,7 @@ app.UseCors("PermitirFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
+// ── Mapeamento de endpoints ───────────────────────────────────────
 app.MapAuthEndpoints();
 app.MapUsuarioEndpoints();
 app.MapSalaEndpoints();
@@ -112,6 +122,8 @@ app.MapAulaParticularEndpoints();
 app.MapBolsistaEndpoints();
 app.MapEventoEndpoints();
 app.MapAulaExperimentalEndpoints();
-app.MapProfessorEndpoints(); // NOVO Sprint 2
+app.MapProfessorEndpoints();
+app.MapReposicaoEndpoints();
+app.MapGerenteEndpoints();  // NOVO Sprint 3
 
 app.Run();

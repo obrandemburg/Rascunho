@@ -192,5 +192,36 @@ public static class TurmaEndpoints
             return Results.Ok(new { Mensagem = "Sala trocada com sucesso!" });
         })
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
+        // Localização: Rascunho/Endpoints/TurmaEndpoints.cs
+        // ADICIONAR após o endpoint "7. TROCAR SALA"
+
+        // ══════════════════════════════════════════════════════════════════
+        // 8. ENCERRAR TURMA (RN-TUR04)
+        //
+        // PUT /api/turmas/{turmaIdHash}/encerrar
+        //
+        // Encerra a turma definitivamente.
+        // Cancela experimentais pendentes e reposições com ela como destino.
+        // Retorna quantos alunos foram afetados (para log e futura notificação push).
+        // ══════════════════════════════════════════════════════════════════
+        group.MapPut("/{turmaIdHash}/encerrar", async (
+            string turmaIdHash,
+            TurmaService turmaService,
+            IHashids hashids) =>
+        {
+            var decodedIds = hashids.Decode(turmaIdHash);
+            if (decodedIds.Length == 0)
+                return Results.BadRequest(new { erro = "ID da turma inválido." });
+
+            int totalAlunos = await turmaService.EncerrarTurmaAsync(decodedIds[0]);
+
+            return Results.Ok(new
+            {
+                Mensagem = $"Turma encerrada com sucesso. {totalAlunos} aluno(s) afetado(s). " +
+                           "Notificação push será enviada na Sprint 5.",
+                TotalAlunos = totalAlunos
+            });
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
     }
 }
