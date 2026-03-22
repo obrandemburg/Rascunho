@@ -31,6 +31,11 @@
 @inject HttpClient Http
 @inject ISnackbar Snackbar
 
+@* NOVO: IJSRuntime permite chamar funções JavaScript do Blazor.
+   Necessário para acionar programaticamente o <input type="file"> oculto,
+   já que Blazor não tem acesso direto ao DOM. *@
+@inject IJSRuntime JS
+
 <PageTitle>Criar Usuário — Ponto da Dança</PageTitle>
 
 <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-6 font-weight-bold">
@@ -63,9 +68,9 @@
 
                 <div>
                     @*
-                      InputFile oculto — o botão abaixo aciona via JavaScript.
-                      O id "inputFoto" é referenciado pelo onclick do botão.
-                      accept: restringe tipos visíveis no seletor de arquivos do SO.
+                      InputFile oculto — acionado via JavaScript (fileUpload.abrirSeletor).
+                      O id "inputFoto" é passado para o JS que chama .click() no elemento.
+                      accept: restringe os tipos de arquivo visíveis no seletor do SO.
                     *@
                     <InputFile id="inputFoto"
                                OnChange="SelecionarFoto"
@@ -75,7 +80,7 @@
                     <MudButton Variant="Variant.Outlined"
                                Color="Color.Primary"
                                StartIcon="@Icons.Material.Filled.CameraAlt"
-                               OnClick="@AbrirSeletorFoto"
+                               OnClick="AbrirSeletorFoto"
                                Disabled="@enviando">
                         @(string.IsNullOrEmpty(fotoPreviewUrl) ? "Escolher Foto" : "Trocar Foto")
                     </MudButton>
@@ -124,10 +129,6 @@
 
             <MudGrid>
                 <MudItem xs="12" sm="6">
-                    @*
-                      DatePicker: MaxDate impede datas futuras e muito recentes.
-                      AddYears(-5) como máximo: usuário deve ter pelo menos 5 anos.
-                    *@
                     <MudDatePicker @bind-Date="dataNascimento"
                                    Label="Data de Nascimento *"
                                    Variant="Variant.Outlined"
@@ -148,11 +149,6 @@
                 </MudItem>
             </MudGrid>
 
-            @*
-              Campo CPF com máscara visual simples.
-              O dado é enviado com formatação (123.456.789-01).
-              O backend extrai apenas os dígitos antes de armazenar.
-            *@
             <MudTextField @bind-Value="form.Cpf"
                           Label="CPF (opcional)"
                           Variant="Variant.Outlined"
@@ -186,7 +182,6 @@
 
             @* ══════════════════════════════════════════════════════
                CAMPOS EXTRAS — PROFESSOR
-               Renderizados somente quando Tipo == "Professor"
             ══════════════════════════════════════════════════════ *@
             @if (form.Tipo == "Professor")
             {
@@ -207,9 +202,7 @@
                 else if (!ritmos.Any())
                 {
                     <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">
-                        Nenhum ritmo cadastrado. Cadastre ritmos em
-                        <MudLink Href="/admin/ritmos">Gerenciar Ritmos</MudLink>
-                        antes de criar um professor.
+                        Nenhum ritmo cadastrado. Cadastre ritmos antes de criar um professor.
                     </MudAlert>
                 }
                 else
@@ -245,7 +238,6 @@
 
             @* ══════════════════════════════════════════════════════
                CAMPOS EXTRAS — BOLSISTA
-               Renderizados somente quando Tipo == "Bolsista"
             ══════════════════════════════════════════════════════ *@
             @if (form.Tipo == "Bolsista")
             {
@@ -255,7 +247,6 @@
                     Configuração do Bolsista
                 </MudText>
 
-                @* Papel dominante — qual papel ele naturalmente ocupa na dança de salão *@
                 <MudText Typo="Typo.body2" Class="mb-1">Papel dominante na dança de salão: *</MudText>
                 <MudRadioGroup T="string" @bind-Value="form.PapelDominante" Class="mb-4">
                     <MudRadio Value="@("Condutor")" Color="Color.Primary">
@@ -275,7 +266,6 @@
                     </MudText>
                 }
 
-                @* Dias obrigatórios *@
                 <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
                     Dias obrigatórios são os dias em que o bolsista deve estar presente na escola
                     para equilibrar as turmas de salão. O sistema usa esses dias para calcular
@@ -297,7 +287,6 @@
                         </MudSelect>
                     </MudItem>
                     <MudItem xs="12" sm="6">
-                        @* Filtra o dia já escolhido para evitar duplicata *@
                         <MudSelect T="int"
                                    @bind-Value="form.DiaObrigatorio2"
                                    Label="Dia Obrigatório 2 *"
@@ -339,7 +328,6 @@
     @* ── PAINEL DE INFORMAÇÕES ─────────────────────────────────── *@
     <MudItem xs="12" md="4" lg="5">
 
-        @* Card dinâmico — muda conforme o tipo selecionado *@
         @if (!string.IsNullOrEmpty(form.Tipo))
         {
             var info = ObterInfoTipo(form.Tipo);
@@ -377,26 +365,21 @@
 </MudGrid>
 
 @code {
-    // ── Estado do componente ──────────────────────────────────────
     private bool enviando = false;
     private bool tentouSalvar = false;
     private bool carregandoRitmos = true;
     private string statusEnvio = "Cadastrando...";
 
-    // ── Foto ──────────────────────────────────────────────────────
     private string fotoPreviewUrl = "";
     private string nomeFotoSelecionada = "";
     private IBrowserFile? arquivoFoto;
 
-    // ── Dados do formulário ───────────────────────────────────────
     private DateTime? dataNascimento;
     private UsuarioForm form = new();
 
-    // ── Ritmos (para Professor) ───────────────────────────────────
     private List<RitmoDto> ritmos = new();
     private HashSet<string> ritmosSelecionados = new();
 
-    // ── Opções fixas para dias da semana ─────────────────────────
     private static readonly (int Valor, string Nome)[] DiasOpcoes =
     [
         (0, "Domingo"),
@@ -412,25 +395,29 @@
     {
         try
         {
-            // Carrega ritmos para o multi-select do Professor
             ritmos = await Http.GetFromJsonAsync<List<RitmoDto>>("api/ritmos/listar") ?? new();
         }
-        catch { /* silencioso — mensagem aparece no formulário */ }
+        catch { }
         finally { carregandoRitmos = false; }
     }
 
-    // ── Lógica de upload de foto ──────────────────────────────────
+    // ── Upload de foto ────────────────────────────────────────────
 
-    private void AbrirSeletorFoto()
+    /// <summary>
+    /// Abre o seletor de arquivos do sistema operacional.
+    ///
+    /// Por que precisamos de JS aqui?
+    /// O InputFile do Blazor é um &lt;input type="file"&gt; HTML escondido (display:none).
+    /// Para abrir o seletor de arquivos, o navegador exige um clique DIRETO no input
+    /// ou em um &lt;label&gt; associado. Blazor (rodando em WebAssembly) não pode
+    /// interagir diretamente com o DOM — por isso usamos IJSRuntime para chamar
+    /// a função JavaScript definida em wwwroot/js/fileUpload.js.
+    /// </summary>
+    private async Task AbrirSeletorFoto()
     {
-        // Aciona o InputFile oculto (id="inputFoto") via atributo onclick no HTML.
-        // O Blazor não suporta click programático direto, então usamos o label
-        // ou o onclick nativo do botão apontando para o input.
-        // NOTA: para isso funcionar, o botão precisa ter:
-        //   onclick="document.getElementById('inputFoto').click()"
-        // Isso já está no HTML acima via OnClick="@AbrirSeletorFoto".
-        // Em Blazor WASM, chamadas JS diretas precisam de IJSRuntime —
-        // optamos pela abordagem mais simples sem JS interop.
+        // Chama window.fileUpload.abrirSeletor("inputFoto") no navegador.
+        // Essa função JS faz document.getElementById('inputFoto').click().
+        await JS.InvokeVoidAsync("fileUpload.abrirSeletor", "inputFoto");
     }
 
     private async Task SelecionarFoto(InputFileChangeEventArgs e)
@@ -438,17 +425,12 @@
         arquivoFoto = e.File;
         nomeFotoSelecionada = arquivoFoto.Name;
 
-        // Gera preview LOCAL — o arquivo ainda não foi enviado ao servidor.
-        // Isso dá feedback imediato ao usuário sem custo de rede.
+        // Gera preview LOCAL — o arquivo não é enviado ao servidor ainda.
         // O envio real acontece somente ao clicar "Cadastrar".
         try
         {
-            // Lê o arquivo em memória (máx 5 MB) e converte para base64
-            // APENAS para exibição no <img> do preview
             var buffer = new byte[arquivoFoto.Size];
-            await arquivoFoto.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024)
-                             .ReadAsync(buffer);
-
+            await arquivoFoto.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024).ReadAsync(buffer);
             var base64 = Convert.ToBase64String(buffer);
             fotoPreviewUrl = $"data:{arquivoFoto.ContentType};base64,{base64}";
         }
@@ -464,7 +446,6 @@
     {
         tentouSalvar = true;
 
-        // Validações básicas no cliente (antes de chamar a API)
         if (string.IsNullOrWhiteSpace(form.Nome) ||
             string.IsNullOrWhiteSpace(form.Email) ||
             string.IsNullOrWhiteSpace(form.Senha) ||
@@ -493,48 +474,37 @@
         try
         {
             // ── PASSO 1: Upload da foto (se houver) ───────────────
-            // Feito ANTES do cadastro para que o usuário já seja criado com a foto.
             if (arquivoFoto != null)
             {
                 statusEnvio = "Enviando foto...";
                 StateHasChanged();
 
-                // Cria o conteúdo multipart — o mesmo formato que um formulário HTML
-                // com enctype="multipart/form-data" enviaria
                 using var content = new MultipartFormDataContent();
                 using var fileStream = arquivoFoto.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
                 using var streamContent = new StreamContent(fileStream);
-
-                // Define o Content-Type correto para o servidor identificar o tipo do arquivo
                 streamContent.Headers.ContentType =
                     new System.Net.Http.Headers.MediaTypeHeaderValue(arquivoFoto.ContentType);
-
-                // "foto" é o nome do campo IFormFile no endpoint POST /api/upload/foto
                 content.Add(streamContent, "foto", arquivoFoto.Name);
 
                 var uploadResponse = await Http.PostAsync("api/upload/foto", content);
 
                 if (uploadResponse.IsSuccessStatusCode)
                 {
-                    var resultado = await uploadResponse.Content
-                        .ReadFromJsonAsync<UploadFotoDto>();
+                    var resultado = await uploadResponse.Content.ReadFromJsonAsync<UploadFotoDto>();
                     fotoUrlFinal = resultado?.Url;
                     Snackbar.Add("Foto enviada com sucesso!", Severity.Success);
                 }
                 else
                 {
-                    // Upload falhou — cadastro continua SEM foto (não bloqueia)
                     Snackbar.Add("Não foi possível enviar a foto. O usuário será criado sem ela.",
                         Severity.Warning);
                 }
             }
 
-            // ── PASSO 2: Cria o usuário com todos os dados ─────────
+            // ── PASSO 2: Cria o usuário ────────────────────────────
             statusEnvio = "Cadastrando usuário...";
             StateHasChanged();
 
-            // Monta o payload dinamicamente — campos extras só aparecem
-            // quando são relevantes para o tipo selecionado
             var payload = new
             {
                 Nome = form.Nome.Trim(),
@@ -544,15 +514,10 @@
                 DataNascimento = DateOnly.FromDateTime(dataNascimento!.Value),
                 Telefone = string.IsNullOrWhiteSpace(form.Telefone) ? null : form.Telefone.Trim(),
                 FotoUrl = fotoUrlFinal,
-                // CPF: enviado com formatação, backend extrai os dígitos
                 Cpf = string.IsNullOrWhiteSpace(form.Cpf) ? null : form.Cpf.Trim(),
-
-                // Professor: lista de IdHash dos ritmos selecionados
                 RitmosIdHash = form.Tipo == "Professor"
                     ? ritmosSelecionados.ToList()
                     : (List<string>?)null,
-
-                // Bolsista: papel e dias obrigatórios
                 PapelDominante = form.Tipo == "Bolsista" ? form.PapelDominante : null,
                 DiaObrigatorio1 = form.Tipo == "Bolsista" ? (int?)form.DiaObrigatorio1 : null,
                 DiaObrigatorio2 = form.Tipo == "Bolsista" ? (int?)form.DiaObrigatorio2 : null
@@ -569,7 +534,6 @@
             }
             else if ((int)response.StatusCode == 422)
             {
-                // RegraNegocioException do backend (e-mail ou CPF duplicado)
                 var body = await response.Content.ReadAsStringAsync();
                 var parsed = System.Text.Json.JsonSerializer.Deserialize<ErroResponse>(body,
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -577,10 +541,16 @@
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
             {
-                // FluentValidation — campos inválidos
                 var erros = await response.Content.ReadAsStringAsync();
-                Snackbar.Add($"Dados inválidos. Verifique o formulário.", Severity.Error);
+                Snackbar.Add("Dados inválidos. Verifique o formulário.", Severity.Error);
                 Console.WriteLine($"[VALIDATION] {erros}");
+            }
+            else
+            {
+                // Captura o corpo do erro 500 para facilitar debug
+                var corpo = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Erro no servidor. Verifique o console para detalhes.", Severity.Error);
+                Console.WriteLine($"[SERVER ERROR 500] {corpo}");
             }
         }
         catch (Exception ex)
@@ -607,8 +577,6 @@
 
     private void ToggleRitmo(string idHash)
     {
-        // HashSet.Remove retorna false se o elemento não existia
-        // Nesse caso, é porque queremos adicionar
         if (!ritmosSelecionados.Remove(idHash))
             ritmosSelecionados.Add(idHash);
     }
@@ -634,11 +602,9 @@
         public string Tipo { get; set; } = "";
         public string? Telefone { get; set; }
         public string? Cpf { get; set; }
-
-        // Bolsista
         public string PapelDominante { get; set; } = "Ambos";
-        public int DiaObrigatorio1 { get; set; } = 1; // Segunda-feira
-        public int DiaObrigatorio2 { get; set; } = 3; // Quarta-feira
+        public int DiaObrigatorio1 { get; set; } = 1;
+        public int DiaObrigatorio2 { get; set; } = 3;
     }
 
     public class RitmoDto
@@ -649,7 +615,6 @@
         public bool Ativo { get; set; }
     }
 
-    // Response do endpoint POST /api/upload/foto
     public class UploadFotoDto
     {
         public string Url { get; set; } = "";
@@ -657,6 +622,5 @@
         public long TamanhoBytes { get; set; }
     }
 
-    // Para ler mensagem de erro do backend (JSON: { "erro": "..." })
     private class ErroResponse { public string? Erro { get; set; } }
 }
