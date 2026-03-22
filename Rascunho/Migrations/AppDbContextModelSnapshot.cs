@@ -92,6 +92,9 @@ namespace Rascunho.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<decimal>("ValorCobrado")
+                        .HasColumnType("decimal(10,2)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AlunoId");
@@ -268,16 +271,54 @@ namespace Rascunho.Migrations
                     b.Property<DateTime>("DataMatricula")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("OrigemDesconto")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("Papel")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<decimal?>("ValorMensalidade")
+                        .HasColumnType("decimal(10,2)");
 
                     b.HasKey("TurmaId", "AlunoId");
 
                     b.HasIndex("AlunoId");
 
                     b.ToTable("Matriculas", (string)null);
+                });
+
+            modelBuilder.Entity("Rascunho.Entities.ProfessorDisponibilidade", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Ativo")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("DiaDaSemana")
+                        .HasColumnType("integer");
+
+                    b.Property<TimeSpan>("HorarioFim")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("HorarioInicio")
+                        .HasColumnType("interval");
+
+                    b.Property<int>("ProfessorId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProfessorId", "DiaDaSemana", "HorarioInicio")
+                        .IsUnique();
+
+                    b.ToTable("ProfessorDisponibilidades", (string)null);
                 });
 
             modelBuilder.Entity("Rascunho.Entities.RegistroPresenca", b =>
@@ -291,6 +332,10 @@ namespace Rascunho.Migrations
                     b.Property<DateOnly>("DataAula")
                         .HasColumnType("date");
 
+                    b.Property<string>("Observacao")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<bool>("Presente")
                         .HasColumnType("boolean");
 
@@ -299,6 +344,50 @@ namespace Rascunho.Migrations
                     b.HasIndex("AlunoId");
 
                     b.ToTable("RegistrosPresencas", (string)null);
+                });
+
+            modelBuilder.Entity("Rascunho.Entities.Reposicao", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AlunoId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("DataFalta")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("DataReposicaoAgendada")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("DataSolicitacao")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("TurmaDestinoId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TurmaOrigemId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TurmaDestinoId");
+
+                    b.HasIndex("TurmaOrigemId");
+
+                    b.HasIndex("AlunoId", "TurmaOrigemId", "DataFalta", "Status")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 'Agendada'");
+
+                    b.ToTable("Reposicoes", (string)null);
                 });
 
             modelBuilder.Entity("Rascunho.Entities.Ritmo", b =>
@@ -660,6 +749,17 @@ namespace Rascunho.Migrations
                     b.Navigation("Turma");
                 });
 
+            modelBuilder.Entity("Rascunho.Entities.ProfessorDisponibilidade", b =>
+                {
+                    b.HasOne("Rascunho.Entities.Usuario", "Professor")
+                        .WithMany()
+                        .HasForeignKey("ProfessorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Professor");
+                });
+
             modelBuilder.Entity("Rascunho.Entities.RegistroPresenca", b =>
                 {
                     b.HasOne("Rascunho.Entities.Usuario", "Aluno")
@@ -677,6 +777,33 @@ namespace Rascunho.Migrations
                     b.Navigation("Aluno");
 
                     b.Navigation("Turma");
+                });
+
+            modelBuilder.Entity("Rascunho.Entities.Reposicao", b =>
+                {
+                    b.HasOne("Rascunho.Entities.Usuario", "Aluno")
+                        .WithMany()
+                        .HasForeignKey("AlunoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Rascunho.Entities.Turma", "TurmaDestino")
+                        .WithMany()
+                        .HasForeignKey("TurmaDestinoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Rascunho.Entities.Turma", "TurmaOrigem")
+                        .WithMany()
+                        .HasForeignKey("TurmaOrigemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Aluno");
+
+                    b.Navigation("TurmaDestino");
+
+                    b.Navigation("TurmaOrigem");
                 });
 
             modelBuilder.Entity("Rascunho.Entities.Turma", b =>

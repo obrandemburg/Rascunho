@@ -1,0 +1,329 @@
+﻿@* 
+  ═══════════════════════════════════════════════════════════════
+  ARQUIVO: Rascunho.Client/Pages/Admin/GerenciarSalas.razor
+  ROTA:    /admin/salas
+  ACESSO:  Recepção, Gerente
+  
+  FLUXO DE DADOS:
+  ┌──────────────────────────────────────────────────────────────┐
+  │  OnInitializedAsync()                                        │
+  │    └─ GET /api/salas/listar → todas as salas (ativas+inativas)│
+  │                                                              │
+  │  CriarSala()                                                 │
+  │    └─ POST /api/salas/criar                                  │
+  │         Body: { Nome, CapacidadeMaxima }                     │
+  │         Validações: Nome obrigatório (max 50), Capacidade > 0│
+  │                                                              │
+  │  AtualizarSala(idHash, nome, capacidade)                     │
+  │    └─ PUT /api/salas/atualizar/{idHash}                      │
+  │         REGRA: Capacidade NÃO pode ser reduzida              │
+  │         (SalaService verifica e retorna 422 se tentar reduzir)│
+  │                                                              │
+  │  AlterarStatus(idHash, ativo)                                │
+  │    └─ PUT /api/salas/{idHash}/status                         │
+  │         REGRA: Não pode desativar sala com turmas ativas      │
+  └──────────────────────────────────────────────────────────────┘
+  
+  REGRAS DE NEGÓCIO CRÍTICAS (SalaService.cs):
+  1. Capacidade só pode AUMENTAR, nunca diminuir (evita inconsistência)
+  2. Sala com turmas ativas NÃO pode ser desativada
+  3. Limite de alunos de uma turma NÃO pode exceder a Capacidade da sala
+*@
+
+@page "/admin/salas"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@using Rascunho.Client.Shared
+@attribute [Authorize(Roles = "Recepção,Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Gestão de Salas — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.MeetingRoom" Class="mr-2" />
+    Gestão de Salas
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Gerencie as salas da academia, capacidades e status de ativação.
+</MudText>
+
+<MudGrid>
+
+    @* ── COLUNA ESQUERDA: Formulário de nova sala ─────────────── *@
+    <MudItem xs="12" md="4">
+        <MudPaper Elevation="4" Class="pa-6 rounded-xl">
+            <MudText Typo="Typo.h6" Class="mb-4">
+                @(editando != null ? "Editar Sala" : "Cadastrar Nova Sala")
+            </MudText>
+
+            <EditForm Model="@form" OnValidSubmit="SalvarSala">
+                <MudTextField @bind-Value="form.Nome"
+                              Label="Nome da Sala"
+                              Variant="Variant.Outlined"
+                              Class="mb-4"
+                              MaxLength="50"
+                              HelperText="Ex: Sala 1, Salão Principal"
+                              Required="true" />
+
+                <MudNumericField T="int"
+                                 @bind-Value="form.CapacidadeMaxima"
+                                 Label="Capacidade Máxima"
+                                 Variant="Variant.Outlined"
+                                 Class="mb-4"
+                                 Min="1"
+                                 Max="200"
+                                 Required="true"
+                                 HelperText="@(editando != null ? "Só pode aumentar a capacidade" : "Quantidade máxima de pessoas")" />
+
+                <div class="d-flex gap-3">
+                    @if (editando != null)
+                    {
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   OnClick="CancelarEdicao"
+                                   Class="flex-grow-1">
+                            Cancelar
+                        </MudButton>
+                    }
+                    <MudButton ButtonType="ButtonType.Submit"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@(editando != null ? Icons.Material.Filled.Save : Icons.Material.Filled.Add)"
+                               Disabled="@salvando"
+                               Class="flex-grow-1">
+                        @(salvando ? "Salvando..." : (editando != null ? "Salvar" : "Criar Sala"))
+                    </MudButton>
+                </div>
+            </EditForm>
+        </MudPaper>
+
+        @* Aviso sobre regra de negócio *@
+        <MudAlert Severity="Severity.Warning" Class="mt-4" Dense="true">
+            <strong>Atenção:</strong> A capacidade de uma sala nunca pode ser reduzida.
+            Se precisar diminuir, entre em contato com a gerência.
+        </MudAlert>
+    </MudItem>
+
+    @* ── COLUNA DIREITA: Lista de salas ────────────────────────── *@
+    <MudItem xs="12" md="8">
+
+        @if (carregando)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else if (!salas.Any())
+        {
+            <MudAlert Severity="Severity.Info">
+                Nenhuma sala cadastrada. Use o formulário ao lado para criar a primeira!
+            </MudAlert>
+        }
+        else
+        {
+            @* Filtro por status *@
+            <div class="d-flex gap-3 mb-4 align-center">
+                <MudChipSet T="string"
+                            @bind-SelectedValue="filtroStatus"
+                            SelectionMode="SelectionMode.SingleSelection">
+                    <MudChip T="string" Value="@("todas")" Color="Color.Default">Todas</MudChip>
+                    <MudChip T="string" Value="@("ativas")" Color="Color.Success">Ativas</MudChip>
+                    <MudChip T="string" Value="@("inativas")" Color="Color.Default">Inativas</MudChip>
+                </MudChipSet>
+                <MudSpacer />
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    @salasFiltradas.Count() salas
+                </MudText>
+            </div>
+
+            <MudDataGrid T="SalaDto"
+                         Items="@salasFiltradas"
+                         Hover="true"
+                         Dense="true"
+                         Elevation="3"
+                         Class="rounded-xl">
+                <Columns>
+                    <PropertyColumn Property="s => s.Nome"
+                                    Title="Sala"
+                                    Sortable="true" />
+                    <TemplateColumn Title="Capacidade">
+                        <CellTemplate Context="cell">
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.People"
+                                         Size="Size.Small" />
+                                <MudText>@cell.Item.CapacidadeMaxima pessoas</MudText>
+                            </div>
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Status">
+                        <CellTemplate Context="cell">
+                            <MudSwitch T="bool"
+                                       Value="@cell.Item.Ativa"
+                                       ValueChanged="@((bool v) => AlterarStatus(cell.Item, v))"
+                                       Color="Color.Success"
+                                       Label="@(cell.Item.Ativa ? "Ativa" : "Inativa")" />
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Ações" CellClass="d-flex justify-end gap-2">
+                        <CellTemplate Context="cell">
+                            <MudTooltip Text="Editar">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                               Color="Color.Primary"
+                                               Size="Size.Small"
+                                               OnClick="@(() => IniciarEdicao(cell.Item))" />
+                            </MudTooltip>
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </MudDataGrid>
+        }
+    </MudItem>
+
+</MudGrid>
+
+@code {
+    private bool carregando = true;
+    private bool salvando = false;
+    private string filtroStatus = "todas";
+    private SalaDto? editando = null;
+
+    private List<SalaDto> salas = new();
+    private SalaForm form = new();
+
+    private IEnumerable<SalaDto> salasFiltradas => filtroStatus switch
+    {
+        "ativas" => salas.Where(s => s.Ativa),
+        "inativas" => salas.Where(s => !s.Ativa),
+        _ => salas
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarSalas();
+    }
+
+    private async Task CarregarSalas()
+    {
+        carregando = true;
+        try
+        {
+            // GET /api/salas/listar — AllowAnonymous para leitura, mas requer auth para escrita
+            // Retorna: ObterSalaResponse[] { IdHash, Nome, CapacidadeMaxima, Ativa }
+            salas = await Http.GetFromJsonAsync<List<SalaDto>>("api/salas/listar") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar salas: {ex.Message}", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    private void IniciarEdicao(SalaDto sala)
+    {
+        editando = sala;
+        form.Nome = sala.Nome;
+        form.CapacidadeMaxima = sala.CapacidadeMaxima;
+    }
+
+    private void CancelarEdicao()
+    {
+        editando = null;
+        form = new SalaForm();
+    }
+
+    private async Task SalvarSala()
+    {
+        salvando = true;
+        try
+        {
+            if (editando != null)
+            {
+                // PUT /api/salas/atualizar/{idHash}
+                // REGRA: Capacidade não pode diminuir (API valida e retorna 422)
+                var payload = new { form.Nome, form.CapacidadeMaxima };
+                var response = await Http.PutAsJsonAsync(
+                    $"api/salas/atualizar/{editando.IdHash}", payload);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Sala atualizada com sucesso!", Severity.Success);
+                    CancelarEdicao();
+                    await CarregarSalas();
+                }
+                else if ((int)response.StatusCode == 422)
+                {
+                    var erro = await response.Content.ReadAsStringAsync();
+                    // Ex: "A capacidade não pode ser reduzida por segurança das turmas ativas."
+                    Snackbar.Add(erro, Severity.Warning);
+                }
+            }
+            else
+            {
+                // POST /api/salas/criar
+                // Body: CriarSalaRequest { Nome, CapacidadeMaxima }
+                var payload = new { form.Nome, form.CapacidadeMaxima };
+                var response = await Http.PostAsJsonAsync("api/salas/criar", payload);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add($"Sala '{form.Nome}' criada com sucesso!", Severity.Success);
+                    form = new SalaForm();
+                    await CarregarSalas();
+                }
+                else
+                {
+                    Snackbar.Add("Erro ao criar sala. Verifique os dados.", Severity.Error);
+                }
+            }
+        }
+        finally { salvando = false; }
+    }
+
+    private async Task AlterarStatus(SalaDto sala, bool novoStatus)
+    {
+        try
+        {
+            // PUT /api/salas/{idHash}/status
+            // REGRA: Não pode desativar sala com turmas ativas (API retorna 422)
+            var response = await Http.PutAsJsonAsync(
+                $"api/salas/{sala.IdHash}/status", novoStatus);
+
+            if (response.IsSuccessStatusCode)
+            {
+                sala.Ativa = novoStatus;
+                Snackbar.Add(
+                    $"Sala '{sala.Nome}' {(novoStatus ? "ativada" : "desativada")}.",
+                    Severity.Success);
+            }
+            else if ((int)response.StatusCode == 422)
+            {
+                var erro = await response.Content.ReadAsStringAsync();
+                // Ex: "Não é possível inativar uma sala com turmas ativas."
+                Snackbar.Add(erro, Severity.Warning);
+                StateHasChanged(); // Reverte o switch visualmente
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // ── DTOs e modelos ───────────────────────────────────────────
+
+    // Espelha ObterSalaResponse do backend
+    public class SalaDto
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public int CapacidadeMaxima { get; set; }
+        public bool Ativa { get; set; }
+    }
+
+    // Model do formulário
+    public class SalaForm
+    {
+        public string Nome { get; set; } = "";
+        public int CapacidadeMaxima { get; set; } = 1;
+    }
+}

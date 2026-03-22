@@ -1,0 +1,250 @@
+﻿@* 
+  ═══════════════════════════════════════════════════════════════
+  ARQUIVO: Rascunho.Client/Pages/Gerencia/Dashboard.razor
+  ROTA:    /gerencia/dashboard
+  ACESSO:  Gerente
+  
+  FLUXO DE DADOS:
+  ┌──────────────────────────────────────────────────────────────┐
+  │  OnInitializedAsync()  — carrega métricas em paralelo        │
+  │    ├─ GET /api/usuarios/tipo/Aluno/ativos                    │
+  │    ├─ GET /api/usuarios/tipo/Professor/ativos                │
+  │    ├─ GET /api/usuarios/tipo/Bolsista/ativos                 │
+  │    ├─ GET /api/turmas/  → conta turmas ativas                │
+  │    └─ GET /api/eventos/futuros → próximos eventos            │
+  └──────────────────────────────────────────────────────────────┘
+  
+  NOTA: Não há endpoints dedicados de dashboard na API atual.
+  Os dados são calculados a partir dos endpoints existentes.
+  
+  RECOMENDAÇÃO FUTURA: Criar GET /api/gerencia/dashboard-summary
+  que retorna todas as métricas em uma única chamada para performance.
+*@
+
+@page "/gerencia/dashboard"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Dashboard — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.QueryStats" Class="mr-2" />
+    Dashboard da Academia
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Visão geral do estado atual da Ponto da Dança.
+</MudText>
+
+@if (carregando)
+{
+    @* Skeleton para o dashboard inteiro *@
+    <MudGrid>
+        @for (int i = 0; i < 5; i++)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" Class="rounded-xl" />
+            </MudItem>
+        }
+    </MudGrid>
+}
+else
+{
+    @* ── CARDS DE MÉTRICAS PRINCIPAIS ──────────────────────────── *@
+    <MudText Typo="Typo.overline" Class="mb-3">Usuários Ativos</MudText>
+    <MudGrid Class="mb-6">
+
+        <MudItem xs="6" sm="4" md="3">
+            <MudPaper Elevation="3" Class="rounded-xl pa-4 text-center"
+                      Style="border-top: 3px solid #1b5e20;">
+                <MudIcon Icon="@Icons.Material.Filled.School"
+                         Color="Color.Success" Style="font-size: 2rem;" />
+                <MudText Typo="Typo.h4" Class="font-weight-bold mt-1">@totalAlunos</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Alunos</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" sm="4" md="3">
+            <MudPaper Elevation="3" Class="rounded-xl pa-4 text-center"
+                      Style="border-top: 3px solid #2196f3;">
+                <MudIcon Icon="@Icons.Material.Filled.Person"
+                         Color="Color.Info" Style="font-size: 2rem;" />
+                <MudText Typo="Typo.h4" Class="font-weight-bold mt-1">@totalProfessores</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Professores</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" sm="4" md="3">
+            <MudPaper Elevation="3" Class="rounded-xl pa-4 text-center"
+                      Style="border-top: 3px solid #9c27b0;">
+                <MudIcon Icon="@Icons.Material.Filled.Star"
+                         Color="Color.Secondary" Style="font-size: 2rem;" />
+                <MudText Typo="Typo.h4" Class="font-weight-bold mt-1">@totalBolsistas</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Bolsistas</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" sm="4" md="3">
+            <MudPaper Elevation="3" Class="rounded-xl pa-4 text-center"
+                      Style="border-top: 3px solid #fbc02d;">
+                <MudIcon Icon="@Icons.Material.Filled.Groups"
+                         Color="Color.Warning" Style="font-size: 2rem;" />
+                <MudText Typo="Typo.h4" Class="font-weight-bold mt-1">@totalTurmas</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Turmas Ativas</MudText>
+            </MudPaper>
+        </MudItem>
+
+    </MudGrid>
+
+    @* ── PRÓXIMOS EVENTOS ──────────────────────────────────────── *@
+    <MudText Typo="Typo.overline" Class="mb-3">Próximos Eventos</MudText>
+
+    @if (!eventosFuturos.Any())
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-6" Dense="true">
+            Nenhum evento programado.
+            <MudLink Href="/admin/eventos" Color="Color.Primary" Class="ml-2">Criar evento</MudLink>
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid Class="mb-6">
+            @foreach (var ev in eventosFuturos.Take(3))
+            {
+                var ocupacao = ev.Capacidade > 0
+                    ? (double)ev.IngressosVendidos / ev.Capacidade * 100 : 0;
+
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="2" Class="rounded-xl">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.subtitle2" Class="font-weight-bold">@ev.Nome</MudText>
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    @ev.DataHora.ToString("dd/MM/yyyy 'às' HH:mm")
+                                </MudText>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@(ev.Tipo == "Baile" ? Color.Secondary : Color.Info)"
+                                         Variant="Variant.Filled">
+                                    @ev.Tipo
+                                </MudChip>
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent Class="pt-0">
+                            <div class="d-flex justify-space-between mb-1">
+                                <MudText Typo="Typo.caption">
+                                    @ev.IngressosVendidos / @ev.Capacidade ingressos
+                                </MudText>
+                                <MudText Typo="Typo.caption">@((int)ocupacao)%</MudText>
+                            </div>
+                            <MudProgressLinear Color="@(ocupacao >= 90 ? Color.Error : ocupacao >= 70 ? Color.Warning : Color.Success)"
+                                               Value="@ocupacao"
+                                               Rounded="true" Size="Size.Small" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    @* ── AÇÕES RÁPIDAS ─────────────────────────────────────────── *@
+    <MudText Typo="Typo.overline" Class="mb-3">Acesso Rápido</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="4">
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       StartIcon="@Icons.Material.Filled.PersonAdd"
+                       Href="/admin/usuarios"
+                       Size="Size.Large"
+                       Class="rounded-xl py-4">
+                Cadastrar Usuário
+            </MudButton>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Success"
+                       FullWidth="true"
+                       StartIcon="@Icons.Material.Filled.ManageHistory"
+                       Href="/admin/turmas"
+                       Size="Size.Large"
+                       Class="rounded-xl py-4">
+                Gerenciar Turmas
+            </MudButton>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Warning"
+                       FullWidth="true"
+                       StartIcon="@Icons.Material.Filled.ManageAccounts"
+                       Href="/gerencia/usuarios"
+                       Size="Size.Large"
+                       Class="rounded-xl py-4">
+                Gestão de Usuários
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool carregando = true;
+    private int totalAlunos = 0;
+    private int totalProfessores = 0;
+    private int totalBolsistas = 0;
+    private int totalTurmas = 0;
+    private List<EventoDto> eventosFuturos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        carregando = true;
+        try
+        {
+            // Carrega todas as métricas em paralelo para performance máxima
+            var alunoTask = Http.GetFromJsonAsync<QuantidadeResponse>("api/usuarios/tipo/Aluno/ativos");
+            var profTask = Http.GetFromJsonAsync<QuantidadeResponse>("api/usuarios/tipo/Professor/ativos");
+            var bolsistaTask = Http.GetFromJsonAsync<QuantidadeResponse>("api/usuarios/tipo/Bolsista/ativos");
+            var turmaTask = Http.GetFromJsonAsync<List<TurmaDto>>("api/turmas/");
+            var eventoTask = Http.GetFromJsonAsync<List<EventoDto>>("api/eventos/futuros");
+
+            await Task.WhenAll(alunoTask, profTask, bolsistaTask, turmaTask, eventoTask);
+
+            // A API retorna { Quantidade: N, Usuarios: [...] }
+            totalAlunos = alunoTask.Result?.Quantidade ?? 0;
+            totalProfessores = profTask.Result?.Quantidade ?? 0;
+            totalBolsistas = bolsistaTask.Result?.Quantidade ?? 0;
+            totalTurmas = (turmaTask.Result ?? new()).Count(t => t.Ativa);
+            eventosFuturos = eventoTask.Result ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar dashboard: {ex.Message}", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    // Estrutura retornada por /api/usuarios/tipo/{tipo}/ativos
+    public class QuantidadeResponse
+    {
+        public int Quantidade { get; set; }
+        public List<object> Usuarios { get; set; } = new();
+    }
+
+    public class TurmaDto
+    {
+        public bool Ativa { get; set; }
+    }
+
+    public class EventoDto
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public DateTime DataHora { get; set; }
+        public string Tipo { get; set; } = "";
+        public int Capacidade { get; set; }
+        public decimal Preco { get; set; }
+        public int IngressosVendidos { get; set; }
+    }
+}

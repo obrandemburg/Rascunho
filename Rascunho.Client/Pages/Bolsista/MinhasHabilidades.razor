@@ -1,0 +1,341 @@
+﻿@* 
+  ═══════════════════════════════════════════════════════════════
+  ARQUIVO: Rascunho.Client/Pages/Bolsista/MinhasHabilidades.razor
+  ROTA:    /bolsista/minhas-habilidades
+  ACESSO:  Bolsista
+  
+  FLUXO DE DADOS:
+  ┌──────────────────────────────────────────────────────────────┐
+  │  OnInitializedAsync()                                        │
+  │    └─ GET /api/ritmos/listar → lista de ritmos disponíveis  │
+  │         (para popular o select de ritmos)                    │
+  │                                                              │
+  │  AdicionarHabilidade()                                       │
+  │    └─ POST /api/bolsistas/minhas-habilidades                 │
+  │         Body: AdicionarHabilidadeRequest                     │
+  │           { RitmoIdHash, PapelDominante, Nivel }             │
+  │         Validações:                                          │
+  │           - RitmoIdHash obrigatório                          │
+  │           - PapelDominante: "Condutor", "Conduzido", "Ambos" │
+  │           - Nivel: Iniciante/Básico/Intermediário/Avançado/  │
+  │                    Professor                                 │
+  │           - Bolsista não pode ter o mesmo ritmo duplicado    │
+  └──────────────────────────────────────────────────────────────┘
+  
+  IMPORTÂNCIA DESTA TELA:
+  As habilidades cadastradas aqui são usadas pelo algoritmo de
+  balanceamento (BolsistaService.AnalisarEBalancearTurmaAsync)
+  para sugerir bolsistas para turmas desbalanceadas.
+  
+  Se o bolsista não cadastrar habilidades, ele NÃO será sugerido
+  para nenhuma turma, mesmo que domine o ritmo.
+*@
+
+@page "/bolsista/minhas-habilidades"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Bolsista")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Minhas Habilidades — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Stars" Class="mr-2" />
+    Minhas Habilidades
+</MudText>
+<MudText Class="mb-2 mud-text-secondary">
+    Cadastre os ritmos que você domina para ser indicado para turmas que precisam de você.
+</MudText>
+<MudAlert Severity="Severity.Info" Class="mb-6" Dense="true">
+    Suas habilidades determinam em quais turmas você pode ser recomendado para balancear
+    condutores e conduzidos. Mantenha sempre atualizado!
+</MudAlert>
+
+<MudGrid>
+    @* ── COLUNA ESQUERDA: Formulário de cadastro ── *@
+    <MudItem xs="12" md="5">
+        <MudPaper Elevation="4" Class="pa-6 rounded-xl">
+            <MudText Typo="Typo.h6" Class="mb-4">Adicionar Nova Habilidade</MudText>
+
+            @if (carregandoRitmos)
+            {
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Small" />
+            }
+            else
+            {
+                <EditForm Model="@form" OnValidSubmit="AdicionarHabilidade">
+                    @*
+                      SELECT DE RITMO: populado via GET /api/ritmos/listar
+                      O valor selecionado é o IdHash do ritmo (string hashada)
+                    *@
+                    <MudSelect T="string"
+                               @bind-Value="form.RitmoIdHash"
+                               Label="Ritmo"
+                               Variant="Variant.Outlined"
+                               Class="mb-4"
+                               Required="true"
+                               AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var ritmo in ritmos)
+                        {
+                            <MudSelectItem T="string" Value="@ritmo.IdHash">
+                                <div class="d-flex align-center gap-2">
+                                    <span>@ritmo.Nome</span>
+                                    <MudChip T="string" Size="Size.Small"
+                                             Color="@(ritmo.Modalidade == "Dança de salão" ? Color.Success : Color.Info)"
+                                             Variant="Variant.Text" Class="my-0">
+                                        @ritmo.Modalidade
+                                    </MudChip>
+                                </div>
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    @*
+                      PAPEL DOMINANTE: exatamente os valores aceitos pela API e validator
+                      AdicionarHabilidadeRequestValidator: "Condutor", "Conduzido" ou "Ambos"
+                    *@
+                    <MudText Typo="Typo.body2" Class="mb-2">Papel Dominante</MudText>
+                    <MudRadioGroup T="string" @bind-Value="form.PapelDominante" Class="mb-4">
+                        <div class="d-flex gap-4 flex-wrap">
+                            <MudRadio Value="@("Condutor")" Color="Color.Primary">
+                                <div class="d-flex align-center gap-1">
+                                    <MudIcon Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" />
+                                    Condutor
+                                </div>
+                            </MudRadio>
+                            <MudRadio Value="@("Conduzido")" Color="Color.Secondary">
+                                <div class="d-flex align-center gap-1">
+                                    <MudIcon Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small" />
+                                    Conduzido
+                                </div>
+                            </MudRadio>
+                            <MudRadio Value="@("Ambos")" Color="Color.Success">
+                                <div class="d-flex align-center gap-1">
+                                    <MudIcon Icon="@Icons.Material.Filled.SwapVert" Size="Size.Small" />
+                                    Ambos
+                                </div>
+                            </MudRadio>
+                        </div>
+                    </MudRadioGroup>
+
+                    @*
+                      NÍVEL: exatamente os valores aceitos pelo AdicionarHabilidadeRequestValidator
+                      Iniciante, Básico, Intermediário, Avançado, Professor
+                    *@
+                    <MudSelect T="string"
+                               @bind-Value="form.Nivel"
+                               Label="Nível de Habilidade"
+                               Variant="Variant.Outlined"
+                               Class="mb-6"
+                               Required="true"
+                               AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="string" Value="@("Iniciante")">🌱 Iniciante</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Básico")">📗 Básico</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Intermediário")">📘 Intermediário</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Avançado")">📕 Avançado</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Professor")">⭐ Nível Professor</MudSelectItem>
+                    </MudSelect>
+
+                    <MudButton ButtonType="ButtonType.Submit"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               FullWidth="true"
+                               Size="Size.Large"
+                               StartIcon="@Icons.Material.Filled.Add"
+                               Disabled="@(salvando || string.IsNullOrEmpty(form.RitmoIdHash) || string.IsNullOrEmpty(form.PapelDominante) || string.IsNullOrEmpty(form.Nivel))">
+                        @(salvando ? "Adicionando..." : "Adicionar Habilidade")
+                    </MudButton>
+                </EditForm>
+            }
+        </MudPaper>
+
+        @* Dica de como funciona o sistema de indicação *@
+        <MudPaper Elevation="1" Class="pa-4 rounded-xl mt-4"
+                  Style="border-left: 4px solid #fbc02d;">
+            <MudText Typo="Typo.subtitle2" Class="mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.Lightbulb" Size="Size.Small" Class="mr-1" Color="Color.Warning" />
+                Como funciona?
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                Quando uma turma de <strong>Forró</strong> tiver 5 condutores e 3 conduzidos,
+                o sistema busca automaticamente bolsistas com habilidade em Forró no papel
+                <strong>Conduzido</strong> (ou Ambos) que estejam livres naquele horário.
+                Você só aparece na lista se tiver cadastrado a habilidade!
+            </MudText>
+        </MudPaper>
+    </MudItem>
+
+    @* ── COLUNA DIREITA: Habilidades cadastradas ── *@
+    <MudItem xs="12" md="7">
+        <MudText Typo="Typo.h6" Class="mb-4">Habilidades Cadastradas</MudText>
+
+        @if (habilidades.Any())
+        {
+            <MudGrid>
+                @foreach (var hab in habilidades)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudCard Elevation="2" Class="rounded-xl">
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.subtitle1" Class="font-weight-bold">
+                                        @hab.NomeRitmo
+                                    </MudText>
+                                </CardHeaderContent>
+                                <CardHeaderActions>
+                                    <MudChip T="string"
+                                             Size="Size.Small"
+                                             Color="@CorPapel(hab.PapelDominante)"
+                                             Variant="Variant.Filled">
+                                        @hab.PapelDominante
+                                    </MudChip>
+                                </CardHeaderActions>
+                            </MudCardHeader>
+                            <MudCardContent Class="pt-0">
+                                <MudChip T="string"
+                                         Size="Size.Small"
+                                         Color="Color.Default"
+                                         Variant="Variant.Outlined">
+                                    @hab.Nivel
+                                </MudChip>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+        else if (!carregandoRitmos)
+        {
+            <MudPaper Elevation="0" Class="pa-8 text-center rounded-xl"
+                      Style="border: 2px dashed var(--mud-palette-lines-default);">
+                <MudIcon Icon="@Icons.Material.Filled.Stars"
+                         Color="Color.Default" Style="font-size: 3rem;" Class="mb-3" />
+                <MudText Typo="Typo.body1">Nenhuma habilidade cadastrada ainda.</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+                    Use o formulário ao lado para adicionar seus ritmos!
+                </MudText>
+            </MudPaper>
+        }
+
+        @* NOTA: A API não possui endpoint GET para listar habilidades do bolsista.
+           Como workaround, exibimos apenas as habilidades adicionadas na sessão atual.
+           Em produção, recomenda-se criar:
+           GET /api/bolsistas/minhas-habilidades
+           que retorna List<HabilidadeUsuario> do bolsista logado. *@
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool carregandoRitmos = true;
+    private bool salvando = false;
+
+    private List<RitmoDto> ritmos = new();
+
+    // Lista em memória das habilidades adicionadas nesta sessão
+    // (Workaround por ausência de endpoint GET /minhas-habilidades)
+    private List<HabilidadeExibicao> habilidades = new();
+
+    private HabilidadeForm form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // GET /api/ritmos/listar — AllowAnonymous, mas exige login na UI
+            // Retorna: ObterRitmoResponse[] com IdHash, Nome, Descricao, Modalidade, Ativo
+            ritmos = await Http.GetFromJsonAsync<List<RitmoDto>>(
+                "api/ritmos/listar") ?? new();
+
+            // Filtra apenas ritmos ativos para o bolsista não escolher um ritmo inativo
+            ritmos = ritmos.Where(r => r.Ativo).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar ritmos: {ex.Message}", Severity.Error);
+        }
+        finally { carregandoRitmos = false; }
+    }
+
+    private async Task AdicionarHabilidade()
+    {
+        if (string.IsNullOrEmpty(form.RitmoIdHash) ||
+            string.IsNullOrEmpty(form.PapelDominante) ||
+            string.IsNullOrEmpty(form.Nivel)) return;
+
+        salvando = true;
+        try
+        {
+            // POST /api/bolsistas/minhas-habilidades
+            // Requer: [Authorize(Roles = "Bolsista")] — validado no endpoint
+            // Body: AdicionarHabilidadeRequest { RitmoIdHash, PapelDominante, Nivel }
+            var response = await Http.PostAsJsonAsync(
+                "api/bolsistas/minhas-habilidades", form);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Habilidade adicionada com sucesso! ✨", Severity.Success);
+
+                // Adiciona na lista local para feedback imediato
+                var nomeRitmo = ritmos.FirstOrDefault(r => r.IdHash == form.RitmoIdHash)?.Nome ?? "";
+                habilidades.Add(new HabilidadeExibicao
+                {
+                    NomeRitmo = nomeRitmo,
+                    PapelDominante = form.PapelDominante,
+                    Nivel = form.Nivel
+                });
+
+                // Reseta o formulário
+                form = new HabilidadeForm();
+            }
+            else if ((int)response.StatusCode == 422)
+            {
+                // Ex: "O bolsista já possui este ritmo cadastrado nas suas habilidades."
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(erro, Severity.Warning);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                // FluentValidation: papel ou nível inválido
+                Snackbar.Add("Verifique os dados e tente novamente.", Severity.Error);
+            }
+        }
+        finally { salvando = false; }
+    }
+
+    private Color CorPapel(string papel) => papel switch
+    {
+        "Condutor" => Color.Primary,
+        "Conduzido" => Color.Secondary,
+        "Ambos" => Color.Success,
+        _ => Color.Default
+    };
+
+    // ── DTOs e modelos locais ────────────────────────────────────
+
+    // Espelha ObterRitmoResponse do backend
+    public class RitmoDto
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string Descricao { get; set; } = "";
+        public string Modalidade { get; set; } = "";
+        public bool Ativo { get; set; }
+    }
+
+    // Model do formulário — espelha AdicionarHabilidadeRequest
+    public class HabilidadeForm
+    {
+        public string RitmoIdHash { get; set; } = "";
+        public string PapelDominante { get; set; } = "";
+        public string Nivel { get; set; } = "";
+    }
+
+    // DTO de exibição local (sessão)
+    public class HabilidadeExibicao
+    {
+        public string NomeRitmo { get; set; } = "";
+        public string PapelDominante { get; set; } = "";
+        public string Nivel { get; set; } = "";
+    }
+}

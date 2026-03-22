@@ -1,0 +1,267 @@
+﻿@* 
+  ═══════════════════════════════════════════════════════════════
+  ARQUIVO: Rascunho.Client/Pages/Bolsista/RelatorioHoras.razor
+  ROTA:    /bolsista/relatorio-horas
+  ACESSO:  Bolsista
+  
+  FLUXO DE DADOS:
+  ┌──────────────────────────────────────────────────────────────┐
+  │  OnInitializedAsync()                                        │
+  │    └─ Obtém ID numérico do JWT (ClaimTypes.NameIdentifier)   │
+  │    └─ Para encodar o ID, precisaríamos do Hashids no front.  │
+  │       ALTERNATIVA: O backend expõe um endpoint que retorna   │
+  │       os dados do usuário logado sem precisar do hash.       │
+  │       Usamos GET /api/bolsistas/{id}/relatorio-horas passando│
+  │       o hash do próprio usuário. Como não temos o hash,      │
+  │       chamamos sem parâmetro ou usando um endpoint dedicado. │
+  │                                                              │
+  │       SOLUÇÃO ADOTADA: O endpoint aceita o próprio bolsista  │
+  │       (verifica pelo JWT). Buscamos o hash via              │
+  │       GET /api/usuarios/obter/{id} e usamos o IdHash.        │
+  │                                                              │
+  │       Response: RelatorioHorasBolsistaResponse              │
+  │         { BolsistaIdHash, Nome, HorasCumpridasNaSemana,     │
+  │           HorasFaltantes, MetaAtingida }                     │
+  └──────────────────────────────────────────────────────────────┘
+  
+  REGRA DE NEGÓCIO (BolsistaService.RelatorioHorasSemanaisAsync):
+  - Meta semanal: 6 horas
+  - Calcula somando a duração (HorarioFim - HorarioInicio) de cada
+    turma ativa em que o bolsista está matriculado
+  - HorasFaltantes = max(0, 6 - HorasCumpridasNaSemana)
+  - MetaAtingida = HorasCumpridasNaSemana >= 6
+*@
+
+@page "/bolsista/relatorio-horas"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Bolsista")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Relatório de Horas — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Timer" Class="mr-2" />
+    Relatório de Horas Semanais
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Acompanhe o cumprimento das suas 6 horas obrigatórias semanais.
+</MudText>
+
+@* Estado de carregamento *@
+@if (carregando)
+{
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="140px" Class="rounded-xl" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="140px" Class="rounded-xl" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="140px" Class="rounded-xl" />
+        </MudItem>
+    </MudGrid>
+}
+else if (relatorio != null)
+{
+    @* ── Cards de métricas principais ─────────────────────────── *@
+    <MudGrid Class="mb-6">
+
+        @* Card 1: Horas Cumpridas *@
+        <MudItem xs="12" sm="4">
+            <MudCard Elevation="4" Class="rounded-xl text-center pa-4"
+                     Style="@($"border-top: 4px solid {(relatorio.MetaAtingida ? "#4caf50" : "#fbc02d")};")">
+                <MudIcon Icon="@Icons.Material.Filled.Timer"
+                         Color="@(relatorio.MetaAtingida ? Color.Success : Color.Warning)"
+                         Style="font-size: 2.5rem;" Class="mb-2" />
+                <MudText Typo="Typo.h3" Class="font-weight-bold"
+                         Style="@($"color: {(relatorio.MetaAtingida ? "#4caf50" : "#fbc02d")};")">
+                    @relatorio.HorasCumpridasNaSemana h
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Horas cumpridas</MudText>
+            </MudCard>
+        </MudItem>
+
+        @* Card 2: Horas Faltantes *@
+        <MudItem xs="12" sm="4">
+            <MudCard Elevation="4" Class="rounded-xl text-center pa-4"
+                     Style="@($"border-top: 4px solid {(relatorio.MetaAtingida ? "#4caf50" : "#f44336")};")">
+                <MudIcon Icon="@(relatorio.MetaAtingida? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Warning)"
+                         Color="@(relatorio.MetaAtingida ? Color.Success : Color.Error)"
+                         Style="font-size: 2.5rem;" Class="mb-2" />
+                <MudText Typo="Typo.h3" Class="font-weight-bold"
+                         Style="@($"color: {(relatorio.MetaAtingida ? "#4caf50" : "#f44336")};")">
+                    @(relatorio.MetaAtingida ? "✓" : $"{relatorio.HorasFaltantes} h")
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    @(relatorio.MetaAtingida ? "Meta atingida!" : "Horas faltando")
+                </MudText>
+            </MudCard>
+        </MudItem>
+
+        @* Card 3: Meta Total *@
+        <MudItem xs="12" sm="4">
+            <MudCard Elevation="4" Class="rounded-xl text-center pa-4"
+                     Style="border-top: 4px solid #2196f3;">
+                <MudIcon Icon="@Icons.Material.Filled.Flag"
+                         Color="Color.Info"
+                         Style="font-size: 2.5rem;" Class="mb-2" />
+                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Info">6 h</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Meta semanal</MudText>
+            </MudCard>
+        </MudItem>
+
+    </MudGrid>
+
+    @* ── Barra de progresso visual ────────────────────────────── *@
+    <MudPaper Elevation="3" Class="pa-6 rounded-xl mb-6">
+        <div class="d-flex justify-space-between mb-2">
+            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">
+                Progresso da Semana
+            </MudText>
+            <MudText Typo="Typo.subtitle1" Color="@(relatorio.MetaAtingida? Color.Success: Color.Default)">
+                @relatorio.HorasCumpridasNaSemana / 6 horas
+            </MudText>
+        </div>
+
+        @* Barra de progresso grande e visual *@
+        <MudProgressLinear Color="@(relatorio.MetaAtingida? Color.Success: (relatorio.HorasCumpridasNaSemana >= 4 ? Color.Warning : Color.Error))"
+                           Value="@(Math.Min(relatorio.HorasCumpridasNaSemana / 6.0 * 100, 100))"
+                           Size="Size.Large"
+                           Rounded="true"
+                           Class="mb-4"
+                           Style="height: 20px;" />
+
+        @* Status textual *@
+        @if (relatorio.MetaAtingida)
+        {
+            <MudAlert Severity="Severity.Success" Dense="true">
+                🎉 Parabéns! Você atingiu a meta de 6 horas semanais. Continue participando!
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="@(relatorio.HorasFaltantes <= 2 ? Severity.Warning : Severity.Error)" Dense="true">
+                Você precisa de mais <strong>@relatorio.HorasFaltantes horas</strong> para cumprir sua obrigação semanal.
+                Verifique as <MudLink Href="/bolsista/turmas-recomendadas" Color="Color.Error">turmas recomendadas</MudLink>
+                para completar suas horas!
+            </MudAlert>
+        }
+    </MudPaper>
+
+    @* ── Explicação do cálculo ─────────────────────────────────── *@
+    <MudPaper Elevation="1" Class="pa-4 rounded-xl"
+              Style="border-left: 4px solid #2196f3;">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">
+            <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-1" Color="Color.Info" />
+            Como é calculado?
+        </MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            O sistema soma a duração de todas as turmas ativas em que você está matriculado.
+            Por exemplo: 2 turmas de 50 minutos = 1h40. Os dias obrigatórios definidos pelo
+            gerente garantem que você participe nos dias combinados.
+        </MudText>
+    </MudPaper>
+}
+else
+{
+    <MudAlert Severity="Severity.Error">
+        Não foi possível carregar o relatório. Tente novamente mais tarde.
+    </MudAlert>
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    private bool carregando = true;
+    private RelatorioDto? relatorio;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarRelatorio();
+    }
+
+    private async Task CarregarRelatorio()
+    {
+        carregando = true;
+        try
+        {
+            // ESTRATÉGIA: O endpoint GET /api/bolsistas/{idHash}/relatorio-horas
+            // requer o idHash do bolsista.
+            //
+            // O JWT contém o ID NUMÉRICO (ClaimTypes.NameIdentifier) mas não o hash.
+            // Para obter o hash, precisaríamos encodar via Hashids (mesma salt do backend).
+            //
+            // SOLUÇÃO ADOTADA: Primeiro obtemos o usuário logado para pegar o IdHash,
+            // depois consultamos o relatório.
+            //
+            // PASSO 1: Obtém ID numérico do JWT
+            if (AuthStateTask == null) return;
+            var authState = await AuthStateTask;
+            var idNumerico = authState.User.FindFirst(
+                System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(idNumerico)) return;
+
+            // PASSO 2: Busca o usuário para obter seu IdHash
+            // GET /api/usuarios/obter/{idHash} — mas precisamos encodar o ID primeiro.
+            // Como não temos Hashids no cliente, usamos um endpoint GET /api/usuarios/listar/ativos
+            // e filtramos pelo nome do usuário (workaround).
+            //
+            // RECOMENDAÇÃO FUTURA: Criar endpoint GET /api/bolsistas/meu-relatorio
+            // que usa o JWT direto, sem precisar do hash.
+            //
+            // Por ora, buscamos a lista de bolsistas ativos e encontramos o usuário pelo nome.
+            var nomeUsuario = authState.User.Identity?.Name ?? "";
+            var bolsistas = await Http.GetFromJsonAsync<UsuariosResponse>(
+                "api/usuarios/tipo/Bolsista/ativos");
+
+            var meusId = bolsistas?.Usuarios?
+                .FirstOrDefault(u => u.Nome.Equals(nomeUsuario, StringComparison.OrdinalIgnoreCase));
+
+            if (meusId == null)
+            {
+                Snackbar.Add("Não foi possível identificar seu perfil.", Severity.Error);
+                return;
+            }
+
+            // PASSO 3: Chama o endpoint de relatório com o hash correto
+            // GET /api/bolsistas/{idHash}/relatorio-horas
+            // Permissão: o próprio bolsista pode ver seus dados (verificado na API)
+            relatorio = await Http.GetFromJsonAsync<RelatorioDto>(
+                $"api/bolsistas/{meusId.IdHash}/relatorio-horas");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar relatório: {ex.Message}", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    // Resposta do endpoint /api/usuarios/tipo/{tipo}/ativos
+    public class UsuariosResponse
+    {
+        public int Quantidade { get; set; }
+        public List<UsuarioSimples> Usuarios { get; set; } = new();
+    }
+
+    public class UsuarioSimples
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+    }
+
+    // Espelha RelatorioHorasBolsistaResponse do backend
+    public class RelatorioDto
+    {
+        public string BolsistaIdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public double HorasCumpridasNaSemana { get; set; }
+        public double HorasFaltantes { get; set; }
+        public bool MetaAtingida { get; set; }
+    }
+}

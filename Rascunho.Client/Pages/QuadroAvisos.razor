@@ -1,0 +1,218 @@
+﻿@* ARQUIVO: Rascunho.Client/Pages/QuadroAvisos.razor *@
+
+@page "/quadro-avisos"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Quadro de Avisos — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Campaign" Class="mr-2" />
+    Quadro de Avisos
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Avisos e comunicados ativos da escola.
+</MudText>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    @* ── Avisos Gerais ── visíveis para todos os perfis logados ── *@
+    @if (avisosGerais.Any())
+    {
+        <MudText Typo="Typo.h6" Class="mb-3">
+            <MudIcon Icon="@Icons.Material.Filled.Public"
+                     Size="Size.Small" Class="mr-1" Color="Color.Primary" />
+            Avisos Gerais
+        </MudText>
+
+        <MudGrid Class="mb-6">
+            @foreach (var aviso in avisosGerais)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="3" Class="rounded-lg h-100">
+                        <div style="height: 4px; background: #1b5e20; border-radius: 8px 8px 0 0;" />
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@aviso.Titulo</MudText>
+                                <MudStack Row="true" Spacing="2">
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                        📅 @aviso.DataPublicacao.ToString("dd/MM/yyyy")
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                        · Válido até @aviso.DataExpiracao.ToString("dd/MM/yyyy")
+                                    </MudText>
+                                </MudStack>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            @* white-space: pre-line preserva quebras de linha no texto do aviso *@
+                            <MudText Typo="Typo.body2" Style="white-space: pre-line;">
+                                @aviso.Mensagem
+                            </MudText>
+                        </MudCardContent>
+                        <MudCardContent Class="pt-0">
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                Por: @aviso.NomeAutor
+                            </MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    @* ── Avisos da Equipe ── somente para equipe interna ────────── *@
+    @* Alunos não têm acesso a este bloco — a verificação de role
+       é feita no OnInitializedAsync antes mesmo de chamar a API *@
+    @if (mostrarEquipe)
+    {
+        @if (avisosEquipe.Any())
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.Lock"
+                         Size="Size.Small" Class="mr-1" Color="Color.Info" />
+                Avisos da Equipe
+            </MudText>
+
+            <MudGrid>
+                @foreach (var aviso in avisosEquipe)
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudCard Elevation="3" Class="rounded-lg h-100">
+                            <div style="height: 4px; background: #2196f3; border-radius: 8px 8px 0 0;" />
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.h6">@aviso.Titulo</MudText>
+                                    <MudStack Row="true" Spacing="2">
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                            📅 @aviso.DataPublicacao.ToString("dd/MM/yyyy")
+                                        </MudText>
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                            · Válido até @aviso.DataExpiracao.ToString("dd/MM/yyyy")
+                                        </MudText>
+                                    </MudStack>
+                                </CardHeaderContent>
+                                <CardHeaderActions>
+                                    @* Badge visual para distinguir avisos de equipe *@
+                                    <MudChip T="string" Size="Size.Small"
+                                             Color="Color.Info" Variant="Variant.Outlined">
+                                        Equipe
+                                    </MudChip>
+                                </CardHeaderActions>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                <MudText Typo="Typo.body2" Style="white-space: pre-line;">
+                                    @aviso.Mensagem
+                                </MudText>
+                            </MudCardContent>
+                            <MudCardContent Class="pt-0">
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    Por: @aviso.NomeAutor
+                                </MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+        else
+        {
+            @* Só mostra este alerta se não há avisos gerais também — evita dupla mensagem *@
+            @if (!avisosGerais.Any())
+            {
+                <MudAlert Severity="Severity.Info">
+                    Nenhum aviso ativo no momento.
+                </MudAlert>
+            }
+        }
+    }
+
+    @* Mensagem quando não há NENHUM aviso de nenhum tipo *@
+    @if (!avisosGerais.Any() && (!mostrarEquipe || !avisosEquipe.Any()))
+    {
+        @if (!avisosGerais.Any() && !mostrarEquipe)
+        {
+            <MudAlert Severity="Severity.Info">
+                Nenhum aviso geral ativo no momento. Volte em breve!
+            </MudAlert>
+        }
+    }
+}
+
+@code {
+    // CascadingParameter: recebe o AuthenticationState do CascadingAuthenticationState
+    // que envolve o App.razor. Permite ler as Claims do JWT sem chamar a API.
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    private bool carregando = true;
+
+    // Controla se a seção de avisos da equipe é exibida e carregada
+    // true  → Professor, Bolsista, Líder, Recepção, Gerente
+    // false → Aluno (não tem acesso a avisos internos)
+    private bool mostrarEquipe = false;
+
+    private List<AvisoDto> avisosGerais = new();
+    private List<AvisoDto> avisosEquipe = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Verifica a role do usuário logado para decidir quais APIs chamar
+        if (AuthStateTask != null)
+        {
+            var state = await AuthStateTask;
+            var role = state.User
+                .FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+
+            // Alunos veem somente avisos gerais (RN-ACE01)
+            // Todos os outros perfis internos têm acesso aos avisos de equipe
+            mostrarEquipe = role is "Bolsista" or "Professor" or "Líder"
+                                 or "Recepção" or "Gerente";
+        }
+
+        try
+        {
+            // Dispara as requisições em paralelo para melhor desempenho
+            // Se mostrarEquipe = false, a task de equipe resolve imediatamente com lista vazia
+            var geralTask = Http.GetFromJsonAsync<List<AvisoDto>>("api/avisos/geral");
+            var equipeTask = mostrarEquipe
+                ? Http.GetFromJsonAsync<List<AvisoDto>>("api/avisos/equipe")
+                : Task.FromResult<List<AvisoDto>?>(new List<AvisoDto>());
+
+            await Task.WhenAll(geralTask, equipeTask);
+
+            avisosGerais = geralTask.Result ?? new();
+            avisosEquipe = equipeTask.Result ?? new();
+        }
+        catch (Exception ex)
+        {
+            // Log do erro para facilitar debugging
+            Console.WriteLine($"Erro ao carregar avisos: {ex.Message}");
+            Snackbar.Add("Erro ao carregar os avisos. Tente novamente.", Severity.Error);
+        }
+        finally
+        {
+            carregando = false;
+        }
+    }
+
+    // ── DTO local que espelha ObterAvisoResponse do backend ──────
+    public class AvisoDto
+    {
+        public string IdHash { get; set; } = "";
+        public string Titulo { get; set; } = "";
+        public string Mensagem { get; set; } = "";
+        public DateTime DataPublicacao { get; set; }
+        public DateTime DataExpiracao { get; set; }
+        public string TipoVisibilidade { get; set; } = "";
+        public string NomeAutor { get; set; } = "";
+    }
+}

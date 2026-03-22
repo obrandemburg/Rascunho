@@ -1,0 +1,189 @@
+﻿@* ARQUIVO: Rascunho.Client/Pages/Bolsista/Desempenho.razor *@
+@page "/bolsista/desempenho"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Bolsista")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Meu Desempenho — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-6 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Insights" Class="mr-2" />
+    Meu Desempenho
+</MudText>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (desempenho == null)
+{
+    <MudAlert Severity="Severity.Warning">Não foi possível carregar seu desempenho. Tente novamente.</MudAlert>
+}
+else if (desempenho.TotalAulasObrigatorias == 0 && desempenho.TotalAulasExtras == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        Nenhuma presença registrada ainda. Seus registros aparecerão aqui após as primeiras chamadas.
+    </MudAlert>
+}
+else
+{
+    @* ── Indicador principal ────────────────────────────────────── *@
+    <MudGrid Class="mb-6">
+        <MudItem xs="12" md="6">
+            <MudPaper Elevation="4" Class="pa-6 rounded-xl text-center"
+                      Style="@($"border-top: 6px solid {CorIndicador(desempenho.IndicadorSituacao)};")">
+                <MudText Typo="Typo.h2" Style="@($"color: {CorIndicador(desempenho.IndicadorSituacao)}; font-weight: bold;")">
+                    @desempenho.FrequenciaObrigatoriaPct%
+                </MudText>
+                <MudText Typo="Typo.h6" Class="mt-1">Frequência nos Dias Obrigatórios</MudText>
+                <MudText Typo="Typo.body1" Class="mt-2"
+                         Style="@($"color: {CorIndicador(desempenho.IndicadorSituacao)}; font-weight: bold;")">
+                    @MensagemIndicador(desempenho.IndicadorSituacao)
+                </MudText>
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    @desempenho.TotalPresencasObrigatorias presentes de @desempenho.TotalAulasObrigatorias aulas
+                </MudText>
+                @if (desempenho.DiaObrigatorio1.HasValue)
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        Dias: @DiaDaSemana(desempenho.DiaObrigatorio1.Value) e @DiaDaSemana(desempenho.DiaObrigatorio2 ?? 0)
+                    </MudText>
+                }
+            </MudPaper>
+        </MudItem>
+
+        @if (desempenho.TotalAulasExtras > 0)
+        {
+            <MudItem xs="12" md="6">
+                <MudPaper Elevation="3" Class="pa-6 rounded-xl text-center"
+                          Style="border-top: 6px solid #2196f3;">
+                    <MudText Typo="Typo.h2" Style="color: #2196f3; font-weight: bold;">
+                        @desempenho.FrequenciaExtraPct%
+                    </MudText>
+                    <MudText Typo="Typo.h6" Class="mt-1">Frequência nos Dias Extras</MudText>
+                    <MudText Typo="Typo.body2" Class="mt-2 mud-text-secondary">
+                        (informativo — não impacta o indicador principal)
+                    </MudText>
+                    <MudDivider Class="my-3" />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        @desempenho.TotalPresencasExtras presentes de @desempenho.TotalAulasExtras aulas extras
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+
+    @* ── Histórico aula-a-aula ──────────────────────────────────── *@
+    <MudText Typo="Typo.h6" Class="mb-3">Histórico Completo</MudText>
+    <MudTable T="HistoricoItemDto" Items="@desempenho.Historico" Hover="true" Dense="true"
+              Elevation="3" Class="rounded-xl">
+        <HeaderContent>
+            <MudTh>Data</MudTh>
+            <MudTh>Turma</MudTh>
+            <MudTh>Professor</MudTh>
+            <MudTh>Tipo</MudTh>
+            <MudTh>Presença</MudTh>
+        </HeaderContent>
+        <RowTemplate Context="item">
+            <MudTd>@item.DataAula.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@item.NomeTurma</MudTd>
+            <MudTd>@item.NomeProfessor</MudTd>
+            <MudTd>
+                @if (item.EhDiaObrigatorio)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">Obrigatório</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Extra</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                @if (item.Presente)
+                {
+                    <MudText Color="Color.Success">✅ Presente</MudText>
+                }
+                else
+                {
+                    <MudText Color="Color.Error">❌ Falta</MudText>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private bool carregando = true;
+    private DesempenhoDto? desempenho;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            desempenho = await Http.GetFromJsonAsync<DesempenhoDto>("api/bolsistas/meu-desempenho");
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar desempenho.", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    private string CorIndicador(string indicador) => indicador switch
+    {
+        "Excelente" => "#4caf50",
+        "Vamos melhorar" => "#ff9800",
+        "Atenção" => "#f44336",
+        "Crítico" => "#b71c1c",
+        _ => "#9e9e9e"
+    };
+
+    private string MensagemIndicador(string indicador) => indicador switch
+    {
+        "Excelente" => "Excelente! Continue assim. 🌟",
+        "Vamos melhorar" => "Vamos melhorar! Você está quase lá.",
+        "Atenção" => "Atenção: está tudo bem? Converse com o líder.",
+        "Crítico" => "⚠️ Converse imediatamente com o líder sobre sua frequência.",
+        "Sem registros" => "Aguardando primeiros registros de presença.",
+        _ => indicador
+    };
+
+    private string DiaDaSemana(int dia) => dia switch
+    {
+        1 => "segunda",
+        2 => "terça",
+        3 => "quarta",
+        4 => "quinta",
+        5 => "sexta",
+        6 => "sábado",
+        _ => "domingo"
+    };
+
+    public class DesempenhoDto
+    {
+        public string BolsistaIdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public int? DiaObrigatorio1 { get; set; }
+        public int? DiaObrigatorio2 { get; set; }
+        public double FrequenciaObrigatoriaPct { get; set; }
+        public string IndicadorSituacao { get; set; } = "";
+        public int TotalAulasObrigatorias { get; set; }
+        public int TotalPresencasObrigatorias { get; set; }
+        public double FrequenciaExtraPct { get; set; }
+        public int TotalAulasExtras { get; set; }
+        public int TotalPresencasExtras { get; set; }
+        public List<HistoricoItemDto> Historico { get; set; } = new();
+    }
+
+    public class HistoricoItemDto
+    {
+        public DateOnly DataAula { get; set; }
+        public string NomeTurma { get; set; } = "";
+        public string NomeProfessor { get; set; } = "";
+        public bool Presente { get; set; }
+        public bool EhDiaObrigatorio { get; set; }
+    }
+}

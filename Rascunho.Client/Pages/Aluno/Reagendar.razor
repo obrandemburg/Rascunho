@@ -1,0 +1,401 @@
+﻿@* 
+  ARQUIVO: Rascunho.Client/Pages/Aluno/Reagendar.razor
+  ROTA:    /reagendar
+  ACESSO:  Aluno, Bolsista
+
+  REESCRITO NA SPRINT 4 para usar os endpoints reais do sistema de reposição.
+  Antes usava /api/experimentais/solicitar como proxy — agora usa:
+    - GET /api/reposicoes/elegiveis      → lista as faltas com elegibilidade
+    - GET /api/turmas/listar-ativas      → turmas disponíveis para reposição
+    - POST /api/reposicoes/agendar       → agenda a reposição
+
+  FLUXO EM 3 PASSOS:
+  1. Aluno seleciona uma falta da lista de elegíveis
+  2. Aluno escolhe qualquer turma ativa disponível
+  3. Aluno escolhe uma data (deve cair no dia da semana da turma)
+*@
+
+@page "/reagendar"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Aluno,Bolsista")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Reagendar Aula — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.EventRepeat" Class="mr-2" />
+    Reposição de Aulas
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Selecione uma falta elegível, escolha qualquer turma disponível e agende sua reposição.
+</MudText>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        @* ── COLUNA ESQUERDA: Faltas elegíveis ─────────────────────── *@
+        <MudItem xs="12" md="5">
+            <MudText Typo="Typo.h6" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.EventBusy" Size="Size.Small" Class="mr-1" />
+                Suas Faltas
+            </MudText>
+
+            @if (!faltas.Any())
+            {
+                <MudAlert Severity="Severity.Success">
+                    🎉 Nenhuma falta pendente dentro da janela de reposição.
+                </MudAlert>
+            }
+            else
+            {
+                @foreach (var falta in faltas)
+                {
+                    bool elegivel = falta.MotivoInelegibilidade == null;
+                    bool selecionada = faltaSelecionada?.DataFalta == falta.DataFalta &&
+                                      faltaSelecionada?.TurmaOrigemIdHash == falta.TurmaOrigemIdHash;
+
+                    <MudCard Elevation="@(selecionada ? 5 : 2)"
+                             Class="mb-3 rounded-xl"
+                             Style="@(selecionada ? "border: 2px solid #1b5e20;" : "")">
+                        <MudCardContent Class="pa-3">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@(elegivel? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                                         Color="@(elegivel ? Color.Success : Color.Error)"
+                                         Size="Size.Small" />
+                                <div style="flex: 1;">
+                                    <MudText Typo="Typo.body1" Class="font-weight-bold">
+                                        @falta.RitmoNome
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                        Falta em @falta.DataFalta.ToString("dd/MM/yyyy") — @falta.NomeTurma
+                                    </MudText>
+                                    @if (!elegivel)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Error">
+                                            @falta.MotivoInelegibilidade
+                                        </MudText>
+                                    }
+                                </div>
+                                @if (elegivel)
+                                {
+                                    <MudButton Size="Size.Small"
+                                               Variant="@(selecionada ? Variant.Filled : Variant.Outlined)"
+                                               Color="Color.Primary"
+                                               OnClick="@(() => SelecionarFalta(falta))">
+                                        @(selecionada ? "✓ Selecionada" : "Selecionar")
+                                    </MudButton>
+                                }
+                            </MudStack>
+                        </MudCardContent>
+                    </MudCard>
+                }
+            }
+        </MudItem>
+
+        @* ── COLUNA DIREITA: Turma + Data ───────────────────────────── *@
+        <MudItem xs="12" md="7">
+            @if (faltaSelecionada == null)
+            {
+                <MudPaper Elevation="0" Class="pa-12 text-center rounded-xl"
+                          Style="border: 2px dashed var(--mud-palette-lines-default);">
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowBack"
+                             Style="font-size: 3rem;" Color="Color.Default" Class="mb-3" />
+                    <MudText Typo="Typo.h6">Selecione uma falta</MudText>
+                    <MudText Class="mud-text-secondary">
+                        Escolha uma falta elegível ao lado para ver as turmas disponíveis.
+                    </MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+                    Agendando reposição para a falta de
+                    <b>@faltaSelecionada.DataFalta.ToString("dd/MM/yyyy")</b>
+                    em <b>@faltaSelecionada.RitmoNome</b>.
+                    Você pode escolher <b>qualquer turma ativa</b>.
+                </MudAlert>
+
+                @* Busca de turmas *@
+                <MudTextField @bind-Value="buscaTurma"
+                              Label="Buscar turma (ritmo, professor, nível...)"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true"
+                              Class="mb-4" />
+
+                @* Lista de turmas *@
+                <div Style="max-height: 300px; overflow-y: auto; margin-bottom: 16px;">
+                    @foreach (var turma in turmasFiltradas)
+                    {
+                        bool selecionada = turmaDestinoSelecionada?.IdHash == turma.IdHash;
+                        <MudCard Elevation="1" Class="mb-2 rounded-lg"
+                                 Style="@(selecionada ? "border: 2px solid #1b5e20;" : "cursor: pointer;")">
+                            <MudCardContent Class="pa-3">
+                                <MudStack Row="true" AlignItems="AlignItems.Center">
+                                    <div style="flex: 1;">
+                                        <MudText Typo="Typo.body1">
+                                            <b>@turma.RitmoNome</b> — @turma.Nivel
+                                        </MudText>
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                            @DiaDaSemana(turma.DiaDaSemana) @FormatarHorario(turma.HorarioInicio) · @turma.SalaNome
+                                        </MudText>
+                                    </div>
+                                    <MudButton Size="Size.Small"
+                                               Variant="@(selecionada ? Variant.Filled : Variant.Outlined)"
+                                               Color="Color.Primary"
+                                               OnClick="@(() => SelecionarTurma(turma))">
+                                        @(selecionada ? "✓" : "Escolher")
+                                    </MudButton>
+                                </MudStack>
+                            </MudCardContent>
+                        </MudCard>
+                    }
+                    @if (!turmasFiltradas.Any())
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            Nenhuma turma encontrada com esse filtro.
+                        </MudAlert>
+                    }
+                </div>
+
+                @* Seleção de data (só disponível após escolher a turma) *@
+                @if (turmaDestinoSelecionada != null)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">
+                        Turma selecionada: <b>@turmaDestinoSelecionada.RitmoNome</b> —
+                        ocorre às <b>@DiaDaSemana(turmaDestinoSelecionada.DiaDaSemana)s</b>.
+                        Escolha uma data abaixo.
+                    </MudAlert>
+
+                    <MudDatePicker @bind-Date="dataReposicao"
+                                   Label="Data da Reposição"
+                                   Variant="Variant.Outlined"
+                                   DateFormat="dd/MM/yyyy"
+                                   MinDate="@DateTime.Today.AddDays(1)"
+                                   IsDateDisabledFunc="@(d => d.DayOfWeek != (DayOfWeek)turmaDestinoSelecionada.DiaDaSemana)"
+                                   Class="mb-4"
+                                   HelperText="@($"Apenas {DiaDaSemana(turmaDestinoSelecionada.DiaDaSemana)}s são habilitados")" />
+
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               FullWidth="true"
+                               Size="Size.Large"
+                               StartIcon="@Icons.Material.Filled.EventAvailable"
+                               OnClick="AgendarReposicao"
+                               Disabled="@(dataReposicao == null || processando)">
+                        @(processando ? "Agendando..." : "Confirmar Reposição")
+                    </MudButton>
+                }
+            }
+        </MudItem>
+    </MudGrid>
+
+    @* ── MINHAS REPOSIÇÕES ────────────────────────────────────────── *@
+    @if (minhasReposicoes.Any())
+    {
+        <MudDivider Class="my-6" />
+        <MudText Typo="Typo.h6" Class="mb-3">Minhas Reposições Agendadas</MudText>
+        @foreach (var rep in minhasReposicoes.Where(r => r.Status == "Agendada"))
+        {
+            <MudCard Elevation="2" Class="mb-3 rounded-lg">
+                <MudCardContent>
+                    <MudStack Row="true" AlignItems="AlignItems.Center">
+                        <div style="flex: 1;">
+                            <MudText Typo="Typo.body1">
+                                Falta de @rep.DataFalta.ToString("dd/MM/yyyy") — @rep.TurmaOrigemNome
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                Reposição: @rep.TurmaDestinoNome em
+                                @rep.DataReposicaoAgendada.ToString("dd/MM/yyyy HH:mm")
+                            </MudText>
+                        </div>
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="Color.Warning" Variant="Variant.Filled">
+                            Agendada
+                        </MudChip>
+                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text"
+                                   OnClick="@(() => CancelarReposicao(rep.IdHash))">
+                            Cancelar
+                        </MudButton>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        }
+    }
+}
+
+@code {
+    private bool carregando = true;
+    private bool processando = false;
+    private string buscaTurma = "";
+    private DateTime? dataReposicao;
+
+    private List<FaltaDto> faltas = new();
+    private List<TurmaDto> turmas = new();
+    private List<ReposicaoDto> minhasReposicoes = new();
+
+    private FaltaDto? faltaSelecionada;
+    private TurmaDto? turmaDestinoSelecionada;
+
+    // Filtragem de turmas em memória
+    private IEnumerable<TurmaDto> turmasFiltradas => turmas
+        .Where(t => string.IsNullOrEmpty(buscaTurma) ||
+                    t.RitmoNome.Contains(buscaTurma, StringComparison.OrdinalIgnoreCase) ||
+                    t.Nivel.Contains(buscaTurma, StringComparison.OrdinalIgnoreCase) ||
+                    t.SalaNome.Contains(buscaTurma, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        carregando = true;
+        try
+        {
+            // Carrega faltas, turmas e reposições em paralelo
+            var faltasTask = Http.GetFromJsonAsync<List<FaltaDto>>("api/reposicoes/elegiveis");
+            var turmasTask = Http.GetFromJsonAsync<List<TurmaDto>>("api/turmas/listar-ativas");
+            var reposicoesTask = Http.GetFromJsonAsync<List<ReposicaoDto>>("api/reposicoes/minhas");
+
+            await Task.WhenAll(faltasTask, turmasTask, reposicoesTask);
+
+            faltas = faltasTask.Result ?? new();
+            turmas = turmasTask.Result ?? new();
+            minhasReposicoes = reposicoesTask.Result ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar dados: {ex.Message}", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    private void SelecionarFalta(FaltaDto falta)
+    {
+        // Ao trocar de falta, reseta a turma e data selecionadas
+        faltaSelecionada = falta;
+        turmaDestinoSelecionada = null;
+        dataReposicao = null;
+        buscaTurma = "";
+    }
+
+    private void SelecionarTurma(TurmaDto turma)
+    {
+        turmaDestinoSelecionada = turma;
+        dataReposicao = null;  // Reseta a data ao trocar de turma
+    }
+
+    private async Task AgendarReposicao()
+    {
+        if (faltaSelecionada == null || turmaDestinoSelecionada == null || dataReposicao == null)
+            return;
+
+        processando = true;
+        try
+        {
+            // Monta a data de reposição usando o horário de início da turma
+            var dataAgendada = dataReposicao.Value.Date
+                .Add(turmaDestinoSelecionada.HorarioInicio);
+
+            var payload = new
+            {
+                TurmaOrigemIdHash = faltaSelecionada.TurmaOrigemIdHash,
+                DataFalta = faltaSelecionada.DataFalta,
+                TurmaDestinoIdHash = turmaDestinoSelecionada.IdHash,
+                DataReposicaoAgendada = dataAgendada
+            };
+
+            var response = await Http.PostAsJsonAsync("api/reposicoes/agendar", payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(
+                    $"Reposição agendada para {dataAgendada:dd/MM/yyyy} " +
+                    $"em {turmaDestinoSelecionada.RitmoNome}! ✅",
+                    Severity.Success);
+
+                // Recarrega os dados para refletir a nova reposição
+                faltaSelecionada = null;
+                turmaDestinoSelecionada = null;
+                dataReposicao = null;
+
+                var faltasTask = Http.GetFromJsonAsync<List<FaltaDto>>("api/reposicoes/elegiveis");
+                var reposicoesTask = Http.GetFromJsonAsync<List<ReposicaoDto>>("api/reposicoes/minhas");
+                await Task.WhenAll(faltasTask, reposicoesTask);
+                faltas = faltasTask.Result ?? new();
+                minhasReposicoes = reposicoesTask.Result ?? new();
+            }
+            else if ((int)response.StatusCode == 422)
+            {
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(erro, Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Erro ao agendar reposição.", Severity.Error);
+            }
+        }
+        finally { processando = false; }
+    }
+
+    private async Task CancelarReposicao(string idHash)
+    {
+        var response = await Http.DeleteAsync($"api/reposicoes/{idHash}/cancelar");
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Reposição cancelada. A falta voltou para a lista de elegíveis.", Severity.Info);
+            faltas = await Http.GetFromJsonAsync<List<FaltaDto>>("api/reposicoes/elegiveis") ?? new();
+            minhasReposicoes = await Http.GetFromJsonAsync<List<ReposicaoDto>>("api/reposicoes/minhas") ?? new();
+        }
+    }
+
+    private string DiaDaSemana(int dia) => dia switch
+    {
+        0 => "Domingo",
+        1 => "Segunda",
+        2 => "Terça",
+        3 => "Quarta",
+        4 => "Quinta",
+        5 => "Sexta",
+        6 => "Sábado",
+        _ => "—"
+    };
+
+    private string FormatarHorario(TimeSpan h) => h.ToString(@"hh\:mm");
+
+    // DTOs locais
+    public class FaltaDto
+    {
+        public string TurmaOrigemIdHash { get; set; } = "";
+        public string RitmoNome { get; set; } = "";
+        public string NomeTurma { get; set; } = "";
+        public DateOnly DataFalta { get; set; }
+        public string? MotivoInelegibilidade { get; set; }
+    }
+
+    public class TurmaDto
+    {
+        public string IdHash { get; set; } = "";
+        public string RitmoNome { get; set; } = "";
+        public string SalaNome { get; set; } = "";
+        public int DiaDaSemana { get; set; }
+        public TimeSpan HorarioInicio { get; set; }
+        public string Nivel { get; set; } = "";
+        public int LimiteAlunos { get; set; }
+        public int QuantidadeMatriculados { get; set; }
+    }
+
+    public class ReposicaoDto
+    {
+        public string IdHash { get; set; } = "";
+        public string TurmaOrigemNome { get; set; } = "";
+        public DateOnly DataFalta { get; set; }
+        public string TurmaDestinoNome { get; set; } = "";
+        public DateTime DataReposicaoAgendada { get; set; }
+        public string Status { get; set; } = "";
+    }
+}

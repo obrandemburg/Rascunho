@@ -1,5 +1,5 @@
 ﻿using HashidsNet;
-using Microsoft.AspNetCore.Mvc; // Necessário para o [FromQuery]
+using Microsoft.AspNetCore.Mvc;
 using Rascunho.Shared.DTOs;
 using Rascunho.Infraestrutura;
 using Rascunho.Services;
@@ -13,8 +13,58 @@ public static class TurmaEndpoints
     {
         var group = app.MapGroup("/api/turmas").RequireAuthorization();
 
-        // 1. LISTAR TURMAS (Com filtros opcionais na Query String)
-        // Qualquer usuário logado pode ver o quadro de turmas
+        // ══════════════════════════════════════════════════════════════════
+        // NOVO: GET /api/turmas/listar-ativas
+        // Retorna todas as turmas com Ativa = true, sem autenticação.
+        // Usado por:
+        //   - QuadroTurmas.razor (tela pública para visitantes)
+        //   - GerenciarTurmas.razor (admin lista turmas existentes)
+        //
+        // AllowAnonymous: sobrescreve o RequireAuthorization do grupo.
+        // Qualquer pessoa pode ver as turmas disponíveis — é a "vitrine" da escola.
+        // ══════════════════════════════════════════════════════════════════
+        group.MapGet("/listar-ativas", async (TurmaService turmaService) =>
+        {
+            // Chama ListarTurmasAsync com apenasAtivas: true
+            // Os demais filtros ficam nulos → sem filtro adicional
+            var response = await turmaService.ListarTurmasAsync(
+                ritmoIdHash: null,
+                professorIdHash: null,
+                diaDaSemana: null,
+                horario: null,
+                apenasAtivas: true);
+
+            return Results.Ok(response);
+        })
+        .AllowAnonymous(); // Visitantes sem login também podem ver as turmas
+
+        // ══════════════════════════════════════════════════════════════════
+        // NOVO: GET /api/turmas/minhas-turmas
+        // Retorna as turmas do usuário logado com base na sua role:
+        //   → Professor:          turmas onde ele está vinculado como professor
+        //   → Aluno/Bolsista/Líder: turmas onde ele tem matrícula formal
+        //
+        // O userId e a role são lidos diretamente das Claims do JWT —
+        // não precisamos passar nada no body ou query string.
+        // ══════════════════════════════════════════════════════════════════
+        group.MapGet("/minhas-turmas", async (TurmaService turmaService, ClaimsPrincipal user) =>
+        {
+            // Lê o ID do usuário da Claim "NameIdentifier" (gerada pelo TokenService)
+            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            // Lê o tipo/role do usuário da Claim "Role"
+            var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (!int.TryParse(idClaim, out int usuarioId) || string.IsNullOrEmpty(roleClaim))
+                return Results.Unauthorized();
+
+            var response = await turmaService.ListarMinhasTurmasAsync(usuarioId, roleClaim);
+            return Results.Ok(response);
+        });
+        // Autenticação herdada do grupo — qualquer usuário logado pode acessar
+
+        // ══════════════════════════════════════════════════════════════════
+        // 1. LISTAR TURMAS com filtros opcionais (rota original — mantida)
+        // ══════════════════════════════════════════════════════════════════
         group.MapGet("/", async (
             [FromQuery] string? ritmoIdHash,
             [FromQuery] string? professorIdHash,
@@ -22,26 +72,32 @@ public static class TurmaEndpoints
             [FromQuery] TimeSpan? horario,
             TurmaService turmaService) =>
         {
+            // Sem o parâmetro apenasAtivas → retorna todas (inclusive inativas)
+            // Mantém comportamento original para o painel admin que pode precisar ver inativas
             var response = await turmaService.ListarTurmasAsync(ritmoIdHash, professorIdHash, diaDaSemana, horario);
             return Results.Ok(response);
         })
         .RequireAuthorization();
 
-        // 2. CRIAR TURMA (Apenas Recepção e Gerência)
+        // ══════════════════════════════════════════════════════════════════
+        // 2. CRIAR TURMA (Recepção e Gerente)
+        // ══════════════════════════════════════════════════════════════════
         group.MapPost("/criar", async (CriarTurmaRequest request, TurmaService turmaService) =>
         {
-            // CORREÇÃO: Alteramos o nome da variável de 'turma' para 'response'
             var response = await turmaService.CriarTurmaAsync(request);
-
             return Results.Created($"/api/turmas/{response.IdHash}", response);
         })
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
-        // ==========================================
-        // ÁREA DO ALUNO (Auto-serviço)
-        // ==========================================
 
-        // 3. MATRICULAR ALUNO (O próprio aluno faz pelo App)
-        group.MapPost("/{turmaIdHash}/matricular", async (string turmaIdHash, MatricularRequest request, TurmaService turmaService, IHashids hashids, ClaimsPrincipal user) =>
+        // ══════════════════════════════════════════════════════════════════
+        // 3. MATRICULAR ALUNO (auto-serviço do aluno)
+        // ══════════════════════════════════════════════════════════════════
+        group.MapPost("/{turmaIdHash}/matricular", async (
+            string turmaIdHash,
+            MatricularRequest request,
+            TurmaService turmaService,
+            IHashids hashids,
+            ClaimsPrincipal user) =>
         {
             var decodedIds = hashids.Decode(turmaIdHash);
             if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID da turma inválido." });
@@ -55,8 +111,14 @@ public static class TurmaEndpoints
         .RequireAuthorization(policy => policy.RequireRole("Aluno", "Bolsista", "Líder"))
         .AddEndpointFilter<ValidationFilter<MatricularRequest>>();
 
-        // 4. DESMATRICULAR (Sair da turma ou desistir da fila de espera)
-        group.MapDelete("/{turmaIdHash}/desmatricular", async (string turmaIdHash, TurmaService turmaService, IHashids hashids, ClaimsPrincipal user) =>
+        // ══════════════════════════════════════════════════════════════════
+        // 4. DESMATRICULAR (auto-serviço)
+        // ══════════════════════════════════════════════════════════════════
+        group.MapDelete("/{turmaIdHash}/desmatricular", async (
+            string turmaIdHash,
+            TurmaService turmaService,
+            IHashids hashids,
+            ClaimsPrincipal user) =>
         {
             var decodedIds = hashids.Decode(turmaIdHash);
             if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID da turma inválido." });
@@ -68,12 +130,14 @@ public static class TurmaEndpoints
             return Results.Ok(new { Mensagem = "Você saiu da turma/fila de espera." });
         });
 
-        // ==========================================
-        // ÁREA ADMINISTRATIVA (Recepção e Gerência)
-        // ==========================================
-
-        // 5. RECEPÇÃO MATRICULAR UM ALUNO QUALQUER
-        group.MapPost("/{turmaIdHash}/admin/matricular", async (string turmaIdHash, MatricularAdminRequest request, TurmaService turmaService, IHashids hashids) =>
+        // ══════════════════════════════════════════════════════════════════
+        // 5. ADMIN: Recepção matricula qualquer aluno
+        // ══════════════════════════════════════════════════════════════════
+        group.MapPost("/{turmaIdHash}/admin/matricular", async (
+            string turmaIdHash,
+            MatricularAdminRequest request,
+            TurmaService turmaService,
+            IHashids hashids) =>
         {
             var turmaDecoded = hashids.Decode(turmaIdHash);
             var alunoDecoded = hashids.Decode(request.AlunoIdHash);
@@ -84,14 +148,19 @@ public static class TurmaEndpoints
             if (request.Papel != "Condutor" && request.Papel != "Conduzido" && request.Papel != "Ambos")
                 return Results.BadRequest(new { erro = "Papel inválido. Escolha 'Condutor', 'Conduzido' ou 'Ambos'." });
 
-            // Reaproveitamos a MESMA lógica do TurmaService, só mudamos a origem do ID do Aluno!
             string mensagem = await turmaService.MatricularAlunoAsync(turmaDecoded[0], alunoDecoded[0], request.Papel);
             return Results.Ok(new { Mensagem = mensagem });
         })
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
-        // 6. RECEPÇÃO DESMATRICULAR UM ALUNO QUALQUER
-        group.MapDelete("/{turmaIdHash}/admin/desmatricular/{alunoIdHash}", async (string turmaIdHash, string alunoIdHash, TurmaService turmaService, IHashids hashids) =>
+        // ══════════════════════════════════════════════════════════════════
+        // 6. ADMIN: Recepção desmatricula qualquer aluno
+        // ══════════════════════════════════════════════════════════════════
+        group.MapDelete("/{turmaIdHash}/admin/desmatricular/{alunoIdHash}", async (
+            string turmaIdHash,
+            string alunoIdHash,
+            TurmaService turmaService,
+            IHashids hashids) =>
         {
             var turmaDecoded = hashids.Decode(turmaIdHash);
             var alunoDecoded = hashids.Decode(alunoIdHash);
@@ -104,8 +173,14 @@ public static class TurmaEndpoints
         })
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
-        // 7. TROCAR SALA (Apenas Staff)
-        group.MapPut("/{turmaIdHash}/trocar-sala", async (string turmaIdHash, TrocarSalaRequest request, TurmaService turmaService, IHashids hashids) =>
+        // ══════════════════════════════════════════════════════════════════
+        // 7. TROCAR SALA
+        // ══════════════════════════════════════════════════════════════════
+        group.MapPut("/{turmaIdHash}/trocar-sala", async (
+            string turmaIdHash,
+            TrocarSalaRequest request,
+            TurmaService turmaService,
+            IHashids hashids) =>
         {
             var decodedIds = hashids.Decode(turmaIdHash);
             var salaDecoded = hashids.Decode(request.NovaSalaIdHash);
@@ -115,6 +190,37 @@ public static class TurmaEndpoints
 
             await turmaService.TrocarSalaAsync(decodedIds[0], salaDecoded[0], request.NovoLimiteAlunos);
             return Results.Ok(new { Mensagem = "Sala trocada com sucesso!" });
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
+        // Localização: Rascunho/Endpoints/TurmaEndpoints.cs
+        // ADICIONAR após o endpoint "7. TROCAR SALA"
+
+        // ══════════════════════════════════════════════════════════════════
+        // 8. ENCERRAR TURMA (RN-TUR04)
+        //
+        // PUT /api/turmas/{turmaIdHash}/encerrar
+        //
+        // Encerra a turma definitivamente.
+        // Cancela experimentais pendentes e reposições com ela como destino.
+        // Retorna quantos alunos foram afetados (para log e futura notificação push).
+        // ══════════════════════════════════════════════════════════════════
+        group.MapPut("/{turmaIdHash}/encerrar", async (
+            string turmaIdHash,
+            TurmaService turmaService,
+            IHashids hashids) =>
+        {
+            var decodedIds = hashids.Decode(turmaIdHash);
+            if (decodedIds.Length == 0)
+                return Results.BadRequest(new { erro = "ID da turma inválido." });
+
+            int totalAlunos = await turmaService.EncerrarTurmaAsync(decodedIds[0]);
+
+            return Results.Ok(new
+            {
+                Mensagem = $"Turma encerrada com sucesso. {totalAlunos} aluno(s) afetado(s). " +
+                           "Notificação push será enviada na Sprint 5.",
+                TotalAlunos = totalAlunos
+            });
         })
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
     }

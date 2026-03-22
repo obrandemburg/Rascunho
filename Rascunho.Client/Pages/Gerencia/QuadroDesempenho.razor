@@ -1,0 +1,590 @@
+﻿@* 
+  ARQUIVO: Rascunho.Client/Pages/Gerencia/QuadroDesempenho.razor
+  ROTA:    /gerencia/bolsistas
+  ACESSO:  Gerente
+
+  FLUXO:
+  1. GET /api/gerente/desempenho-bolsistas → lista ordenada por urgência
+  2. Cards de resumo calculados em memória
+  3. Filtros aplicados no cliente (sem nova chamada à API)
+  4. Clique no card → modal com histórico completo + ações
+  5. Ações disponíveis no modal:
+     - Editar dias obrigatórios: PUT /api/bolsistas/{id}/dias-obrigatorios
+     - Registrar conversa: POST /api/gerente/bolsistas/{id}/registrar-conversa
+     - Desativar bolsa: PUT /api/gerente/bolsistas/{id}/desativar-bolsa
+*@
+
+@page "/gerencia/bolsistas"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@using Rascunho.Client.Shared
+@attribute [Authorize(Roles = "Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Quadro de Desempenho — Bolsistas</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Groups" Class="mr-2" />
+    Quadro de Desempenho — Bolsistas
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Acompanhe a frequência e situação de cada bolsista ativo.
+</MudText>
+
+@if (carregando)
+{
+    <MudGrid>
+        @for (int i = 0; i < 4; i++)
+        {
+            <MudItem xs="6" sm="3">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="100px" Class="rounded-xl" />
+            </MudItem>
+        }
+    </MudGrid>
+}
+else
+{
+    @* ── CARDS RESUMO ────────────────────────────────────────────── *@
+    <MudGrid Class="mb-6">
+        <MudItem xs="6" sm="3">
+            <MudPaper Elevation="3" Class="pa-4 text-center rounded-xl"
+                      Style="border-top: 4px solid #1b5e20;">
+                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Success">
+                    @totalAtivos
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Bolsistas Ativos</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Elevation="3" Class="pa-4 text-center rounded-xl"
+                      Style="border-top: 4px solid #f44336;">
+                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Error">
+                    @totalCriticos
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Críticos (&lt;60%)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Elevation="3" Class="pa-4 text-center rounded-xl"
+                      Style="border-top: 4px solid #ff9800;">
+                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Warning">
+                    @totalAlerta
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Em Alerta (60–74%)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Elevation="3" Class="pa-4 text-center rounded-xl"
+                      Style="border-top: 4px solid #4caf50;">
+                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Success">
+                    @totalSaudavel
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Saudável (75%+)</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ── FILTROS ─────────────────────────────────────────────────── *@
+    <MudPaper Elevation="1" Class="pa-4 mb-6 rounded-xl">
+        <MudGrid>
+            <MudItem xs="12" sm="5">
+                <MudSelect T="string" @bind-Value="filtroSituacao"
+                           Label="Situação" Variant="Variant.Outlined">
+                    <MudSelectItem T="string" Value="@("Todos")">Todos</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Crítico")">🔴 Crítico</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Atenção")">🟠 Atenção</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Vamos melhorar")">🟡 Vamos melhorar</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Excelente")">🟢 Excelente</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="5">
+                <MudSelect T="string" @bind-Value="filtroDia"
+                           Label="Dia Obrigatório" Variant="Variant.Outlined">
+                    <MudSelectItem T="string" Value="@("Todos")">Todos</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("1")">Segunda-feira</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("2")">Terça-feira</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("3")">Quarta-feira</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("4")">Quinta-feira</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("5")">Sexta-feira</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("6")">Sábado</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2" Class="d-flex align-end">
+                <MudButton OnClick="LimparFiltros" Variant="Variant.Outlined"
+                           FullWidth="true" Color="Color.Default">
+                    Limpar
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @* ── LISTA DE BOLSISTAS ───────────────────────────────────────── *@
+    @if (!bolsistasFiltrados.Any())
+    {
+        <MudAlert Severity="Severity.Info">Nenhum bolsista encontrado com os filtros aplicados.</MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (var b in bolsistasFiltrados)
+            {
+                bool urgente = b.IndicadorSituacao is "Crítico" or "Atenção";
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="@(urgente ? 5 : 2)"
+                             Class="rounded-xl"
+                             Style="@($"cursor:pointer; border-left: 5px solid {CorIndicador(b.IndicadorSituacao)};")">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudAvatar Color="@(urgente? Color.Error: Color.Primary)" Size="Size.Medium">
+                                        @b.Nome.FirstOrDefault()
+                                    </MudAvatar>
+                                    <div>
+                                        <MudText Typo="Typo.subtitle1" Class="font-weight-bold">@b.Nome</MudText>
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                            Dias: @DiaDaSemana(b.DiaObrigatorio1) e @DiaDaSemana(b.DiaObrigatorio2)
+                                        </MudText>
+                                    </div>
+                                </MudStack>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@CorChip(b.IndicadorSituacao)"
+                                         Variant="Variant.Filled">
+                                    @b.IndicadorSituacao
+                                </MudChip>
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            @* Barra de progresso da frequência obrigatória *@
+                            <div class="d-flex justify-space-between mb-1">
+                                <MudText Typo="Typo.caption">Freq. Obrigatória</MudText>
+                                <MudText Typo="Typo.caption"
+                                         Style="@($"color: {CorIndicador(b.IndicadorSituacao)}; font-weight: bold;")">
+                                    @b.FrequenciaObrigatoriaPct%
+                                </MudText>
+                            </div>
+                            <MudProgressLinear Color="@CorBarra(b.IndicadorSituacao)"
+                                               Value="@b.FrequenciaObrigatoriaPct"
+                                               Rounded="true" Size="Size.Medium" Class="mb-2" />
+
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @b.TotalPresencasObrigatorias / @b.TotalAulasObrigatorias presenças
+                                em dias obrigatórios
+                            </MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.OpenInNew"
+                                       OnClick="@(() => AbrirModal(b))">
+                                Ver Detalhes
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+}
+
+@* ── MODAL DE DETALHES + AÇÕES ──────────────────────────────────── *@
+<MudDialog @bind-IsVisible="modalAberto"
+           Options="@(new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true })">
+    <TitleContent>
+        @if (bolsistaSelecionado != null)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudAvatar Color="Color.Primary">@bolsistaSelecionado.Nome.FirstOrDefault()</MudAvatar>
+                <div>
+                    <MudText Typo="Typo.h6">@bolsistaSelecionado.Nome</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        @bolsistaSelecionado.FrequenciaObrigatoriaPct% de frequência obrigatória
+                    </MudText>
+                </div>
+            </MudStack>
+        }
+    </TitleContent>
+
+    <DialogContent>
+        @if (bolsistaSelecionado != null)
+        {
+            @* Ações disponíveis *@
+            <MudText Typo="Typo.subtitle2" Class="mb-3">Ações</MudText>
+            <MudGrid Class="mb-4">
+                @* Editar dias obrigatórios *@
+                <MudItem xs="12" sm="4">
+                    <MudPaper Elevation="1" Class="pa-3 rounded-lg">
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            <b>Dias Obrigatórios</b>
+                        </MudText>
+                        <MudSelect T="int" @bind-Value="novoDia1"
+                                   Label="Dia 1" Variant="Variant.Outlined"
+                                   Dense="true" Class="mb-2">
+                            @for (int d = 0; d <= 6; d++)
+                            {
+                                int dia = d;
+                                <MudSelectItem T="int" Value="@dia">@DiaDaSemanaCompleto(dia)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudSelect T="int" @bind-Value="novoDia2"
+                                   Label="Dia 2" Variant="Variant.Outlined"
+                                   Dense="true" Class="mb-2">
+                            @for (int d = 0; d <= 6; d++)
+                            {
+                                int dia = d;
+                                <MudSelectItem T="int" Value="@dia">@DiaDaSemanaCompleto(dia)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudButton Size="Size.Small" Variant="Variant.Filled"
+                                   Color="Color.Primary" FullWidth="true"
+                                   OnClick="SalvarDiasObrigatorios"
+                                   Disabled="@(processando || novoDia1 == novoDia2)">
+                            Salvar Dias
+                        </MudButton>
+                    </MudPaper>
+                </MudItem>
+
+                @* Registrar conversa *@
+                <MudItem xs="12" sm="4">
+                    <MudPaper Elevation="1" Class="pa-3 rounded-lg">
+                        <MudText Typo="Typo.body2" Class="mb-2"><b>Registrar Conversa</b></MudText>
+                        <MudTextField @bind-Value="textoConversa"
+                                      Label="Observação" Variant="Variant.Outlined"
+                                      Lines="3" MaxLength="500" Dense="true" Class="mb-2"
+                                      Placeholder="Ex: 15/03 — bolsista relatou problema pessoal" />
+                        <MudButton Size="Size.Small" Variant="Variant.Filled"
+                                   Color="Color.Info" FullWidth="true"
+                                   OnClick="RegistrarConversa"
+                                   Disabled="@(processando || string.IsNullOrWhiteSpace(textoConversa))">
+                            Registrar
+                        </MudButton>
+                    </MudPaper>
+                </MudItem>
+
+                @* Desativar bolsa *@
+                <MudItem xs="12" sm="4">
+                    <MudPaper Elevation="1" Class="pa-3 rounded-lg"
+                              Style="border: 1px solid #f44336;">
+                        <MudText Typo="Typo.body2" Class="mb-2" Color="Color.Error">
+                            <b>⚠️ Desativar Bolsa</b>
+                        </MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">
+                            Converte o bolsista em aluno comum.
+                            Histórico preservado. Irreversível sem intervenção manual.
+                        </MudText>
+                        <MudButton Size="Size.Small" Variant="Variant.Filled"
+                                   Color="Color.Error" FullWidth="true"
+                                   OnClick="ConfirmarDesativarBolsa"
+                                   Disabled="@processando">
+                            Desativar Bolsa
+                        </MudButton>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* Histórico de presenças *@
+            <MudDivider Class="mb-4" />
+            <MudText Typo="Typo.subtitle2" Class="mb-3">
+                Histórico de Presenças
+                <MudChip T="string" Size="Size.Small" Color="Color.Default"
+                         Variant="Variant.Outlined" Class="ml-2">
+                    @bolsistaSelecionado.Historico.Count registros
+                </MudChip>
+            </MudText>
+
+            @if (!bolsistaSelecionado.Historico.Any())
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Nenhuma presença registrada ainda.
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable T="HistoricoItemDto" Items="@bolsistaSelecionado.Historico"
+                          Hover="true" Dense="true" Elevation="0"
+                          Style="max-height: 300px; overflow-y: auto;">
+                    <HeaderContent>
+                        <MudTh>Data</MudTh>
+                        <MudTh>Turma</MudTh>
+                        <MudTh>Professor</MudTh>
+                        <MudTh>Tipo</MudTh>
+                        <MudTh>Presença</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="item">
+                        <MudTd>@item.DataAula.ToString("dd/MM/yyyy")</MudTd>
+                        <MudTd>@item.NomeTurma</MudTd>
+                        <MudTd>@item.NomeProfessor</MudTd>
+                        <MudTd>
+                            @if (item.EhDiaObrigatorio)
+                            {
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="Color.Primary" Variant="Variant.Filled">
+                                    Obrigatório
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="Color.Default" Variant="Variant.Outlined">
+                                    Extra
+                                </MudChip>
+                            }
+                        </MudTd>
+                        <MudTd>
+                            @if (item.Presente)
+                            {
+                                <MudText Color="Color.Success">✅ Presente</MudText>
+                            }
+                            else
+                            {
+                                <MudText Color="Color.Error">❌ Falta</MudText>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="@(() => modalAberto = false)" Color="Color.Default">
+            Fechar
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool carregando = true;
+    private bool modalAberto = false;
+    private bool processando = false;
+    private string filtroSituacao = "Todos";
+    private string filtroDia = "Todos";
+    private string textoConversa = "";
+    private int novoDia1 = 1;
+    private int novoDia2 = 3;
+
+    private List<BolsistaDesempenhoDto> todos = new();
+    private BolsistaDesempenhoDto? bolsistaSelecionado;
+
+    // Contadores para os cards de resumo
+    private int totalAtivos => todos.Count;
+    private int totalCriticos => todos.Count(b => b.IndicadorSituacao == "Crítico");
+    private int totalAlerta => todos.Count(b => b.IndicadorSituacao == "Atenção");
+    private int totalSaudavel => todos.Count(b =>
+        b.IndicadorSituacao is "Excelente" or "Vamos melhorar");
+
+    // Filtragem aplicada em memória — sem nova chamada à API
+    private IEnumerable<BolsistaDesempenhoDto> bolsistasFiltrados => todos
+        .Where(b => filtroSituacao == "Todos" || b.IndicadorSituacao == filtroSituacao)
+        .Where(b => filtroDia == "Todos" ||
+                    b.DiaObrigatorio1.ToString() == filtroDia ||
+                    b.DiaObrigatorio2.ToString() == filtroDia);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            todos = await Http.GetFromJsonAsync<List<BolsistaDesempenhoDto>>(
+                "api/gerente/desempenho-bolsistas") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar dados dos bolsistas.", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    private void AbrirModal(BolsistaDesempenhoDto bolsista)
+    {
+        bolsistaSelecionado = bolsista;
+        novoDia1 = bolsista.DiaObrigatorio1 ?? 1;
+        novoDia2 = bolsista.DiaObrigatorio2 ?? 3;
+        textoConversa = "";
+        modalAberto = true;
+    }
+
+    private async Task SalvarDiasObrigatorios()
+    {
+        if (bolsistaSelecionado == null) return;
+        if (novoDia1 == novoDia2)
+        {
+            Snackbar.Add("Os dois dias obrigatórios devem ser diferentes.", Severity.Warning);
+            return;
+        }
+
+        processando = true;
+        try
+        {
+            var response = await Http.PutAsJsonAsync(
+                $"api/bolsistas/{bolsistaSelecionado.BolsistaIdHash}/dias-obrigatorios",
+                new { Dia1 = novoDia1, Dia2 = novoDia2 });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Dias obrigatórios atualizados!", Severity.Success);
+                bolsistaSelecionado = bolsistaSelecionado with
+                {
+                    DiaObrigatorio1 = novoDia1,
+                    DiaObrigatorio2 = novoDia2
+                };
+            }
+            else
+                Snackbar.Add("Erro ao atualizar dias.", Severity.Error);
+        }
+        finally { processando = false; }
+    }
+
+    private async Task RegistrarConversa()
+    {
+        if (bolsistaSelecionado == null || string.IsNullOrWhiteSpace(textoConversa)) return;
+
+        processando = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync(
+                $"api/gerente/bolsistas/{bolsistaSelecionado.BolsistaIdHash}/registrar-conversa",
+                new { Observacao = textoConversa });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Conversa registrada com sucesso! 📝", Severity.Success);
+                textoConversa = "";
+            }
+            else
+                Snackbar.Add("Erro ao registrar conversa.", Severity.Error);
+        }
+        finally { processando = false; }
+    }
+
+    private async Task ConfirmarDesativarBolsa()
+    {
+        if (bolsistaSelecionado == null) return;
+
+        var parametros = new DialogParameters
+        {
+            { "ContentText",
+                $"⚠️ ATENÇÃO\n\n" +
+                $"{bolsistaSelecionado.Nome} será convertido para Aluno comum.\n\n" +
+                "✓ Histórico de presenças: MANTIDO\n" +
+                "✓ Habilidades cadastradas: MANTIDAS\n" +
+                "✗ Dias obrigatórios: REMOVIDOS\n\n" +
+                "Esta ação é irreversível sem intervenção manual no banco." },
+            { "ButtonText", "Desativar Bolsa" },
+            { "Color", Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirmar Desativação", parametros);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            processando = true;
+            try
+            {
+                var response = await Http.PutAsync(
+                    $"api/gerente/bolsistas/{bolsistaSelecionado.BolsistaIdHash}/desativar-bolsa",
+                    null);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add(
+                        $"{bolsistaSelecionado.Nome} convertido para Aluno. " +
+                        "Ele precisará fazer login novamente.",
+                        Severity.Warning);
+
+                    // Remove da lista local e fecha o modal
+                    todos.RemoveAll(b => b.BolsistaIdHash == bolsistaSelecionado.BolsistaIdHash);
+                    modalAberto = false;
+                }
+                else
+                {
+                    var erro = await response.Content.ReadAsStringAsync();
+                    Snackbar.Add($"Erro: {erro}", Severity.Error);
+                }
+            }
+            finally { processando = false; }
+        }
+    }
+
+    private void LimparFiltros()
+    {
+        filtroSituacao = "Todos";
+        filtroDia = "Todos";
+    }
+
+    private string CorIndicador(string indicador) => indicador switch
+    {
+        "Crítico" => "#b71c1c",
+        "Atenção" => "#f44336",
+        "Vamos melhorar" => "#ff9800",
+        "Excelente" => "#4caf50",
+        _ => "#9e9e9e"
+    };
+
+    private Color CorBarra(string indicador) => indicador switch
+    {
+        "Crítico" => Color.Error,
+        "Atenção" => Color.Error,
+        "Vamos melhorar" => Color.Warning,
+        _ => Color.Success
+    };
+
+    private Color CorChip(string indicador) => indicador switch
+    {
+        "Crítico" => Color.Error,
+        "Atenção" => Color.Warning,
+        "Vamos melhorar" => Color.Warning,
+        _ => Color.Success
+    };
+
+    private string DiaDaSemana(int? dia) => dia switch
+    {
+        1 => "Seg",
+        2 => "Ter",
+        3 => "Qua",
+        4 => "Qui",
+        5 => "Sex",
+        6 => "Sáb",
+        0 => "Dom",
+        _ => "—"
+    };
+
+    private string DiaDaSemanaCompleto(int dia) => dia switch
+    {
+        0 => "Domingo",
+        1 => "Segunda-feira",
+        2 => "Terça-feira",
+        3 => "Quarta-feira",
+        4 => "Quinta-feira",
+        5 => "Sexta-feira",
+        6 => "Sábado",
+        _ => "—"
+    };
+
+    // DTOs locais espelhando DesempenhoResponse do backend
+    public record BolsistaDesempenhoDto(
+        string BolsistaIdHash,
+        string Nome,
+        int? DiaObrigatorio1,
+        int? DiaObrigatorio2,
+        double FrequenciaObrigatoriaPct,
+        string IndicadorSituacao,
+        int TotalAulasObrigatorias,
+        int TotalPresencasObrigatorias,
+        double FrequenciaExtraPct,
+        int TotalAulasExtras,
+        int TotalPresencasExtras,
+        List<HistoricoItemDto> Historico
+    );
+
+    public record HistoricoItemDto(
+        DateOnly DataAula,
+        string NomeTurma,
+        string NomeProfessor,
+        bool Presente,
+        bool EhDiaObrigatorio
+    );
+}

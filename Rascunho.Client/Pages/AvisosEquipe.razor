@@ -1,0 +1,167 @@
+﻿@* 
+  ═══════════════════════════════════════════════════════════════
+  ARQUIVO: Rascunho.Client/Pages/AvisosEquipe.razor
+  ROTA:    /avisos-equipe
+  ACESSO:  Professor, Bolsista, Líder, Recepção, Gerente
+  
+  FLUXO DE DADOS:
+  ┌──────────────────────────────────────────────────────────────┐
+  │  OnInitializedAsync()                                        │
+  │    └─ GET /api/avisos/equipe                                 │
+  │         Retorna avisos com TipoVisibilidade = "Equipe"       │
+  │         Filtro de expiração feito no servidor (Auto-Exclusão │
+  │         Lógica — a query já filtra DataExpiracao > UtcNow)   │
+  └──────────────────────────────────────────────────────────────┘
+  
+  REGRA DE VISIBILIDADE (da API, AvisoEndpoints.cs):
+  - "Geral": AllowAnonymous → qualquer visitante
+  - "Equipe": Roles = Professor, Bolsista, Líder, Recepção, Gerente
+  
+  NOTA: Alunos NÃO têm acesso a este endpoint (HTTP 403).
+  Por isso o [Authorize] usa todas as roles menos "Aluno".
+*@
+
+@page "/avisos-equipe"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Professor,Bolsista,Líder,Recepção,Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Avisos da Equipe — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Announcement" Class="mr-2" />
+    Avisos da Equipe
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Comunicados internos para professores, bolsistas e equipe.
+</MudText>
+
+@if (carregando)
+{
+    @* Skeleton para os cards enquanto carrega *@
+    <MudGrid>
+        @for (int i = 0; i < 4; i++)
+        {
+            <MudItem xs="12" sm="6">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="140px" Class="rounded-xl" />
+            </MudItem>
+        }
+    </MudGrid>
+}
+else if (!avisos.Any())
+{
+    <MudPaper Elevation="0" Class="pa-12 text-center rounded-xl"
+              Style="border: 2px dashed var(--mud-palette-lines-default);">
+        <MudIcon Icon="@Icons.Material.Filled.CheckCircleOutline"
+                 Color="Color.Success" Style="font-size: 3rem;" Class="mb-3" />
+        <MudText Typo="Typo.h6" Class="mb-2">Tudo tranquilo por aqui!</MudText>
+        <MudText Class="mud-text-secondary">
+            Nenhum aviso ativo para a equipe no momento.
+        </MudText>
+    </MudPaper>
+}
+else
+{
+    <MudText Typo="Typo.caption" Class="mb-4 mud-text-secondary">
+        @avisos.Count @(avisos.Count == 1 ? "aviso ativo" : "avisos ativos")
+    </MudText>
+
+    <MudGrid>
+        @foreach (var aviso in avisos)
+        {
+            @*
+              Calcula quantos dias faltam para expirar — alerta visual
+              quando o aviso está prestes a sumir do mural.
+            *@
+            var diasRestantes = (aviso.DataExpiracao - DateTime.UtcNow).TotalDays;
+            var expirandoBreve = diasRestantes <= 2;
+
+            <MudItem xs="12" sm="6">
+                <MudCard Elevation="@(expirandoBreve ? 1 : 3)"
+                         Class="rounded-xl h-100"
+                         Style="@($"border-left: 4px solid {(expirandoBreve ? "#ff9800" : "#2196f3")}; opacity: {(expirandoBreve ? "0.85" : "1")};")">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@aviso.Titulo</MudText>
+                            <div class="d-flex align-center gap-2 mt-1">
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    Por @aviso.NomeAutor · @aviso.DataPublicacao.ToString("dd/MM/yyyy")
+                                </MudText>
+                                @* Alerta de expiração iminente *@
+                                @if (expirandoBreve)
+                                {
+                                    <MudChip T="string"
+                                             Size="Size.Small"
+                                             Color="Color.Warning"
+                                             Variant="Variant.Filled">
+                                        Expira em @((int)diasRestantes)d
+                                    </MudChip>
+                                }
+                            </div>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudIcon Icon="@Icons.Material.Filled.Lock"
+                                     Color="Color.Info"
+                                     Size="Size.Small"
+                                     Title="Visível apenas para a equipe" />
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2" Style="white-space: pre-line;">
+                            @aviso.Mensagem
+                        </MudText>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary px-2">
+                            Válido até @aviso.DataExpiracao.ToString("dd/MM/yyyy")
+                        </MudText>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private bool carregando = true;
+    private List<AvisoDto> avisos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // GET /api/avisos/equipe
+            // Requer: Professor, Bolsista, Líder, Recepção ou Gerente
+            // A API já filtra por DataExpiracao > UtcNow (Auto-Exclusão Lógica)
+            // Retorna: ObterAvisoResponse[] — ordenado do mais recente para o mais antigo
+            avisos = await Http.GetFromJsonAsync<List<AvisoDto>>(
+                "api/avisos/equipe") ?? new();
+        }
+        catch (HttpRequestException ex) when ((int?)ex.StatusCode == 403)
+        {
+            // 403 = usuário não tem role adequada (não deveria acontecer com [Authorize])
+            Snackbar.Add("Acesso negado a este recurso.", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar avisos: {ex.Message}", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    // ── DTO espelhando ObterAvisoResponse do backend ────────────
+    // Campos: IdHash, Titulo, Mensagem, DataPublicacao, DataExpiracao,
+    //         TipoVisibilidade, NomeAutor
+    public class AvisoDto
+    {
+        public string IdHash { get; set; } = "";
+        public string Titulo { get; set; } = "";
+        public string Mensagem { get; set; } = "";
+        public DateTime DataPublicacao { get; set; }
+        public DateTime DataExpiracao { get; set; }
+        public string TipoVisibilidade { get; set; } = "";
+        public string NomeAutor { get; set; } = "";
+    }
+}

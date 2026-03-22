@@ -1,4 +1,5 @@
-﻿namespace Rascunho.Entities;
+﻿// Localização: Rascunho/Entities/AulaParticular.cs
+namespace Rascunho.Entities;
 
 public class AulaParticular
 {
@@ -16,13 +17,28 @@ public class AulaParticular
     public DateTime DataHoraInicio { get; protected set; }
     public DateTime DataHoraFim { get; protected set; }
 
-    public string Status { get; protected set; } = string.Empty; // Pendente, Aceita, Recusada, Cancelada
+    public string Status { get; protected set; } = string.Empty;
+
+    // Observação enviada pelo aluno ao solicitar (ex: "preciso melhorar o passo básico")
     public string ObservacaoAluno { get; protected set; } = string.Empty;
+
     public DateTime DataSolicitacao { get; protected set; }
+
+    // RN-BOL03: Valor calculado no momento da solicitação e persistido.
+    // Bolsista paga 50% do preço padrão; Aluno paga valor integral.
+    // Persistir garante que mudanças de preço não afetam cobranças históricas.
+    public decimal ValorCobrado { get; protected set; }
 
     protected AulaParticular() { }
 
-    public AulaParticular(int alunoId, int professorId, int ritmoId, DateTime dataHoraInicio, DateTime dataHoraFim, string observacaoAluno)
+    public AulaParticular(
+        int alunoId,
+        int professorId,
+        int ritmoId,
+        DateTime dataHoraInicio,
+        DateTime dataHoraFim,
+        string observacaoAluno,
+        decimal valorCobrado)
     {
         AlunoId = alunoId;
         ProfessorId = professorId;
@@ -30,6 +46,7 @@ public class AulaParticular
         DataHoraInicio = dataHoraInicio.ToUniversalTime();
         DataHoraFim = dataHoraFim.ToUniversalTime();
         ObservacaoAluno = observacaoAluno;
+        ValorCobrado = valorCobrado;
         Status = "Pendente";
         DataSolicitacao = DateTime.UtcNow;
     }
