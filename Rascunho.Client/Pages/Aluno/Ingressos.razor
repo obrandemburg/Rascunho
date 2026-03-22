@@ -1,0 +1,321 @@
+﻿@* 
+  ═══════════════════════════════════════════════════════════════
+  ARQUIVO: Rascunho.Client/Pages/Aluno/Ingressos.razor
+  ROTA:    /ingressos
+  ACESSO:  Aluno, Bolsista, Líder
+  
+  FLUXO DE DADOS:
+  ┌──────────────────────────────────────────────────────────────┐
+  │  OnInitializedAsync()                                        │
+  │    └─ GET /api/eventos/futuros → eventos com vagas           │
+  │    └─ GET /api/eventos/historico → eventos passados          │
+  │                                                              │
+  │  ComprarIngresso(eventoIdHash)                               │
+  │    └─ POST /api/eventos/{eventoIdHash}/comprar               │
+  │         Response: ComprarIngressoResponse                    │
+  │           { IngressoIdHash, Mensagem, ValorCobrado }         │
+  │                                                              │
+  │  REGRAS DE NEGÓCIO (EventoService.cs):                       │
+  │  - Bolsista em BAILE → ingresso gratuito (valorFinal = 0)    │
+  │  - Todos os outros → Preco + TAXA_APP (R$ 5,00)             │
+  │  - Um usuário: 1 ingresso ativo por evento (sem cambistas)   │
+  │  - Evento lotado → 422                                       │
+  └──────────────────────────────────────────────────────────────┘
+*@
+
+@page "/ingressos"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Aluno,Bolsista,Líder")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Eventos & Ingressos — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.ConfirmationNumber" Class="mr-2" />
+    Eventos & Ingressos
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Compre ingressos para bailes e workshops. Bolsistas têm acesso gratuito aos bailes!
+</MudText>
+
+@* Informativo para bolsistas *@
+<AuthorizeView Roles="Bolsista">
+    <Authorized>
+        <MudAlert Severity="Severity.Success" Icon="@Icons.Material.Filled.Star" Class="mb-6">
+            <strong>Você é bolsista!</strong> Seu ingresso para bailes é gratuito como parte das suas regalias.
+            Workshops têm desconto de 50%.
+        </MudAlert>
+    </Authorized>
+</AuthorizeView>
+
+@* ── ABAS: Futuros / Histórico ────────────────────────────────── *@
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true"
+         PanelClass="pa-4" Color="Color.Primary">
+
+    @* ── ABA 1: Eventos Futuros (onde o usuário compra ingresso) ── *@
+    <MudTabPanel Text="Próximos Eventos"
+                 Icon="@Icons.Material.Filled.Event"
+                 BadgeData="@eventosFuturos.Count"
+                 BadgeColor="Color.Success">
+
+        @if (carregandoFuturos)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else if (!eventosFuturos.Any())
+        {
+            <MudPaper Elevation="0" Class="pa-12 text-center rounded-xl"
+                      Style="border: 2px dashed var(--mud-palette-lines-default);">
+                <MudIcon Icon="@Icons.Material.Filled.EventBusy"
+                         Color="Color.Default" Style="font-size: 3rem;" Class="mb-3" />
+                <MudText Typo="Typo.h6" Class="mb-2">Nenhum evento programado</MudText>
+                <MudText Class="mud-text-secondary">Fique de olho nos avisos para novidades!</MudText>
+            </MudPaper>
+        }
+        else
+        {
+            <MudGrid>
+                @foreach (var evento in eventosFuturos)
+                {
+                    var esgotado = evento.IngressosVendidos >= evento.Capacidade;
+                    @*
+                      Gradiente de urgência: verde (muito tempo) → laranja (dentro do mês)
+                      → vermelho (dentro da semana)
+                    *@
+                    var diasRestantes = (evento.DataHora - DateTime.Now).TotalDays;
+                    var corBorda = diasRestantes <= 7 ? "#f44336"
+                                : diasRestantes <= 30 ? "#ff9800"
+                                : "#1b5e20";
+
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudCard Elevation="3" Class="rounded-xl h-100"
+                                 Style="@($"border-top: 4px solid {corBorda};")">
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.h6">@evento.Nome</MudText>
+                                    <div class="d-flex gap-2 mt-1">
+                                        @* Tipo do evento: Baile ou Workshop *@
+                                        <MudChip T="string"
+                                                 Size="Size.Small"
+                                                 Color="@(evento.Tipo == "Baile" ? Color.Secondary : Color.Info)"
+                                                 Variant="Variant.Filled">
+                                            @evento.Tipo
+                                        </MudChip>
+                                        @if (esgotado)
+                                        {
+                                            <MudChip T="string" Size="Size.Small"
+                                                     Color="Color.Error" Variant="Variant.Filled">
+                                                Esgotado
+                                            </MudChip>
+                                        }
+                                    </div>
+                                </CardHeaderContent>
+                            </MudCardHeader>
+
+                            <MudCardContent>
+                                <MudText Typo="Typo.body2" Class="mb-3">@evento.Descricao</MudText>
+
+                                <MudList T="string" Dense="true" Class="pa-0">
+                                    <MudListItem T="string"
+                                                 Icon="@Icons.Material.Filled.CalendarMonth"
+                                                 IconSize="Size.Small">
+                                        @evento.DataHora.ToString("dd/MM/yyyy 'às' HH:mm")
+                                    </MudListItem>
+                                    <MudListItem T="string"
+                                                 Icon="@Icons.Material.Filled.People"
+                                                 IconSize="Size.Small">
+                                        @evento.IngressosVendidos / @evento.Capacidade ingressos vendidos
+                                    </MudListItem>
+                                </MudList>
+
+                                @* Barra de ingressos vendidos *@
+                                <MudProgressLinear Color="@(esgotado? Color.Error: Color.Primary)"
+                                                   Value="@(evento.Capacidade > 0 ? (double)evento.IngressosVendidos / evento.Capacidade * 100 : 0)"
+                                                   Rounded="true"
+                                                   Size="Size.Small"
+                                                   Class="mt-2" />
+
+                                @* Preço destacado *@
+                                <MudText Typo="Typo.h5" Color="Color.Primary" Class="mt-3 font-weight-bold">
+                                    @(evento.Preco == 0 ? "Gratuito" : $"R$ {evento.Preco:F2}")
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                        @(evento.Preco > 0 ? "+ R$ 5,00 taxa" : "")
+                                    </MudText>
+                                </MudText>
+                            </MudCardContent>
+
+                            <MudCardActions>
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           FullWidth="true"
+                                           StartIcon="@Icons.Material.Filled.ShoppingCart"
+                                           OnClick="@(() => Comprar(evento))"
+                                           Disabled="@(esgotado || processando == evento.IdHash)">
+                                    @(processando == evento.IdHash ? "Comprando..." :
+                                      esgotado ? "Esgotado" : "Comprar Ingresso")
+                                </MudButton>
+                            </MudCardActions>
+                        </MudCard>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </MudTabPanel>
+
+    @* ── ABA 2: Histórico de Eventos ── *@
+    <MudTabPanel Text="Histórico"
+                 Icon="@Icons.Material.Filled.History">
+
+        @if (carregandoHistorico)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else if (!eventosHistorico.Any())
+        {
+            <MudAlert Severity="Severity.Info">Nenhum evento passado registrado.</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="@eventosHistorico"
+                      Hover="true"
+                      Dense="true"
+                      Elevation="2"
+                      Class="rounded-xl">
+                <HeaderContent>
+                    <MudTh>Evento</MudTh>
+                    <MudTh>Tipo</MudTh>
+                    <MudTh>Data</MudTh>
+                    <MudTh>Participantes</MudTh>
+                </HeaderContent>
+                <RowTemplate Context="ev">
+                    <MudTd>@ev.Nome</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(ev.Tipo == "Baile" ? Color.Secondary : Color.Info)"
+                                 Variant="Variant.Outlined">
+                            @ev.Tipo
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@ev.DataHora.ToString("dd/MM/yyyy")</MudTd>
+                    <MudTd>@ev.IngressosVendidos / @ev.Capacidade</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+</MudTabs>
+
+@code {
+    private bool carregandoFuturos = true;
+    private bool carregandoHistorico = true;
+    private string? processando = null; // Armazena IdHash do evento sendo comprado
+
+    private List<EventoDto> eventosFuturos = new();
+    private List<EventoDto> eventosHistorico = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Carrega futuros e histórico em paralelo — melhor performance
+        var futuroTask = CarregarFuturos();
+        var historicoTask = CarregarHistorico();
+        await Task.WhenAll(futuroTask, historicoTask);
+    }
+
+    private async Task CarregarFuturos()
+    {
+        try
+        {
+            // GET /api/eventos/futuros
+            // Retorna eventos com DataHora >= UtcNow, ordenados por data
+            eventosFuturos = await Http.GetFromJsonAsync<List<EventoDto>>(
+                "api/eventos/futuros") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar eventos: {ex.Message}", Severity.Error);
+        }
+        finally { carregandoFuturos = false; }
+    }
+
+    private async Task CarregarHistorico()
+    {
+        try
+        {
+            // GET /api/eventos/historico
+            // Retorna todos os eventos (inclusive passados), ordenados por data
+            eventosHistorico = await Http.GetFromJsonAsync<List<EventoDto>>(
+                "api/eventos/historico") ?? new();
+            // Filtra apenas os passados no front
+            eventosHistorico = eventosHistorico
+                .Where(e => e.DataHora < DateTime.UtcNow)
+                .OrderByDescending(e => e.DataHora).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar histórico: {ex.Message}", Severity.Error);
+        }
+        finally { carregandoHistorico = false; }
+    }
+
+    private async Task Comprar(EventoDto evento)
+    {
+        processando = evento.IdHash;
+        try
+        {
+            // POST /api/eventos/{eventoIdHash}/comprar
+            // Sem body — o JWT identifica o usuário e a role (Bolsista = gratuito em Baile)
+            var response = await Http.PostAsync(
+                $"api/eventos/{evento.IdHash}/comprar", null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                // ComprarIngressoResponse: { IngressoIdHash, Mensagem, ValorCobrado }
+                var resultado = await response.Content
+                    .ReadFromJsonAsync<ComprarIngressoResponse>();
+
+                var msg = resultado?.Mensagem ?? "Ingresso comprado com sucesso!";
+                var valor = resultado?.ValorCobrado ?? 0;
+                var sufixo = valor == 0 ? " (gratuito)" : $" — R$ {valor:F2}";
+
+                Snackbar.Add(msg + sufixo, Severity.Success);
+                await CarregarFuturos(); // Atualiza contagem de ingressos
+            }
+            else if ((int)response.StatusCode == 422)
+            {
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(erro, Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Erro ao processar compra. Tente novamente.", Severity.Error);
+            }
+        }
+        finally { processando = null; }
+    }
+
+    // ── DTOs locais ─────────────────────────────────────────────
+    // ObterEventoResponse: IdHash, Nome, Descricao, DataHora, Tipo,
+    //   Capacidade, Preco, IngressosVendidos
+    public class EventoDto
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string Descricao { get; set; } = "";
+        public DateTime DataHora { get; set; }
+        public string Tipo { get; set; } = ""; // "Baile" ou "Workshop"
+        public int Capacidade { get; set; }
+        public decimal Preco { get; set; }
+        public int IngressosVendidos { get; set; }
+    }
+
+    // ComprarIngressoResponse: IngressoIdHash, Mensagem, ValorCobrado
+    public class ComprarIngressoResponse
+    {
+        public string IngressoIdHash { get; set; } = "";
+        public string Mensagem { get; set; } = "";
+        public decimal ValorCobrado { get; set; }
+    }
+}

@@ -1,4 +1,4 @@
-using FluentValidation;
+﻿using FluentValidation;
 using HashidsNet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -13,40 +13,27 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
-
 builder.Services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
 });
 
-//cors
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("PermitirFrontend", policy =>
     {
-        // Libera de qualquer lugar! A segurança será feita pelo Token JWT.
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
     });
 });
 
-// ================================================================
-// 1. BANCO DE DADOS (Vindo do Docker/Ambiente)
-// ================================================================
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("A String de Conexão com o banco não foi encontrada no ambiente.");
+    ?? throw new InvalidOperationException("String de conexão não encontrada.");
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(connectionString));
+builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
 
-// ================================================================
-// 2. CONFIGURAÇÃO JWT (Lendo do Docker/Ambiente com trava de segurança)
-// ================================================================
-var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("A Chave JWT (Jwt:Key) está faltando no ambiente.");
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("O JWT Issuer (Jwt:Issuer) está faltando.");
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new InvalidOperationException("O JWT Audience (Jwt:Audience) está faltando.");
-
+var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key ausente.");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer ausente.");
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new InvalidOperationException("Jwt:Audience ausente.");
 var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -64,9 +51,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization(); // Ativa as Roles e Policies
+builder.Services.AddAuthorization();
 
-// Serviços
+// ── Serviços ──────────────────────────────────────────────────────
 builder.Services.AddScoped<UsuarioService>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<RitmoService>();
@@ -78,55 +65,39 @@ builder.Services.AddScoped<AulaParticularService>();
 builder.Services.AddScoped<BolsistaService>();
 builder.Services.AddScoped<EventoService>();
 builder.Services.AddScoped<AulaExperimentalService>();
+// NOVO Sprint 2
+builder.Services.AddScoped<ProfessorDisponibilidadeService>();
 
-// Tratamento global de exceções
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-// Chave de encriptação de Id
 var hashidsSalt = builder.Configuration["Hashids:Salt"]
-    ?? throw new InvalidOperationException("A chave do Hashids não foi configurada nas variáveis de ambiente/secrets.");
-
+    ?? throw new InvalidOperationException("Hashids:Salt ausente.");
 builder.Services.AddSingleton<IHashids>(new Hashids(hashidsSalt, minHashLength: 8));
 
-// Validações
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 
 var app = builder.Build();
 
-// APLICAÇÃO AUTOMÁTICA DE MIGRATIONS (Ideal para o ambiente de testes na VPS)
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    try
-    {
-        await db.Database.MigrateAsync();
-    }
-    catch (Exception ex)
-    {
-        // Adicione um log de erro aqui, se necessário
-        Console.WriteLine($"Erro ao rodar migrations: {ex.Message}");
-    }
+    try { await db.Database.MigrateAsync(); }
+    catch (Exception ex) { Console.WriteLine($"Erro migration: {ex.Message}"); }
 }
 
 app.UseExceptionHandler();
 
-//if (app.Environment.IsDevelopment())
-//{
+if (app.Environment.IsDevelopment())
+{
     app.MapOpenApi();
-
-    // Interface moderna do Scalar
     app.MapScalarApiReference(options =>
-    {
         options.WithTitle("Ponto da Dança API")
                .WithTheme(ScalarTheme.DeepSpace)
-               .WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Axios);
-    });
-//}
-//app.UseHttpsRedirection();
+               .WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Axios));
+}
 
 app.UseCors("PermitirFrontend");
-
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -141,5 +112,6 @@ app.MapAulaParticularEndpoints();
 app.MapBolsistaEndpoints();
 app.MapEventoEndpoints();
 app.MapAulaExperimentalEndpoints();
+app.MapProfessorEndpoints(); // NOVO Sprint 2
 
 app.Run();

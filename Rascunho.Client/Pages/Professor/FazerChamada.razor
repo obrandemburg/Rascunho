@@ -1,21 +1,8 @@
-﻿@* 
-  ROTA: /professor/chamada
-  ACESSO: Professor, Assistente, Recepção, Gerente
-  
-  CORREÇÕES APLICADAS:
-  - MudList<AlunoChamadaDto> com T explícito
-  - MudListItem<AlunoChamadaDto> com T explícito
-  - MudSwitch T="bool" explícito — obrigatório no MudBlazor v6
-  
-  ALTERNATIVA MAIS ROBUSTA: MudTable (sem problema de inferência)
-  usado para a lista de alunos — já é o padrão do projeto existente
-  (veja FazerChamada.razor já no repositório).
-*@
-
+﻿@* ARQUIVO: Rascunho.Client/Pages/Professor/FazerChamada.razor *@
 @page "/professor/chamada"
 @using Microsoft.AspNetCore.Authorization
 @using System.Net.Http.Json
-@attribute [Authorize(Roles = "Professor,Assistente,Recepção,Gerente")]
+@attribute [Authorize(Roles = "Professor,Recepção,Gerente")]
 @inject HttpClient Http
 @inject ISnackbar Snackbar
 
@@ -26,39 +13,29 @@
     Fazer Chamada
 </MudText>
 
-@* ============================================================
-   SELEÇÃO DE TURMA E DATA
-============================================================ *@
+@* ── Seleção de turma e data ──────────────────────────────────── *@
 <MudPaper Elevation="2" Class="pa-6 rounded-xl mb-6">
     <MudGrid>
-        <MudItem xs="12" sm="6">
-            <MudSelect T="string"
-                       @bind-Value="turmaSelecionadaHash"
-                       Label="Selecione a Turma"
-                       Variant="Variant.Outlined"
-                       Adornment="Adornment.Start"
-                       AdornmentIcon="@Icons.Material.Filled.School">
-                @foreach (var turma in minhasTurmas)
+        <MudItem xs="12" sm="5">
+            <MudSelect T="string" @bind-Value="turmaSelecionadaHash"
+                       Label="Selecione a Turma" Variant="Variant.Outlined"
+                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.School">
+                @foreach (var t in minhasTurmas)
                 {
-                    <MudSelectItem T="string" Value="@turma.IdHash">
-                        @turma.RitmoNome — @DiaDaSemana(turma.DiaDaSemana)
-                        @turma.HorarioInicio.ToString(@"hh\:mm")
+                    <MudSelectItem T="string" Value="@t.IdHash">
+                        @t.RitmoNome — @DiaDaSemana(t.DiaDaSemana) @t.HorarioInicio.ToString(@"hh\:mm")
                     </MudSelectItem>
                 }
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudDatePicker @bind-Date="dataAula"
-                           Label="Data da Aula"
-                           Variant="Variant.Outlined"
-                           DateFormat="dd/MM/yyyy"
+            <MudDatePicker @bind-Date="dataAula" Label="Data da Aula"
+                           Variant="Variant.Outlined" DateFormat="dd/MM/yyyy"
                            MaxDate="@DateTime.Today" />
         </MudItem>
-        <MudItem xs="12" sm="2" Class="d-flex align-end">
-            <MudButton OnClick="CarregarChamada"
-                       Variant="Variant.Filled"
-                       Color="Color.Primary"
-                       FullWidth="true"
+        <MudItem xs="12" sm="3" Class="d-flex align-end">
+            <MudButton OnClick="CarregarChamada" Variant="Variant.Filled"
+                       Color="Color.Primary" FullWidth="true"
                        Disabled="@(string.IsNullOrEmpty(turmaSelecionadaHash))"
                        StartIcon="@Icons.Material.Filled.Search">
                 Carregar
@@ -67,104 +44,268 @@
     </MudGrid>
 </MudPaper>
 
-@* ============================================================
-   TABELA DE ALUNOS COM PRESENÇA
-   Usando MudTable ao invés de MudList — evita problemas de
-   inferência genérica e já é o padrão do projeto existente.
-============================================================ *@
 @if (carregandoChamada)
 {
     <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
 }
-else if (alunos.Any())
+else if (alunos.Any() || extrasAdicionados.Any())
 {
-    <MudPaper Elevation="3" Class="rounded-xl">
-        @* Contador no topo *@
+    @* ── SEÇÃO A: Alunos matriculados ──────────────────────────── *@
+    <MudPaper Elevation="3" Class="rounded-xl mb-4">
         <div class="pa-4 d-flex justify-space-between align-center">
-            <MudText>
-                <b>@alunos.Count</b> alunos ·
-                <b>@alunos.Count(a => a.Presente)</b> presentes
-            </MudText>
-            <MudButton Size="Size.Small"
-                       Variant="Variant.Outlined"
-                       Color="Color.Primary"
-                       OnClick="MarcarTodos">
-                Marcar Todos Presentes
+            <div>
+                <MudText Typo="Typo.subtitle1">
+                    <MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" Class="mr-1" />
+                    <b>Seção A</b> — Alunos Matriculados
+                </MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    @alunos.Count(a => a.Presente) presentes · @alunos.Count(a => !a.Presente) faltas
+                </MudText>
+            </div>
+            <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                       OnClick="@(() => { alunos.ForEach(a => a.Presente = true); StateHasChanged(); })">
+                Todos Presentes
             </MudButton>
         </div>
         <MudDivider />
-
-        @*
-          MudTable: mais estável para listas com binding bidirecional.
-          RowTemplate usa Context explícito para evitar ambiguidade.
-        *@
-        <MudTable T="AlunoPresencaDto"
-                  Items="@alunos"
-                  Hover="true"
-                  Breakpoint="Breakpoint.Sm"
-                  Elevation="0">
+        <MudTable T="AlunoPresencaDto" Items="@alunos" Hover="true" Elevation="0">
             <HeaderContent>
                 <MudTh>Aluno</MudTh>
                 <MudTh>Papel</MudTh>
                 <MudTh>Presença</MudTh>
+                <MudTh>Observação</MudTh>
             </HeaderContent>
             <RowTemplate Context="aluno">
-                <MudTd DataLabel="Aluno">
-                    <MudText>@aluno.NomeAluno</MudText>
+                <MudTd>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudAvatar Size="Size.Small" Color="Color.Primary">@aluno.Nome.FirstOrDefault()</MudAvatar>
+                        <MudText>@aluno.Nome</MudText>
+                    </MudStack>
                 </MudTd>
-                <MudTd DataLabel="Papel">
-                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                        @aluno.Papel
-                    </MudText>
-                </MudTd>
-                <MudTd DataLabel="Presença">
-                    @*
-                      CORREÇÃO: MudSwitch T="bool" — tipo explícito obrigatório.
-                      @bind-Value (não @bind-Checked) é o padrão no MudBlazor v6+.
-                    *@
-                    <MudSwitch T="bool"
-                               @bind-Value="aluno.Presente"
-                               Color="Color.Success"
-                               UnCheckedColor="Color.Error"
+                <MudTd><MudText Typo="Typo.caption">@aluno.Papel</MudText></MudTd>
+                <MudTd>
+                    <MudSwitch T="bool" @bind-Value="aluno.Presente"
+                               Color="Color.Success" UnCheckedColor="Color.Error"
                                Label="@(aluno.Presente ? "Presente" : "Faltou")" />
+                </MudTd>
+                <MudTd>
+                    @* Campo de observação colapsado por padrão *@
+                    @if (!aluno.ObservacaoExpandida)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.NoteAdd"
+                                       Size="Size.Small" Color="Color.Default"
+                                       Title="Adicionar observação"
+                                       OnClick="@(() => aluno.ObservacaoExpandida = true)" />
+                        @if (!string.IsNullOrEmpty(aluno.Observacao))
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined"
+                                     OnClick="@(() => aluno.ObservacaoExpandida = true)">
+                                📝 Ver obs.
+                            </MudChip>
+                        }
+                    }
+                    else
+                    {
+                        <MudTextField @bind-Value="aluno.Observacao"
+                                      Placeholder="Ex: chegou atrasado, evolução notável..."
+                                      Variant="Variant.Outlined" MaxLength="500"
+                                      Lines="2" Style="min-width: 220px;"
+                                      Adornment="Adornment.End"
+                                      AdornmentIcon="@Icons.Material.Filled.Close"
+                                      OnAdornmentClick="@(() => aluno.ObservacaoExpandida = false)" />
+                    }
                 </MudTd>
             </RowTemplate>
         </MudTable>
+    </MudPaper>
 
-        @* Botão salvar no rodapé *@
+    @* ── SEÇÃO B: Participantes extras (bolsistas / experimentais) ─ *@
+    <MudPaper Elevation="3" Class="rounded-xl mb-4">
         <div class="pa-4">
-            <MudButton OnClick="SalvarChamada"
-                       Variant="Variant.Filled"
-                       Color="Color.Success"
-                       FullWidth="true"
-                       Size="Size.Large"
-                       StartIcon="@Icons.Material.Filled.Save"
-                       Disabled="@salvando">
-                @(salvando ? "Salvando..." : "Salvar Chamada")
-            </MudButton>
+            <MudText Typo="Typo.subtitle1" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" Class="mr-1" />
+                <b>Seção B</b> — Adicionar Participante Extra
+            </MudText>
+
+            @* Campo de busca *@
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudTextField @bind-Value="termoBusca"
+                              Placeholder="Buscar bolsista ou aluno com experimental..."
+                              Variant="Variant.Outlined" Immediate="true"
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              OnKeyUp="@BuscarExtras"
+                              Style="flex: 1;" />
+                @if (buscando)
+                {
+                    <MudProgressCircular Size="Size.Small" Color="Color.Primary" Indeterminate="true" />
+                }
+            </MudStack>
+
+            @* Resultados da busca *@
+            @if (resultadosBusca.Any())
+            {
+                <MudPaper Elevation="1" Class="mb-3 pa-2" Style="max-height: 200px; overflow-y: auto;">
+                    @foreach (var participante in resultadosBusca)
+                    {
+                        bool jaAdicionado = extrasAdicionados.Any(e => e.AlunoIdHash == participante.UsuarioIdHash);
+                        <MudListItem T="ParticipanteExtraDto" Dense="true"
+                                     Disabled="@jaAdicionado"
+                                     OnClick="@(() => AdicionarExtra(participante))">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudAvatar Size="Size.Small" Color="Color.Secondary">
+                                    @participante.Nome.FirstOrDefault()
+                                </MudAvatar>
+                                <MudText>@participante.Nome</MudText>
+                                @* Badge de tipo do participante *@
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@(participante.TipoParticipante == "Bolsista" ? Color.Secondary : Color.Info)"
+                                         Variant="Variant.Filled">
+                                    @(participante.TipoParticipante == "Bolsista" ? "🎓 Bolsista" : "🆕 Experimental")
+                                </MudChip>
+                                @if (jaAdicionado)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
+                                        ✓ Adicionado
+                                    </MudChip>
+                                }
+                            </MudStack>
+                        </MudListItem>
+                        <MudDivider />
+                    }
+                </MudPaper>
+            }
+
+            @* Extras já adicionados à chamada *@
+            @if (extrasAdicionados.Any())
+            {
+                <MudText Typo="Typo.body2" Class="mb-2 mud-text-secondary">
+                    Participantes adicionados (@extrasAdicionados.Count):
+                </MudText>
+                <MudTable T="AlunoPresencaDto" Items="@extrasAdicionados" Hover="true" Elevation="1" Dense="true">
+                    <HeaderContent>
+                        <MudTh>Nome</MudTh>
+                        <MudTh>Presença</MudTh>
+                        <MudTh>Obs.</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="extra">
+                        <MudTd>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudAvatar Size="Size.Small" Color="Color.Secondary">@extra.Nome.FirstOrDefault()</MudAvatar>
+                                <MudText>@extra.Nome</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">@extra.Papel</MudChip>
+                            </MudStack>
+                        </MudTd>
+                        <MudTd>
+                            <MudSwitch T="bool" @bind-Value="extra.Presente"
+                                       Color="Color.Success" UnCheckedColor="Color.Error" />
+                        </MudTd>
+                        <MudTd>
+                            @if (!extra.ObservacaoExpandida)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.NoteAdd" Size="Size.Small"
+                                               OnClick="@(() => extra.ObservacaoExpandida = true)" />
+                            }
+                            else
+                            {
+                                <MudTextField @bind-Value="extra.Observacao" Placeholder="Observação..."
+                                              Variant="Variant.Outlined" MaxLength="500" Lines="1"
+                                              Style="min-width: 160px;" />
+                            }
+                        </MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.RemoveCircle" Color="Color.Error"
+                                           Size="Size.Small" OnClick="@(() => RemoverExtra(extra))" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
         </div>
     </MudPaper>
+
+    @* ── Botão Finalizar (abre resumo) ─────────────────────────── *@
+    <MudButton OnClick="@(() => mostrarResumo = true)"
+               Variant="Variant.Filled" Color="Color.Success"
+               FullWidth="true" Size="Size.Large"
+               StartIcon="@Icons.Material.Filled.DoneAll"
+               Disabled="@salvando">
+        Finalizar Chamada
+    </MudButton>
 }
 
+@* ── MODAL: Resumo antes de confirmar ───────────────────────────── *@
+<MudDialog @bind-IsVisible="mostrarResumo" Options="@(new DialogOptions { MaxWidth = MaxWidth.ExtraSmall })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">📋 Resumo da Chamada</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">
+            @dataAula?.ToString("dddd, dd/MM/yyyy")
+        </MudText>
+        <MudDivider Class="mb-3" />
+
+        <MudText Typo="Typo.subtitle2">Alunos Matriculados: @alunos.Count</MudText>
+        <MudStack Row="true" Spacing="3" Class="mb-2">
+            <MudText Color="Color.Success">✅ @alunos.Count(a => a.Presente) presentes</MudText>
+            <MudText Color="Color.Error">❌ @alunos.Count(a => !a.Presente) faltas</MudText>
+        </MudStack>
+
+        @if (extrasAdicionados.Any())
+        {
+            <MudText Typo="Typo.subtitle2">Participantes Extras: @extrasAdicionados.Count</MudText>
+            <MudText Color="Color.Success" Class="mb-2">
+                ✅ @extrasAdicionados.Count(e => e.Presente) presentes
+            </MudText>
+        }
+
+        @{
+            int totalObs = alunos.Count(a => !string.IsNullOrEmpty(a.Observacao))
+                         + extrasAdicionados.Count(e => !string.IsNullOrEmpty(e.Observacao));
+        }
+        @if (totalObs > 0)
+        {
+            <MudText Class="mud-text-secondary">📝 @totalObs observação(ões) registrada(s)</MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => mostrarResumo = false)" Color="Color.Default">Revisar</MudButton>
+        <MudButton OnClick="SalvarChamada" Color="Color.Success"
+                   Variant="Variant.Filled" Disabled="@salvando">
+            @(salvando ? "Salvando..." : "Confirmar e Salvar")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
+    // Parâmetro de query string: permite que MinhasTurmas.razor navegue
+    // para /professor/chamada?turmaIdHash=xxx e pré-selecione a turma
+    [SupplyParameterFromQuery]
+    private string? TurmaIdHash { get; set; }
+
     private string turmaSelecionadaHash = "";
     private DateTime? dataAula = DateTime.Today;
     private bool carregandoChamada = false;
     private bool salvando = false;
+    private bool mostrarResumo = false;
+    private bool buscando = false;
+    private string termoBusca = "";
+
     private List<TurmaSimples> minhasTurmas = new();
     private List<AlunoPresencaDto> alunos = new();
+    private List<AlunoPresencaDto> extrasAdicionados = new();
+    private List<ParticipanteExtraDto> resultadosBusca = new();
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            minhasTurmas = await Http.GetFromJsonAsync<List<TurmaSimples>>(
-                "api/turmas/minhas-turmas") ?? new();
+            minhasTurmas = await Http.GetFromJsonAsync<List<TurmaSimples>>("api/turmas/minhas-turmas") ?? new();
         }
-        catch
-        {
-            Snackbar.Add("Erro ao carregar suas turmas.", Severity.Error);
-        }
+        catch { Snackbar.Add("Erro ao carregar turmas.", Severity.Error); }
+
+        // Pré-seleciona turma se veio da navegação (MinhasTurmas → Fazer Chamada)
+        if (!string.IsNullOrEmpty(TurmaIdHash))
+            turmaSelecionadaHash = TurmaIdHash;
     }
 
     private async Task CarregarChamada()
@@ -172,12 +313,40 @@ else if (alunos.Any())
         if (string.IsNullOrEmpty(turmaSelecionadaHash) || dataAula == null) return;
 
         carregandoChamada = true;
-        alunos = new(); // Limpa lista anterior
+        alunos = new();
+        extrasAdicionados = new();
+        resultadosBusca = new();
+
         try
         {
-            var dataFormatada = dataAula.Value.ToString("yyyy-MM-dd");
-            alunos = await Http.GetFromJsonAsync<List<AlunoPresencaDto>>(
-                $"api/turmas/{turmaSelecionadaHash}/chamada?dataAula={dataFormatada}") ?? new();
+            var dataFormatada = DateOnly.FromDateTime(dataAula.Value).ToString("yyyy-MM-dd");
+
+            // MODIFICADO Sprint 2: resposta agora inclui Extras e Observacao
+            // Usa ObterChamadaDto (local) que espelha ObterChamadaResponse do backend
+            var chamadaData = await Http.GetFromJsonAsync<ObterChamadaDto>(
+                $"api/turmas/{turmaSelecionadaHash}/chamada?dataAula={dataFormatada}");
+
+            // Mapeia matriculados (Seção A)
+            alunos = chamadaData?.Alunos.Select(a => new AlunoPresencaDto
+            {
+                AlunoIdHash = a.AlunoIdHash,
+                Nome = a.Nome,
+                FotoUrl = a.FotoUrl,
+                Papel = a.Papel,
+                Presente = a.Presente,
+                Observacao = a.Observacao
+            }).ToList() ?? new();
+
+            // Mapeia extras já salvos (Seção B carregada)
+            extrasAdicionados = chamadaData?.Extras.Select(e => new AlunoPresencaDto
+            {
+                AlunoIdHash = e.AlunoIdHash,
+                Nome = e.Nome,
+                FotoUrl = e.FotoUrl,
+                Papel = e.Papel,
+                Presente = e.Presente,
+                Observacao = e.Observacao
+            }).ToList() ?? new();
         }
         catch
         {
@@ -186,24 +355,85 @@ else if (alunos.Any())
         finally { carregandoChamada = false; }
     }
 
-    private void MarcarTodos()
+    private System.Timers.Timer? _debounceTimer;
+
+    // Debounce: espera 400ms após o usuário parar de digitar antes de buscar
+    // Evita uma request por tecla pressionada
+    private void BuscarExtras(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
-        alunos.ForEach(a => a.Presente = true);
-        // StateHasChanged para forçar re-render dos switches
+        _debounceTimer?.Stop();
+        _debounceTimer?.Dispose();
+
+        if (termoBusca.Trim().Length < 2)
+        {
+            resultadosBusca = new();
+            StateHasChanged();
+            return;
+        }
+
+        _debounceTimer = new System.Timers.Timer(400);
+        _debounceTimer.Elapsed += async (_, _) =>
+        {
+            _debounceTimer?.Stop();
+            await InvokeAsync(async () =>
+            {
+                buscando = true;
+                StateHasChanged();
+                try
+                {
+                    resultadosBusca = await Http.GetFromJsonAsync<List<ParticipanteExtraDto>>(
+                        $"api/turmas/{turmaSelecionadaHash}/chamada/buscar-extras?termo={Uri.EscapeDataString(termoBusca)}") ?? new();
+                }
+                catch { resultadosBusca = new(); }
+                finally { buscando = false; StateHasChanged(); }
+            });
+        };
+        _debounceTimer.AutoReset = false;
+        _debounceTimer.Start();
+    }
+
+    private void AdicionarExtra(ParticipanteExtraDto participante)
+    {
+        if (extrasAdicionados.Any(e => e.AlunoIdHash == participante.UsuarioIdHash)) return;
+        extrasAdicionados.Add(new AlunoPresencaDto
+        {
+            AlunoIdHash = participante.UsuarioIdHash,
+            Nome = participante.Nome,
+            FotoUrl = participante.FotoUrl,
+            Papel = participante.TipoParticipante,
+            Presente = true  // padrão: presente (professor adicionou = está aqui)
+        });
+        StateHasChanged();
+    }
+
+    private void RemoverExtra(AlunoPresencaDto extra)
+    {
+        extrasAdicionados.Remove(extra);
         StateHasChanged();
     }
 
     private async Task SalvarChamada()
     {
+        mostrarResumo = false;
         salvando = true;
+
         try
         {
+            var dataOnly = DateOnly.FromDateTime(dataAula!.Value);
             var request = new
             {
-                Alunos = alunos.Select(a => new
+                DataAula = dataOnly,
+                Presencas = alunos.Select(a => new
                 {
                     AlunoIdHash = a.AlunoIdHash,
-                    Presente = a.Presente
+                    Presente = a.Presente,
+                    Observacao = a.Observacao
+                }).ToList(),
+                ExtrasPresencas = extrasAdicionados.Select(e => new
+                {
+                    AlunoIdHash = e.AlunoIdHash,
+                    Presente = e.Presente,
+                    Observacao = e.Observacao
                 }).ToList()
             };
 
@@ -230,13 +460,43 @@ else if (alunos.Any())
         _ => "—"
     };
 
-    // Classe com campo mutável para o binding bidirecional do switch
+    // ── DTOs locais ──────────────────────────────────────────────
     public class AlunoPresencaDto
     {
         public string AlunoIdHash { get; set; } = "";
-        public string NomeAluno { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string FotoUrl { get; set; } = "";
         public string Papel { get; set; } = "";
-        public bool Presente { get; set; }   // two-way bind com MudSwitch
+        public bool Presente { get; set; }
+        public string? Observacao { get; set; }
+        public bool ObservacaoExpandida { get; set; } = false; // estado de UI
+    }
+
+    public class ParticipanteExtraDto
+    {
+        public string UsuarioIdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string FotoUrl { get; set; } = "";
+        public string TipoParticipante { get; set; } = "";
+    }
+
+    // Espelha ObterChamadaResponse do backend
+    public class ObterChamadaDto
+    {
+        public string TurmaIdHash { get; set; } = "";
+        public DateOnly DataAula { get; set; }
+        public List<AlunoChamadaItemDto> Alunos { get; set; } = new();
+        public List<AlunoChamadaItemDto> Extras { get; set; } = new();
+    }
+
+    public class AlunoChamadaItemDto
+    {
+        public string AlunoIdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string FotoUrl { get; set; } = "";
+        public string Papel { get; set; } = "";
+        public bool Presente { get; set; }
+        public string? Observacao { get; set; }
     }
 
     public class TurmaSimples
@@ -245,5 +505,6 @@ else if (alunos.Any())
         public string RitmoNome { get; set; } = "";
         public int DiaDaSemana { get; set; }
         public TimeSpan HorarioInicio { get; set; }
+        public TimeSpan HorarioFim { get; set; }
     }
 }

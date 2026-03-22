@@ -1,9 +1,40 @@
 ﻿namespace Rascunho.Shared.DTOs;
 
-// 1. O que o Front-end envia para a API (O ato de fazer a chamada)
-public record AlunoPresencaRequest(string AlunoIdHash, bool Presente);
-public record RegistrarChamadaRequest(DateOnly DataAula, List<AlunoPresencaRequest> Presencas);
+// ── REQUEST: o que o professor envia ao salvar a chamada ──────────
+// MODIFICADO: adicionado Observacao (opcional)
+public record AlunoPresencaRequest(string AlunoIdHash, bool Presente, string? Observacao);
 
-// 2. O que a API envia para o Front-end (A lista de alunos para a tela do professor)
-public record AlunoChamadaResponse(string AlunoIdHash, string Nome, string FotoUrl, string Papel, bool Presente);
-public record ObterChamadaResponse(string TurmaIdHash, DateOnly DataAula, List<AlunoChamadaResponse> Alunos);
+// MODIFICADO: adicionado ExtrasPresencas (opcional — participantes da Seção B)
+public record RegistrarChamadaRequest(
+    DateOnly DataAula,
+    List<AlunoPresencaRequest> Presencas,              // alunos formalmente matriculados
+    List<AlunoPresencaRequest>? ExtrasPresencas         // bolsistas / experimentais adicionados manualmente
+);
+
+// ── RESPONSE: o que o professor recebe ao abrir a tela de chamada ─
+// MODIFICADO: adicionado Observacao e mudado Nome para ser consistente com API
+public record AlunoChamadaResponse(
+    string AlunoIdHash,
+    string Nome,        // Mudado de NomeAluno para Nome (consistente com entidade)
+    string FotoUrl,
+    string Papel,
+    bool Presente,
+    string? Observacao  // NOVO: observação já salva (null se não houver)
+);
+
+// MODIFICADO: adicionado Extras (participantes não matriculados já salvos para esta data)
+public record ObterChamadaResponse(
+    string TurmaIdHash,
+    DateOnly DataAula,
+    List<AlunoChamadaResponse> Alunos,   // matriculados formalmente
+    List<AlunoChamadaResponse> Extras    // NOVO: bolsistas/experimentais já registrados
+);
+
+// ── NOVO Sprint 2: resultado da busca de participantes extras (Seção B) ──
+// TipoParticipante: "Bolsista" | "Experimental"
+public record ParticipanteExtraResponse(
+    string UsuarioIdHash,
+    string Nome,
+    string FotoUrl,
+    string TipoParticipante
+);

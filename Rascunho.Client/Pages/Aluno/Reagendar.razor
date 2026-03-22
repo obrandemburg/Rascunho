@@ -1,0 +1,274 @@
+﻿@* 
+  ═══════════════════════════════════════════════════════════════
+  ARQUIVO: Rascunho.Client/Pages/Aluno/Reagendar.razor
+  ROTA:    /reagendar
+  ACESSO:  Aluno, Bolsista
+  
+  FLUXO DE DADOS:
+  ┌──────────────────────────────────────────────────────────────┐
+  │  OnInitializedAsync()                                        │
+  │    └─ GET /api/turmas/ → turmas disponíveis para reposição   │
+  │         O aluno escolhe uma turma do mesmo ritmo que perdeu  │
+  │         e agenda aula experimental como "reposição".         │
+  │                                                              │
+  │  LIMITAÇÃO ATUAL:                                            │
+  │  A API não tem endpoint de "aula avulsa/reposição".          │
+  │  A funcionalidade usa o sistema de Aula Experimental como    │
+  │  proxy. A lógica de "verificar aulas perdidas" precisaria    │
+  │  de um endpoint novo: GET /api/chamadas/minhas-faltas         │
+  │                                                              │
+  │  SOLUÇÃO IMPLEMENTADA:                                       │
+  │  Lista todas as turmas disponíveis do mesmo ritmo das turmas │
+  │  em que o aluno está matriculado, permitindo solicitar uma   │
+  │  aula experimental como forma de reposição.                  │
+  └──────────────────────────────────────────────────────────────┘
+  
+  NOTA IMPORTANTE PARA O DESENVOLVEDOR:
+  Esta tela usa a Aula Experimental como mecanismo de reposição.
+  A regra "1 experimental por ritmo" da API será um impeditivo 
+  para alunos que já fizeram a experimental naquele ritmo.
+  Para implementar reposição de verdade, seria necessário:
+  1. Endpoint GET /api/aluno/minhas-faltas
+  2. Endpoint POST /api/turmas/{id}/aula-avulsa
+  3. Campo "Tipo" na AulaExperimental: "Experimental" | "Reposicao"
+*@
+
+@page "/reagendar"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Aluno,Bolsista")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Reagendar Aula — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.EventRepeat" Class="mr-2" />
+    Reagendar Aula
+</MudText>
+<MudText Class="mb-2 mud-text-secondary">
+    Perdeu uma aula? Escolha uma turma disponível do mesmo ritmo para fazer a reposição.
+</MudText>
+
+<MudAlert Severity="Severity.Warning" Class="mb-6" Dense="true">
+    <strong>Atenção:</strong> A reposição é agendada como aula experimental. Consulte a recepção
+    para confirmar disponibilidade e regras de reposição.
+</MudAlert>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    @* Seleção de ritmo para filtrar *@
+    <MudPaper Elevation="0" Class="pa-4 mb-6 rounded-xl"
+              Style="border: 1px solid var(--mud-palette-lines-default);">
+        <MudText Typo="Typo.subtitle2" Class="mb-3">
+            Filtrar por ritmo que você perdeu:
+        </MudText>
+        <MudChipSet T="string"
+                    @bind-SelectedValue="ritmoFiltro"
+                    SelectionMode="SelectionMode.SingleSelection">
+            <MudChip T="string" Value="@((string?)null)" Color="Color.Default">Todos</MudChip>
+            @foreach (var ritmo in ritmos)
+            {
+                <MudChip T="string"
+                         Value="@ritmo"
+                         Color="Color.Primary"
+                         Variant="Variant.Outlined">
+                    @ritmo
+                </MudChip>
+            }
+        </MudChipSet>
+    </MudPaper>
+
+    @if (!turmasFiltradas.Any())
+    {
+        <MudAlert Severity="Severity.Info">
+            Nenhuma turma disponível para o ritmo selecionado.
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (var turma in turmasFiltradas)
+            {
+                var vagas = turma.LimiteAlunos - turma.QuantidadeMatriculados;
+
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="2" Class="rounded-xl h-100">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.subtitle1" Class="font-weight-bold">
+                                    @turma.RitmoNome
+                                </MudText>
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    @DiaDaSemana(turma.DiaDaSemana) · @FormatarHorario(turma.HorarioInicio)
+                                </MudText>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@(vagas > 0 ? Color.Success : Color.Error)"
+                                         Variant="Variant.Filled">
+                                    @(vagas > 0 ? $"{vagas} vagas" : "Lotada")
+                                </MudChip>
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudText Typo="Typo.body2">
+                                Prof. @(turma.NomesProfessores.FirstOrDefault() ?? "—")
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @turma.SalaNome · @turma.Nivel
+                            </MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       FullWidth="true"
+                                       StartIcon="@Icons.Material.Filled.EventRepeat"
+                                       OnClick="@(() => AbrirDialogReposicao(turma))"
+                                       Disabled="@(vagas <= 0 || processando)">
+                                Solicitar Reposição
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+}
+
+@* Dialog para escolher a data da reposição *@
+@if (turmaParaReposicao != null)
+{
+    <MudDialog @bind-IsVisible="dialogAberto"
+               Options="@(new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true })">
+        <TitleContent>
+            <MudText Typo="Typo.h6">Reposição — @turmaParaReposicao.RitmoNome</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body2" Class="mb-4 mud-text-secondary">
+                Escolha a data de @DiaDaSemana(turmaParaReposicao.DiaDaSemana) para fazer sua reposição.
+            </MudText>
+            <MudDatePicker @bind-Date="dataReposicao"
+                           Label="Data da Reposição"
+                           Variant="Variant.Outlined"
+                           DateFormat="dd/MM/yyyy"
+                           MinDate="@DateTime.Today.AddDays(1)"
+                           IsDateDisabledFunc="@(d => d.DayOfWeek != (DayOfWeek)turmaParaReposicao.DiaDaSemana)" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => dialogAberto = false)" Variant="Variant.Text">
+                Cancelar
+            </MudButton>
+            <MudButton OnClick="ConfirmarReposicao"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Disabled="@(dataReposicao == null || processando)">
+                @(processando ? "Solicitando..." : "Confirmar Reposição")
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private bool carregando = true;
+    private bool processando = false;
+    private bool dialogAberto = false;
+    private string? ritmoFiltro = null;
+    private DateTime? dataReposicao;
+    private TurmaDto? turmaParaReposicao;
+
+    private List<TurmaDto> turmas = new();
+    private List<string> ritmos = new();
+
+    private IEnumerable<TurmaDto> turmasFiltradas => turmas
+        .Where(t => t.QuantidadeMatriculados < t.LimiteAlunos)
+        .Where(t => string.IsNullOrEmpty(ritmoFiltro) || t.RitmoNome == ritmoFiltro);
+
+    protected override async Task OnInitializedAsync()
+    {
+        carregando = true;
+        try
+        {
+            turmas = await Http.GetFromJsonAsync<List<TurmaDto>>("api/turmas/") ?? new();
+            ritmos = turmas.Select(t => t.RitmoNome).Distinct().OrderBy(r => r).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar turmas: {ex.Message}", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    private void AbrirDialogReposicao(TurmaDto turma)
+    {
+        turmaParaReposicao = turma;
+        dataReposicao = null;
+        dialogAberto = true;
+    }
+
+    private async Task ConfirmarReposicao()
+    {
+        if (turmaParaReposicao == null || dataReposicao == null) return;
+
+        processando = true;
+        try
+        {
+            // Usa o endpoint de aula experimental como proxy para reposição
+            var payload = new
+            {
+                TurmaIdHash = turmaParaReposicao.IdHash,
+                DataAula = dataReposicao.Value
+            };
+
+            var response = await Http.PostAsJsonAsync("api/experimentais/solicitar", payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(
+                    "Reposição solicitada! A recepção irá confirmar em breve.",
+                    Severity.Success);
+                dialogAberto = false;
+            }
+            else
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(msg, Severity.Warning);
+            }
+        }
+        finally { processando = false; }
+    }
+
+    private string DiaDaSemana(int dia) => dia switch
+    {
+        0 => "Domingo",
+        1 => "Segunda",
+        2 => "Terça",
+        3 => "Quarta",
+        4 => "Quinta",
+        5 => "Sexta",
+        6 => "Sábado",
+        _ => "—"
+    };
+
+    private string FormatarHorario(TimeSpan h) => h.ToString(@"hh\:mm");
+
+    public class TurmaDto
+    {
+        public string IdHash { get; set; } = "";
+        public string RitmoNome { get; set; } = "";
+        public string SalaNome { get; set; } = "";
+        public int DiaDaSemana { get; set; }
+        public TimeSpan HorarioInicio { get; set; }
+        public TimeSpan HorarioFim { get; set; }
+        public string Nivel { get; set; } = "";
+        public int LimiteAlunos { get; set; }
+        public int QuantidadeMatriculados { get; set; }
+        public bool Ativa { get; set; }
+        public List<string> NomesProfessores { get; set; } = new();
+    }
+}

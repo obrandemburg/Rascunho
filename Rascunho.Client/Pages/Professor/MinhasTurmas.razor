@@ -1,0 +1,205 @@
+﻿@* ARQUIVO: Rascunho.Client/Pages/Professor/MinhasTurmas.razor *@
+@page "/professor/minhas-turmas"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Professor")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<PageTitle>Minhas Turmas — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.School" Class="mr-2" />
+    Minhas Turmas
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">Turmas em que você é professor responsável.</MudText>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!turmas.Any())
+{
+    <MudAlert Severity="Severity.Info">Nenhuma turma vinculada ao seu perfil ainda.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var turma in turmas)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="3" Class="rounded-lg" Style="border-left: 4px solid #1b5e20;">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@turma.RitmoNome</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @DiaDaSemana(turma.DiaDaSemana) · @turma.HorarioInicio.ToString(@"hh\:mm")–@turma.HorarioFim.ToString(@"hh\:mm")
+                            </MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                                @turma.Nivel
+                            </MudChip>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2">
+                            <MudIcon Icon="@Icons.Material.Filled.MeetingRoom" Size="Size.Small" Class="mr-1" />
+                            Sala: @turma.SalaNome
+                        </MudText>
+                        <MudText Typo="Typo.body2" Class="mt-1">
+                            <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" Class="mr-1" />
+                            @turma.QuantidadeMatriculados / @turma.LimiteAlunos alunos
+                        </MudText>
+                    </MudCardContent>
+
+                    <MudCardActions Class="justify-space-between pa-3">
+                        @* Botão Ver Alunos: abre modal com lista de matriculados *@
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.People"
+                                   OnClick="@(() => AbrirModalAlunos(turma))">
+                            Ver Alunos
+                        </MudButton>
+
+                        @* Botão Fazer Chamada: navega para a tela de chamada
+                           com a turma pré-selecionada via query string *@
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Checklist"
+                                   OnClick="@(() => Nav.NavigateTo($"/professor/chamada?turmaIdHash={turma.IdHash}"))">
+                            Fazer Chamada
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@* ── MODAL: Lista de alunos matriculados ──────────────────────── *@
+<MudDialog @bind-IsVisible="modalAberto" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.People" Class="mr-2" />
+            Alunos — @turmaSelecionada?.RitmoNome
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (carregandoAlunos)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else if (!alunosDaTurma.Any())
+        {
+            <MudAlert Severity="Severity.Info">Nenhum aluno matriculado nesta turma.</MudAlert>
+        }
+        else
+        {
+            <MudList T="AlunoMatriculadoDto" Dense="true">
+                @foreach (var aluno in alunosDaTurma)
+                {
+                    <MudListItem T="AlunoMatriculadoDto">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudAvatar Color="Color.Primary" Size="Size.Small">
+                                @aluno.Nome.FirstOrDefault()
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.body1">@aluno.Nome</MudText>
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">@aluno.Papel</MudText>
+                            </div>
+                        </MudStack>
+                    </MudListItem>
+                    <MudDivider />
+                }
+            </MudList>
+            <MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">
+                Total: @alunosDaTurma.Count aluno(s)
+            </MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => modalAberto = false)" Color="Color.Default">Fechar</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool carregando = true;
+    private bool modalAberto = false;
+    private bool carregandoAlunos = false;
+    private List<TurmaDto> turmas = new();
+    private List<AlunoMatriculadoDto> alunosDaTurma = new();
+    private TurmaDto? turmaSelecionada;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Usa o endpoint /minhas-turmas criado na Sprint 1
+            // Retorna só as turmas onde o professor logado está vinculado
+            turmas = await Http.GetFromJsonAsync<List<TurmaDto>>("api/turmas/minhas-turmas") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar suas turmas.", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    private async Task AbrirModalAlunos(TurmaDto turma)
+    {
+        turmaSelecionada = turma;
+        modalAberto = true;
+        carregandoAlunos = true;
+        alunosDaTurma = new();
+
+        try
+        {
+            // Endpoint criado no arquivo 13 (ProfessorEndpoints)
+            alunosDaTurma = await Http.GetFromJsonAsync<List<AlunoMatriculadoDto>>(
+                $"api/turmas/{turma.IdHash}/alunos") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar alunos.", Severity.Error);
+        }
+        finally { carregandoAlunos = false; }
+    }
+
+    private string DiaDaSemana(int dia) => dia switch
+    {
+        0 => "Domingo",
+        1 => "Segunda",
+        2 => "Terça",
+        3 => "Quarta",
+        4 => "Quinta",
+        5 => "Sexta",
+        6 => "Sábado",
+        _ => "—"
+    };
+
+    public class TurmaDto
+    {
+        public string IdHash { get; set; } = "";
+        public string RitmoNome { get; set; } = "";
+        public string SalaNome { get; set; } = "";
+        public string Nivel { get; set; } = "";
+        public int DiaDaSemana { get; set; }
+        public TimeSpan HorarioInicio { get; set; }
+        public TimeSpan HorarioFim { get; set; }
+        public int LimiteAlunos { get; set; }
+        public int QuantidadeMatriculados { get; set; }
+    }
+
+    public class AlunoMatriculadoDto
+    {
+        public string AlunoIdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string FotoUrl { get; set; } = "";
+        public string Papel { get; set; } = "";
+    }
+}

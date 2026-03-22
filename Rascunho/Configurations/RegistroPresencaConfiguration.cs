@@ -9,14 +9,17 @@ public class RegistroPresencaConfiguration : IEntityTypeConfiguration<RegistroPr
     public void Configure(EntityTypeBuilder<RegistroPresenca> builder)
     {
         builder.ToTable("RegistrosPresencas");
-
-        // A magia da Chave Composta Tripla para evitar duplicados
         builder.HasKey(rp => new { rp.TurmaId, rp.AlunoId, rp.DataAula });
+
+        // NOVO Sprint 2: coluna nullable para observação
+        builder.Property(rp => rp.Observacao)
+               .HasMaxLength(500)
+               .IsRequired(false); // null é válido — sem observação
 
         builder.HasOne(rp => rp.Turma)
                .WithMany()
                .HasForeignKey(rp => rp.TurmaId)
-               .OnDelete(DeleteBehavior.Cascade); // Se a turma acabar, o histórico morre junto
+               .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(rp => rp.Aluno)
                .WithMany()

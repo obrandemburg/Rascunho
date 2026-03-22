@@ -1,38 +1,28 @@
-﻿@* 
-  FLUXO: NavMenu é renderizado dentro do Drawer.
-  Cada <AuthorizeView Roles="X,Y"> filtra os links por perfil.
-  Links visíveis para todos os logados ficam fora do AuthorizeView.
-  
-  SEGURANÇA: Mesmo que alguém force a URL direto no browser,
-  a página final tem [Authorize(Roles="...")] impedindo o acesso.
-  O NavMenu é apenas camada de UX, não de segurança real.
-*@
+﻿@* ARQUIVO: Rascunho.Client/Layout/NavMenu.razor *@
 
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
 
 <MudNavMenu>
-    @* ----------------------------------------
-       LINKS PÚBLICOS — Visíveis sem login
-    ---------------------------------------- *@
+
+    @* ══════════════════════════════════════════════════════════════
+       LINKS PÚBLICOS — Visíveis para todos (com ou sem login)
+    ══════════════════════════════════════════════════════════════ *@
     <MudNavLink Href="/" Match="NavLinkMatch.All"
                 Icon="@Icons.Material.Filled.Home">
         Início
     </MudNavLink>
+
     <MudNavLink Href="/turmas"
                 Icon="@Icons.Material.Filled.Groups">
         Quadro de Turmas
     </MudNavLink>
 
-    @* ----------------------------------------
-       LINKS PARA USUÁRIOS AUTENTICADOS
-    ---------------------------------------- *@
+    @* ══════════════════════════════════════════════════════════════
+       PERFIL — Visível para qualquer usuário autenticado
+    ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView>
         <Authorized>
-            <MudNavLink Href="/painel"
-                        Icon="@Icons.Material.Filled.Dashboard">
-                Meu Painel
-            </MudNavLink>
             <MudNavLink Href="/perfil"
                         Icon="@Icons.Material.Filled.Person">
                 Meu Perfil
@@ -40,35 +30,41 @@
         </Authorized>
     </AuthorizeView>
 
-    @* ----------------------------------------
-       ALUNO E BOLSISTA
-    ---------------------------------------- *@
-    <AuthorizeView Roles="Aluno,Bolsista">
+    @* ══════════════════════════════════════════════════════════════
+       ALUNO — Acesso exclusivo às telas de aluno (RN-ACE01)
+    ══════════════════════════════════════════════════════════════ *@
+    <AuthorizeView Roles="Aluno">
         <Authorized>
             <MudDivider Class="my-2" />
             <MudText Typo="Typo.overline" Class="px-4 py-1 mud-text-secondary">
                 Minha Área
             </MudText>
+
             <MudNavLink Href="/minhas-aulas"
                         Icon="@Icons.Material.Filled.EventAvailable">
                 Minhas Aulas
             </MudNavLink>
+
             <MudNavLink Href="/aulas-particulares"
-                        Icon="@Icons.Material.Filled.Person">
+                        Icon="@Icons.Material.Filled.PersonSearch">
                 Aulas Particulares
             </MudNavLink>
+
             <MudNavLink Href="/quadro-avisos"
                         Icon="@Icons.Material.Filled.Campaign">
                 Quadro de Avisos
             </MudNavLink>
+
             <MudNavLink Href="/reagendar"
                         Icon="@Icons.Material.Filled.EventRepeat">
                 Reagendar Aula
             </MudNavLink>
+
             <MudNavLink Href="/aula-experimental"
                         Icon="@Icons.Material.Filled.Science">
                 Aula Experimental
             </MudNavLink>
+
             <MudNavLink Href="/ingressos"
                         Icon="@Icons.Material.Filled.ConfirmationNumber">
                 Comprar Ingressos
@@ -76,65 +72,103 @@
         </Authorized>
     </AuthorizeView>
 
-    @* ----------------------------------------
-       PROFESSOR
-    ---------------------------------------- *@
+    @* ══════════════════════════════════════════════════════════════
+       PROFESSOR — Acesso exclusivo às telas de professor (RN-ACE03)
+       NOVO Sprint 2: Minhas Turmas, Fazer Chamada com rota atualizada,
+                      Aulas Particulares na rota /professor/
+    ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView Roles="Professor">
         <Authorized>
             <MudDivider Class="my-2" />
             <MudText Typo="Typo.overline" Class="px-4 py-1 mud-text-secondary">
                 Professor
             </MudText>
+
+            @* NOVO Sprint 2 — tela criada no arquivo 17 *@
             <MudNavLink Href="/professor/minhas-turmas"
                         Icon="@Icons.Material.Filled.School">
                 Minhas Turmas
             </MudNavLink>
+
+            @* Rota corrigida: era /fazer-chamada, agora /professor/chamada *@
             <MudNavLink Href="/professor/chamada"
                         Icon="@Icons.Material.Filled.Checklist">
                 Fazer Chamada
             </MudNavLink>
+
+            @* NOVO Sprint 2 — tela criada no arquivo 19 (3 abas) *@
             <MudNavLink Href="/professor/aulas-particulares"
                         Icon="@Icons.Material.Filled.PersonSearch">
                 Aulas Particulares
             </MudNavLink>
-            <MudNavLink Href="/avisos-equipe"
-                        Icon="@Icons.Material.Filled.Announcement">
-                Avisos da Equipe
+
+            @* NOVO Sprint 2 — tela criada no arquivo 22 *@
+            <MudNavLink Href="/quadro-avisos"
+                        Icon="@Icons.Material.Filled.Campaign">
+                Quadro de Avisos
             </MudNavLink>
         </Authorized>
     </AuthorizeView>
 
-    @* ----------------------------------------
-       BOLSISTA — itens extras além do Aluno
-    ---------------------------------------- *@
+    @* ══════════════════════════════════════════════════════════════
+       BOLSISTA — Acesso híbrido: telas de aluno + telas de equipe
+       NOVO Sprint 2: Turmas Obrigatórias e Meu Desempenho
+    ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView Roles="Bolsista">
         <Authorized>
             <MudDivider Class="my-2" />
             <MudText Typo="Typo.overline" Class="px-4 py-1 mud-text-secondary">
                 Bolsista
             </MudText>
+
+            <MudNavLink Href="/minhas-aulas"
+                        Icon="@Icons.Material.Filled.EventAvailable">
+                Minhas Aulas
+            </MudNavLink>
+
+            @* NOVO Sprint 2 — tela criada no arquivo 21 *@
+            <MudNavLink Href="/bolsista/turmas-obrigatorias"
+                        Icon="@Icons.Material.Filled.Today">
+                Turmas Obrigatórias
+            </MudNavLink>
+
+            @* NOVO Sprint 2 — tela criada no arquivo 20 *@
+            <MudNavLink Href="/bolsista/desempenho"
+                        Icon="@Icons.Material.Filled.Insights">
+                Meu Desempenho
+            </MudNavLink>
+
+            <MudNavLink Href="/aulas-particulares"
+                        Icon="@Icons.Material.Filled.PersonSearch">
+                Aulas Particulares
+            </MudNavLink>
+
             <MudNavLink Href="/bolsista/turmas-recomendadas"
                         Icon="@Icons.Material.Filled.Recommend">
                 Turmas Recomendadas
             </MudNavLink>
-            <MudNavLink Href="/avisos-equipe"
-                        Icon="@Icons.Material.Filled.Announcement">
-                Avisos da Equipe
-            </MudNavLink>
+
             <MudNavLink Href="/bolsista/minhas-habilidades"
                         Icon="@Icons.Material.Filled.Stars">
                 Minhas Habilidades
             </MudNavLink>
+
             <MudNavLink Href="/bolsista/relatorio-horas"
                         Icon="@Icons.Material.Filled.Timer">
                 Relatório de Horas
             </MudNavLink>
+
+            @* NOVO Sprint 2 — bolsista acessa avisos de equipe *@
+            <MudNavLink Href="/quadro-avisos"
+                        Icon="@Icons.Material.Filled.Campaign">
+                Quadro de Avisos
+            </MudNavLink>
         </Authorized>
     </AuthorizeView>
 
-    @* ----------------------------------------
-       RECEPÇÃO E GERENTE — Menu Administrativo
-    ---------------------------------------- *@
+    @* ══════════════════════════════════════════════════════════════
+       RECEPÇÃO E GERENTE — Menu administrativo (RN-ACE04/05)
+    ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView Roles="Recepção,Gerente">
         <Authorized>
             <MudDivider Class="my-2" />
@@ -145,29 +179,40 @@
                             Icon="@Icons.Material.Filled.PersonAdd">
                     Criar Usuário
                 </MudNavLink>
+
                 <MudNavLink Href="/admin/turmas"
                             Icon="@Icons.Material.Filled.ManageHistory">
                     Gerir Turmas
                 </MudNavLink>
+
                 <MudNavLink Href="/admin/salas"
                             Icon="@Icons.Material.Filled.MeetingRoom">
                     Salas & Aluguéis
                 </MudNavLink>
+
                 <MudNavLink Href="/admin/avisos"
                             Icon="@Icons.Material.Filled.Campaign">
                     Criar Avisos
                 </MudNavLink>
+
                 <MudNavLink Href="/admin/eventos"
                             Icon="@Icons.Material.Filled.EventNote">
                     Gerenciar Eventos
+                </MudNavLink>
+
+                @* NOVO Sprint 2 — recepção também usa o quadro *@
+                <MudNavLink Href="/quadro-avisos"
+                            Icon="@Icons.Material.Filled.Announcement">
+                    Quadro de Avisos
                 </MudNavLink>
             </MudNavGroup>
         </Authorized>
     </AuthorizeView>
 
-    @* ----------------------------------------
-       GERENTE — Gerência Estratégica
-    ---------------------------------------- *@
+    @* ══════════════════════════════════════════════════════════════
+       GERENTE — Gerência Estratégica (exclusivo, RN-ACE05)
+       Link para QuadroDesempenho será criado na Sprint 4
+    ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView Roles="Gerente">
         <Authorized>
             <MudNavGroup Title="Gerência Estratégica"
@@ -177,11 +222,19 @@
                             Icon="@Icons.Material.Filled.QueryStats">
                     Dashboard
                 </MudNavLink>
+
                 <MudNavLink Href="/gerencia/usuarios"
                             Icon="@Icons.Material.Filled.ManageAccounts">
                     Gestão de Usuários
                 </MudNavLink>
+
+                @* Rota criada na Sprint 4 (QuadroDesempenho.razor) *@
+                <MudNavLink Href="/gerencia/bolsistas"
+                            Icon="@Icons.Material.Filled.Groups">
+                    Desempenho Bolsistas
+                </MudNavLink>
             </MudNavGroup>
         </Authorized>
     </AuthorizeView>
+
 </MudNavMenu>

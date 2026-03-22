@@ -1,0 +1,322 @@
+﻿@* 
+  ═══════════════════════════════════════════════════════════════
+  ARQUIVO: Rascunho.Client/Pages/Aluno/AulaExperimental.razor
+  ROTA:    /aula-experimental
+  ACESSO:  Aluno
+  
+  FLUXO DE DADOS:
+  ┌──────────────────────────────────────────────────────────────┐
+  │  OnInitializedAsync()                                        │
+  │    └─ GET /api/turmas/                                       │
+  │         Retorna todas as turmas com vagas disponíveis        │
+  │         (o aluno não pode fazer experimental em turma cheia) │
+  │                                                              │
+  │  AgendarExperimental(turma, data)                            │
+  │    └─ POST /api/experimentais/solicitar                      │
+  │         Body: SolicitarAulaExperimentalRequest               │
+  │           { TurmaIdHash: string, DataAula: DateTime }        │
+  │         Validações da API:                                   │
+  │           - Aluno já matriculado → 422                       │
+  │           - Turma lotada → 422                               │
+  │           - Já fez experimental neste RITMO → 422            │
+  │           - Data deve ser no futuro → 400 (FluentValidation) │
+  └──────────────────────────────────────────────────────────────┘
+  
+  REGRA DE NEGÓCIO CRUCIAL (AulaExperimentalService.cs):
+  Um aluno pode fazer apenas UMA aula experimental por RITMO
+  (não por turma). Se fez Forró na turma A, não pode fazer
+  Forró experimental na turma B. Isso é validado pela API
+  verificando o RitmoId da turma, não o TurmaId.
+*@
+
+@page "/aula-experimental"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Aluno")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Aula Experimental — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.Science" Class="mr-2" />
+    Agendar Aula Experimental
+</MudText>
+<MudText Class="mb-2 mud-text-secondary">
+    Experimente uma turma antes de se matricular — gratuito e sem compromisso!
+</MudText>
+<MudAlert Severity="Severity.Info" Class="mb-6" Dense="true">
+    Cada aluno pode fazer <strong>uma aula experimental por ritmo</strong>.
+    Turmas com vagas disponíveis estão listadas abaixo.
+</MudAlert>
+
+@* ── Filtros ─────────────────────────────────────────────────── *@
+<MudPaper Elevation="0" Class="pa-4 mb-6 rounded-xl"
+          Style="border: 1px solid var(--mud-palette-lines-default);">
+    <MudGrid>
+        <MudItem xs="12" sm="5">
+            <MudTextField @bind-Value="filtroBusca"
+                          Label="Buscar por ritmo ou professor"
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true"
+                          Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="5">
+            <MudSelect T="string"
+                       @bind-Value="filtroNivel"
+                       Label="Nível"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+                <MudSelectItem T="string" Value="@("Iniciante")">Iniciante</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Básico")">Básico</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Intermediário")">Intermediário</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Avançado")">Avançado</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!turmasFiltradas.Any())
+{
+    <MudAlert Severity="Severity.Info">
+        Nenhuma turma encontrada com os filtros aplicados.
+    </MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var turma in turmasFiltradas)
+        {
+            var vagas = turma.LimiteAlunos - turma.QuantidadeMatriculados;
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="3" Class="rounded-xl h-100">
+                    <div style="height: 4px; background: #1b5e20; border-radius: 12px 12px 0 0;" />
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@turma.RitmoNome</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @turma.Nivel · @DiaDaSemana(turma.DiaDaSemana)
+                                @FormatarHorario(turma.HorarioInicio)
+                            </MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            @* Badge de vagas disponíveis *@
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Color="@(vagas <= 3 ? Color.Warning : Color.Success)"
+                                     Variant="Variant.Filled">
+                                @vagas @(vagas == 1 ? "vaga" : "vagas")
+                            </MudChip>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+
+                    <MudCardContent>
+                        <MudList T="string" Dense="true" Class="pa-0">
+                            <MudListItem T="string"
+                                         Icon="@Icons.Material.Filled.Person"
+                                         IconSize="Size.Small">
+                                @(turma.NomesProfessores.FirstOrDefault() ?? "Sem professor")
+                            </MudListItem>
+                            <MudListItem T="string"
+                                         Icon="@Icons.Material.Filled.MeetingRoom"
+                                         IconSize="Size.Small">
+                                @turma.SalaNome
+                            </MudListItem>
+                            <MudListItem T="string"
+                                         Icon="@Icons.Material.Filled.AccessTime"
+                                         IconSize="Size.Small">
+                                @FormatarHorario(turma.HorarioInicio) — @FormatarHorario(turma.HorarioFim)
+                            </MudListItem>
+                        </MudList>
+                    </MudCardContent>
+
+                    <MudCardActions>
+                        @*
+                          Botão que abre um Popover/Dialog inline para selecionar a data.
+                          A data precisa ser um dia em que a turma ocorre (mesmo DayOfWeek).
+                        *@
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   FullWidth="true"
+                                   StartIcon="@Icons.Material.Filled.EventAvailable"
+                                   OnClick="@(() => AbrirDialogAgendamento(turma))"
+                                   Disabled="@processando">
+                            Agendar Experimental
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@* ── Dialog inline para selecionar a data da aula experimental ── *@
+@if (turmaParaAgendar != null)
+{
+    <MudDialog @bind-IsVisible="dialogAberto"
+               Options="@(new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true })">
+        <TitleContent>
+            <MudText Typo="Typo.h6">
+                Agendar Experimental — @turmaParaAgendar.RitmoNome
+            </MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body2" Class="mb-4 mud-text-secondary">
+                Escolha uma data de @DiaDaSemana(turmaParaAgendar.DiaDaSemana) para a aula.
+            </MudText>
+            <MudDatePicker @bind-Date="dataExperimental"
+                           Label="Data da Aula Experimental"
+                           Variant="Variant.Outlined"
+                           DateFormat="dd/MM/yyyy"
+                           MinDate="@DateTime.Today.AddDays(1)"
+                           IsDateDisabledFunc="@(d => d.DayOfWeek != (DayOfWeek)turmaParaAgendar.DiaDaSemana)" />
+            @*
+              IsDateDisabledFunc: desabilita os dias que não são o DiaDaSemana da turma.
+              Ex: turma de Forró é às Terças → só terças ficam habilitadas no calendário.
+              DayOfWeek C# corresponde diretamente ao int DiaDaSemana da API (0=Dom, 1=Seg...).
+            *@
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="FecharDialog" Variant="Variant.Text">Cancelar</MudButton>
+            <MudButton OnClick="ConfirmarAgendamento"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Disabled="@(dataExperimental == null || processando)">
+                @(processando ? "Agendando..." : "Confirmar")
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private bool carregando = true;
+    private bool processando = false;
+    private bool dialogAberto = false;
+
+    private string filtroBusca = "";
+    private string filtroNivel = "";
+    private DateTime? dataExperimental;
+    private TurmaDto? turmaParaAgendar;
+
+    private List<TurmaDto> turmas = new();
+
+    // Filtra em memória: busca por ritmo/professor e por nível
+    private IEnumerable<TurmaDto> turmasFiltradas => turmas
+        .Where(t => string.IsNullOrEmpty(filtroBusca) ||
+                    t.RitmoNome.Contains(filtroBusca, StringComparison.OrdinalIgnoreCase) ||
+                    t.NomesProfessores.Any(p => p.Contains(filtroBusca, StringComparison.OrdinalIgnoreCase)))
+        .Where(t => string.IsNullOrEmpty(filtroNivel) || t.Nivel == filtroNivel)
+        .Where(t => t.QuantidadeMatriculados < t.LimiteAlunos); // Só turmas com vaga
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarTurmas();
+    }
+
+    private async Task CarregarTurmas()
+    {
+        carregando = true;
+        try
+        {
+            // GET /api/turmas/ — retorna todas as turmas ativas
+            turmas = await Http.GetFromJsonAsync<List<TurmaDto>>("api/turmas/") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar turmas: {ex.Message}", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    private void AbrirDialogAgendamento(TurmaDto turma)
+    {
+        turmaParaAgendar = turma;
+        dataExperimental = null; // Reseta a data ao abrir
+        dialogAberto = true;
+    }
+
+    private void FecharDialog()
+    {
+        dialogAberto = false;
+        turmaParaAgendar = null;
+    }
+
+    private async Task ConfirmarAgendamento()
+    {
+        if (turmaParaAgendar == null || dataExperimental == null) return;
+
+        processando = true;
+        try
+        {
+            // POST /api/experimentais/solicitar
+            // Body: SolicitarAulaExperimentalRequest
+            //   { TurmaIdHash: string, DataAula: DateTime }
+            var payload = new
+            {
+                TurmaIdHash = turmaParaAgendar.IdHash,
+                DataAula = dataExperimental.Value
+            };
+
+            var response = await Http.PostAsJsonAsync("api/experimentais/solicitar", payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(
+                    $"Aula experimental agendada! Aguarde a confirmação da recepção.",
+                    Severity.Success);
+                FecharDialog();
+                await CarregarTurmas(); // Atualiza vagas
+            }
+            else if ((int)response.StatusCode == 422)
+            {
+                // Possíveis erros: já fez experimental neste ritmo, turma cheia,
+                // já é aluno matriculado
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(erro, Severity.Warning);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                // FluentValidation: data no passado, TurmaIdHash vazio
+                Snackbar.Add("Verifique os dados e tente novamente.", Severity.Error);
+            }
+        }
+        finally { processando = false; }
+    }
+
+    private string DiaDaSemana(int dia) => dia switch
+    {
+        0 => "Domingo",
+        1 => "Segunda",
+        2 => "Terça",
+        3 => "Quarta",
+        4 => "Quinta",
+        5 => "Sexta",
+        6 => "Sábado",
+        _ => "—"
+    };
+
+    private string FormatarHorario(TimeSpan h) => h.ToString(@"hh\:mm");
+
+    // ── DTO local — mesmos campos de ObterTurmaResponse ─────────
+    public class TurmaDto
+    {
+        public string IdHash { get; set; } = "";
+        public string RitmoNome { get; set; } = "";
+        public string SalaNome { get; set; } = "";
+        public int DiaDaSemana { get; set; }
+        public TimeSpan HorarioInicio { get; set; }
+        public TimeSpan HorarioFim { get; set; }
+        public string Nivel { get; set; } = "";
+        public int LimiteAlunos { get; set; }
+        public int QuantidadeMatriculados { get; set; }
+        public bool Ativa { get; set; }
+        public List<string> NomesProfessores { get; set; } = new();
+    }
+}

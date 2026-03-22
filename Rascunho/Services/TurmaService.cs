@@ -19,6 +19,11 @@ public class TurmaService
         _hashids = hashids;
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // CRIAR TURMA
+    // Valida RN-TUR01 (choque professor), RN-TUR02 (choque sala)
+    // CORREÇÃO: Removido professor.Tipo == "Assistente" (tipo inexistente no sistema)
+    // ──────────────────────────────────────────────────────────────────────
     public async Task<ObterTurmaResponse> CriarTurmaAsync(CriarTurmaRequest request)
     {
         var salaDecoded = _hashids.Decode(request.SalaIdHash);
@@ -45,6 +50,7 @@ public class TurmaService
 
         var diaDaSemanaEnum = (DayOfWeek)request.DiaDaSemana;
 
+        // RN-TUR02: Choque de sala no mesmo dia e horário
         bool choqueSala = await _context.Turmas.AnyAsync(t =>
             t.SalaId == salaIdReal &&
             t.DiaDaSemana == diaDaSemanaEnum &&
@@ -57,9 +63,14 @@ public class TurmaService
         foreach (var profId in professoresIdsReais)
         {
             var professor = await _context.Usuarios.FindAsync(profId);
-            if (professor == null || (professor.Tipo != "Professor" && professor.Tipo != "Assistente"))
-                throw new RegraNegocioException($"O usuário '{professor?.Nome}' não tem permissão para ser professor da turma.");
 
+            // CORREÇÃO: Removido 'Assistente' — tipo inexistente no discriminador TPH.
+            // No sistema só existem: Aluno, Professor, Bolsista, Gerente, Recepção, Líder.
+            // Manter 'Assistente' gerava uma condição que nunca seria verdadeira.
+            if (professor == null || professor.Tipo != "Professor")
+                throw new RegraNegocioException($"O usuário '{professor?.Nome}' não tem permissão para ser professor da turma. Apenas usuários do tipo 'Professor' podem lecionar.");
+
+            // RN-TUR01: Choque de professor no mesmo dia e horário em outra sala
             bool choqueProfessor = await _context.TurmaProfessores
                 .Include(tp => tp.Turma)
                 .AnyAsync(tp =>
@@ -72,18 +83,18 @@ public class TurmaService
                 throw new RegraNegocioException($"O professor {professor.Nome} já possui uma turma neste mesmo dia e horário em outra sala.");
         }
 
-        // CRIAÇÃO SEGURA
-        var turma = new Turma(ritmoIdReal, salaIdReal, request.DataInicio, diaDaSemanaEnum, request.HorarioInicio, request.HorarioFim, request.Nivel, request.LimiteAlunos, request.LinkWhatsApp);
+        var turma = new Turma(ritmoIdReal, salaIdReal, request.DataInicio, diaDaSemanaEnum,
+            request.HorarioInicio, request.HorarioFim, request.Nivel,
+            request.LimiteAlunos, request.LinkWhatsApp);
+
         _context.Turmas.Add(turma);
 
         foreach (var profId in professoresIdsReais)
-        {
             _context.TurmaProfessores.Add(new TurmaProfessor { Turma = turma, ProfessorId = profId });
-        }
 
         await _context.SaveChangesAsync();
 
-        // Carrega referências para que o Mapper consiga pegar os nomes
+        // Carrega referências para o Mapper poder acessar nomes
         await _context.Entry(turma).Reference(t => t.Ritmo).LoadAsync();
         await _context.Entry(turma).Reference(t => t.Sala).LoadAsync();
         await _context.Entry(turma).Collection(t => t.Professores).Query().Include(p => p.Professor).LoadAsync();
@@ -91,7 +102,17 @@ public class TurmaService
         return turma.ToResponse(_hashids);
     }
 
-    public async Task<IEnumerable<ObterTurmaResponse>> ListarTurmasAsync(string? ritmoIdHash, string? professorIdHash, int? diaDaSemana, TimeSpan? horario)
+    // ──────────────────────────────────────────────────────────────────────
+    // LISTAR TURMAS COM FILTROS OPCIONAIS
+    // NOVO: Parâmetro opcional `apenasAtivas` — permite filtrar só turmas ativas
+    //       sem quebrar o endpoint GET / existente que não usa este filtro
+    // ──────────────────────────────────────────────────────────────────────
+    public async Task<IEnumerable<ObterTurmaResponse>> ListarTurmasAsync(
+        string? ritmoIdHash,
+        string? professorIdHash,
+        int? diaDaSemana,
+        TimeSpan? horario,
+        bool? apenasAtivas = null) // NOVO parâmetro — null = sem filtro (comportamento original)
     {
         var query = _context.Turmas
             .Include(t => t.Ritmo)
@@ -99,6 +120,13 @@ public class TurmaService
             .Include(t => t.Matriculas)
             .Include(t => t.Professores).ThenInclude(tp => tp.Professor)
             .AsQueryable();
+
+        // NOVO: Aplica filtro de ativas/inativas somente se o parâmetro for fornecido
+        // null = retorna todas (comportamento original do GET /)
+        // true  = retorna só as ativas (GET /listar-ativas)
+        // false = retorna só as inativas (caso de uso futuro)
+        if (apenasAtivas.HasValue)
+            query = query.Where(t => t.Ativa == apenasAtivas.Value);
 
         if (!string.IsNullOrEmpty(ritmoIdHash))
         {
@@ -121,14 +149,52 @@ public class TurmaService
         }
 
         if (horario.HasValue)
-        {
             query = query.Where(t => horario.Value >= t.HorarioInicio && horario.Value < t.HorarioFim);
+
+        var turmas = await query.ToListAsync();
+        return turmas.Select(t => t.ToResponse(_hashids));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // NOVO: LISTAR TURMAS DO USUÁRIO LOGADO
+    // Lê a role do JWT para decidir a lógica de filtro:
+    //   → Professor: turmas onde ele é o professor vinculado (TurmaProfessor)
+    //   → Aluno/Bolsista/Líder: turmas onde ele tem matrícula formal (Matricula)
+    //
+    // IMPORTANTE sobre Bolsistas: O RN-BOL09 diz que o bolsista NÃO se matricula
+    // formalmente em turmas de dança de salão. Por isso, turmas de salão NÃO
+    // aparecem aqui para o bolsista. Elas são exibidas em TurmasObrigatorias (Sprint 2).
+    // ──────────────────────────────────────────────────────────────────────
+    public async Task<IEnumerable<ObterTurmaResponse>> ListarMinhasTurmasAsync(int usuarioId, string role)
+    {
+        var query = _context.Turmas
+            .Include(t => t.Ritmo)
+            .Include(t => t.Sala)
+            .Include(t => t.Matriculas)
+            .Include(t => t.Professores).ThenInclude(tp => tp.Professor)
+            .Where(t => t.Ativa)  // Sempre só turmas ativas nas listas pessoais
+            .AsQueryable();
+
+        if (role == "Professor")
+        {
+            // Professor vê as turmas onde ele está vinculado como professor
+            // A tabela TurmaProfessor é o N:N entre Turma e Professor
+            query = query.Where(t => t.Professores.Any(tp => tp.ProfessorId == usuarioId));
+        }
+        else
+        {
+            // Aluno, Bolsista, Líder: veem turmas onde têm Matricula formal
+            // A entidade Matricula registra a inscrição formal de um usuário em uma turma
+            query = query.Where(t => t.Matriculas.Any(m => m.AlunoId == usuarioId));
         }
 
         var turmas = await query.ToListAsync();
         return turmas.Select(t => t.ToResponse(_hashids));
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // TROCAR SALA — sem alterações
+    // ──────────────────────────────────────────────────────────────────────
     public async Task TrocarSalaAsync(int turmaId, int novaSalaId, int novoLimiteAlunos)
     {
         var turma = await _context.Turmas
@@ -164,12 +230,26 @@ public class TurmaService
 
         if (vagasAnteriores <= 0 && vagasNovas > 0 && turma.ListaDeEspera.Any())
         {
-            // TODO: Notificações Fila de espera
+            // TODO Sprint 5: Notificar via Firebase FCM os usuários na fila de espera
         }
 
         await _context.SaveChangesAsync();
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // MATRICULAR ALUNO
+    // NOVO: RN-TUR06 — bloqueia se o aluno já tiver turma no mesmo dia e horário
+    //
+    // Como funciona a detecção de sobreposição de horário:
+    //   Intervalo A = [novaInicio, novaFim]
+    //   Intervalo B = [outraInicio, outraFim]
+    //   Há sobreposição quando: novaInicio < outraFim E novaFim > outraInicio
+    //   
+    //   Exemplos:
+    //   A: 18h-20h, B: 19h-21h → 18 < 21 ✓ e 20 > 19 ✓ → CONFLITO
+    //   A: 18h-20h, B: 20h-22h → 18 < 22 ✓ e 20 > 20 ✗ → SEM CONFLITO (adjacentes)
+    //   A: 18h-20h, B: 16h-18h → 18 < 18 ✗ → SEM CONFLITO (adjacentes)
+    // ──────────────────────────────────────────────────────────────────────
     public async Task<string> MatricularAlunoAsync(int turmaId, int alunoId, string papel)
     {
         var turma = await _context.Turmas
@@ -181,12 +261,45 @@ public class TurmaService
         var aluno = await _context.Usuarios.FindAsync(alunoId)
             ?? throw new RegraNegocioException("Aluno não encontrado.");
 
+        // RN-TUR05: Aluno já matriculado nesta turma
         if (turma.Matriculas.Any(m => m.AlunoId == alunoId))
             throw new RegraNegocioException("O aluno já está matriculado nesta turma.");
 
+        // Aluno já na fila de espera desta turma
         if (turma.ListaDeEspera.Any(e => e.AlunoId == alunoId))
             throw new RegraNegocioException("O aluno já está na fila de espera desta turma.");
 
+        // RN-TUR06: Verifica se o aluno já tem OUTRA turma com horário conflitante neste dia
+        // A query consulta todas as Matriculas do aluno no banco, navegando para a Turma
+        // via FK — EF Core converte o m.Turma.X em JOIN automático no SQL gerado
+        bool choqueHorario = await _context.Matriculas
+            .AnyAsync(m =>
+                m.AlunoId == alunoId &&
+                m.Turma.Ativa &&
+                m.Turma.DiaDaSemana == turma.DiaDaSemana &&
+                turma.HorarioInicio < m.Turma.HorarioFim &&     // nova aula começa antes da outra terminar
+                turma.HorarioFim > m.Turma.HorarioInicio);       // nova aula termina depois da outra começar
+
+        if (choqueHorario)
+        {
+            // Traduz o DayOfWeek para português para exibir mensagem legível ao usuário
+            var diaTexto = turma.DiaDaSemana switch
+            {
+                DayOfWeek.Monday => "segunda-feira",
+                DayOfWeek.Tuesday => "terça-feira",
+                DayOfWeek.Wednesday => "quarta-feira",
+                DayOfWeek.Thursday => "quinta-feira",
+                DayOfWeek.Friday => "sexta-feira",
+                DayOfWeek.Saturday => "sábado",
+                DayOfWeek.Sunday => "domingo",
+                _ => "neste dia"
+            };
+            throw new RegraNegocioException(
+                $"Você já possui uma turma na {diaTexto} com horário conflitante. " +
+                $"Verifique sua grade antes de se matricular.");
+        }
+
+        // Turma cheia → entra na fila de espera (tabela Interesses)
         if (turma.Matriculas.Count >= turma.LimiteAlunos)
         {
             _context.Interesses.Add(new Interesse { TurmaId = turmaId, AlunoId = alunoId });
@@ -194,11 +307,15 @@ public class TurmaService
             return "A turma está cheia. Você foi adicionado à fila de espera.";
         }
 
+        // Matrícula normal
         _context.Matriculas.Add(new Matricula { TurmaId = turmaId, AlunoId = alunoId, Papel = papel });
         await _context.SaveChangesAsync();
         return "Matrícula realizada com sucesso.";
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // DESMATRICULAR ALUNO — sem alterações
+    // ──────────────────────────────────────────────────────────────────────
     public async Task DesmatricularAlunoAsync(int turmaId, int alunoId)
     {
         var turma = await _context.Turmas

@@ -1,0 +1,309 @@
+﻿@* ARQUIVO: Rascunho.Client/Pages/Professor/AulasParticulares.razor *@
+@page "/professor/aulas-particulares"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "Professor")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Aulas Particulares — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-6 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.PersonSearch" Class="mr-2" />
+    Aulas Particulares
+</MudText>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+
+    @* ── ABA 1: Solicitações Pendentes ───────────────────────────── *@
+    <MudTabPanel Text="Pendentes" BadgeData="@pendentes.Count" BadgeColor="Color.Warning">
+        @if (carregando)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else if (!pendentes.Any())
+        {
+            <MudAlert Severity="Severity.Success">Nenhuma solicitação pendente. 🎉</MudAlert>
+        }
+        else
+        {
+            @foreach (var aula in pendentes)
+            {
+                <MudCard Elevation="2" Class="rounded-lg mb-3">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle1">
+                                <b>@aula.NomeAluno</b> — @aula.NomeRitmo
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                📅 @aula.DataHoraInicio.ToString("dd/MM/yyyy") às @aula.DataHoraInicio.ToString("HH:mm")
+                                (até @aula.DataHoraFim.ToString("HH:mm"))
+                            </MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">
+                                Pendente
+                            </MudChip>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    @if (!string.IsNullOrEmpty(aula.Observacao))
+                    {
+                        <MudCardContent>
+                            <MudText Typo="Typo.body2">
+                                <MudIcon Icon="@Icons.Material.Filled.Notes" Size="Size.Small" Class="mr-1" />
+                                <i>"@aula.Observacao"</i>
+                            </MudText>
+                        </MudCardContent>
+                    }
+                    <MudCardActions Class="justify-end gap-2">
+                        <MudButton Color="Color.Error" Variant="Variant.Outlined"
+                                   StartIcon="@Icons.Material.Filled.Cancel"
+                                   OnClick="@(() => Responder(aula.IdHash, false))">
+                            Recusar
+                        </MudButton>
+                        <MudButton Color="Color.Success" Variant="Variant.Filled"
+                                   StartIcon="@Icons.Material.Filled.CheckCircle"
+                                   OnClick="@(() => Responder(aula.IdHash, true))">
+                            Aceitar
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            }
+        }
+    </MudTabPanel>
+
+    @* ── ABA 2: Aulas Agendadas ──────────────────────────────────── *@
+    <MudTabPanel Text="Agendadas" BadgeData="@agendadas.Count" BadgeColor="Color.Success">
+        @if (carregando)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else if (!agendadas.Any())
+        {
+            <MudAlert Severity="Severity.Info">Nenhuma aula agendada no momento.</MudAlert>
+        }
+        else
+        {
+            @foreach (var aula in agendadas)
+            {
+                <MudCard Elevation="2" Class="rounded-lg mb-3">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle1">
+                                <b>@aula.NomeAluno</b> — @aula.NomeRitmo
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                📅 @aula.DataHoraInicio.ToString("dd/MM/yyyy") @aula.DataHoraInicio.ToString("HH:mm")–@aula.DataHoraFim.ToString("HH:mm")
+                            </MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled">
+                                Aceita
+                            </MudChip>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardActions Class="justify-space-between">
+                        @* Professor pode cancelar a qualquer momento (RN-AP04) *@
+                        <MudButton Color="Color.Error" Variant="Variant.Text"
+                                   StartIcon="@Icons.Material.Filled.Cancel"
+                                   OnClick="@(() => Cancelar(aula.IdHash))">
+                            Cancelar
+                        </MudButton>
+                        @* Nota: WhatsApp do aluno requer telefone no cadastro (não implementado ainda) *@
+                        <MudTooltip Text="Telefone não cadastrado — funcionalidade futura">
+                            <MudButton Color="Color.Success" Variant="Variant.Outlined"
+                                       StartIcon="@Icons.Material.Filled.Chat" Disabled="true">
+                                WhatsApp
+                            </MudButton>
+                        </MudTooltip>
+                    </MudCardActions>
+                </MudCard>
+            }
+        }
+    </MudTabPanel>
+
+    @* ── ABA 3: Minha Disponibilidade ───────────────────────────── *@
+    <MudTabPanel Text="Minha Disponibilidade">
+        <MudText Typo="Typo.body2" Class="mb-4 mud-text-secondary">
+            Configure os horários em que você aceita aulas particulares.
+            Horários com conflito de turma são filtrados automaticamente pelo sistema (RN-AP01).
+        </MudText>
+
+        @if (carregandoDisponibilidade)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else
+        {
+            @* Grade por dia da semana *@
+            @foreach (var dia in Enumerable.Range(1, 6)) // Segunda (1) a Sábado (6)
+            {
+                var slotsDoDia = slotsDisponibilidade.Where(s => s.DiaDaSemana == dia).ToList();
+                <MudPaper Elevation="1" Class="pa-3 mb-3 rounded-lg">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                        <MudText Typo="Typo.subtitle2" Style="min-width: 120px;">
+                            @DiaDaSemanaCompleto(dia)
+                        </MudText>
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                   StartIcon="@Icons.Material.Filled.Add"
+                                   OnClick="@(() => AdicionarSlot(dia))">
+                            Adicionar
+                        </MudButton>
+                    </MudStack>
+
+                    @if (!slotsDoDia.Any())
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">Sem disponibilidade</MudText>
+                    }
+                    else
+                    {
+                        @foreach (var slot in slotsDoDia)
+                        {
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+                                <MudTimePicker @bind-Time="slot.HorarioInicio"
+                                               Label="Início" Variant="Variant.Outlined"
+                                               AmPm="false" Style="max-width: 130px;" />
+                                <MudText>até</MudText>
+                                <MudTimePicker @bind-Time="slot.HorarioFim"
+                                               Label="Fim" Variant="Variant.Outlined"
+                                               AmPm="false" Style="max-width: 130px;" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                               Color="Color.Error" Size="Size.Small"
+                                               OnClick="@(() => slotsDisponibilidade.Remove(slot))" />
+                            </MudStack>
+                        }
+                    }
+                </MudPaper>
+            }
+
+            <MudButton OnClick="SalvarDisponibilidade"
+                       Variant="Variant.Filled" Color="Color.Primary"
+                       FullWidth="true" StartIcon="@Icons.Material.Filled.Save"
+                       Disabled="@salvandoDisponibilidade">
+                @(salvandoDisponibilidade ? "Salvando..." : "Salvar Disponibilidade")
+            </MudButton>
+        }
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    private bool carregando = true;
+    private bool carregandoDisponibilidade = true;
+    private bool salvandoDisponibilidade = false;
+
+    private List<AulaParticularDto> pendentes = new();
+    private List<AulaParticularDto> agendadas = new();
+    private List<SlotDto> slotsDisponibilidade = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Carrega aulas e disponibilidade em paralelo
+        var aulasTask = Http.GetFromJsonAsync<List<AulaParticularDto>>("api/aulas-particulares/minhas-aulas");
+        var dispTask = Http.GetFromJsonAsync<List<SlotDto>>("api/professores/minha-disponibilidade");
+
+        await Task.WhenAll(aulasTask, dispTask);
+
+        var todasAulas = aulasTask.Result ?? new();
+        pendentes = todasAulas.Where(a => a.Status == "Pendente").ToList();
+        agendadas = todasAulas.Where(a => a.Status == "Aceita").ToList();
+
+        slotsDisponibilidade = dispTask.Result ?? new();
+
+        carregando = false;
+        carregandoDisponibilidade = false;
+    }
+
+    private async Task Responder(string idHash, bool aceitar)
+    {
+        var response = await Http.PutAsJsonAsync(
+            $"api/aulas-particulares/{idHash}/responder",
+            new { Aceitar = aceitar });
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add(aceitar ? "Aula aceita! ✅" : "Aula recusada.", Severity.Info);
+            await Recarregar();
+        }
+        else
+        {
+            var msg = await response.Content.ReadAsStringAsync();
+            Snackbar.Add($"Erro: {msg}", Severity.Error);
+        }
+    }
+
+    private async Task Cancelar(string idHash)
+    {
+        var response = await Http.DeleteAsync($"api/aulas-particulares/{idHash}/cancelar");
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Aula cancelada.", Severity.Info);
+            await Recarregar();
+        }
+    }
+
+    private async Task Recarregar()
+    {
+        var aulas = await Http.GetFromJsonAsync<List<AulaParticularDto>>("api/aulas-particulares/minhas-aulas") ?? new();
+        pendentes = aulas.Where(a => a.Status == "Pendente").ToList();
+        agendadas = aulas.Where(a => a.Status == "Aceita").ToList();
+    }
+
+    private void AdicionarSlot(int dia)
+    {
+        slotsDisponibilidade.Add(new SlotDto { DiaDaSemana = dia, HorarioInicio = new TimeSpan(18, 0, 0), HorarioFim = new TimeSpan(19, 0, 0) });
+    }
+
+    private async Task SalvarDisponibilidade()
+    {
+        salvandoDisponibilidade = true;
+        try
+        {
+            var payload = new
+            {
+                Slots = slotsDisponibilidade.Select(s => new
+                {
+                    DiaDaSemana = s.DiaDaSemana,
+                    HorarioInicio = s.HorarioInicio ?? TimeSpan.Zero,
+                    HorarioFim = s.HorarioFim ?? TimeSpan.Zero
+                }).ToList()
+            };
+
+            var response = await Http.PutAsJsonAsync("api/professores/minha-disponibilidade", payload);
+            if (response.IsSuccessStatusCode)
+                Snackbar.Add("Disponibilidade salva! ✅", Severity.Success);
+            else
+                Snackbar.Add("Erro ao salvar disponibilidade.", Severity.Error);
+        }
+        finally { salvandoDisponibilidade = false; }
+    }
+
+    private string DiaDaSemanaCompleto(int dia) => dia switch
+    {
+        1 => "Segunda-feira",
+        2 => "Terça-feira",
+        3 => "Quarta-feira",
+        4 => "Quinta-feira",
+        5 => "Sexta-feira",
+        6 => "Sábado",
+        _ => "Domingo"
+    };
+
+    public class AulaParticularDto
+    {
+        public string IdHash { get; set; } = "";
+        public string NomeAluno { get; set; } = "";
+        public string NomeRitmo { get; set; } = "";
+        public DateTime DataHoraInicio { get; set; }
+        public DateTime DataHoraFim { get; set; }
+        public string Status { get; set; } = "";
+        public string? Observacao { get; set; }
+    }
+
+    public class SlotDto
+    {
+        public string? IdHash { get; set; }
+        public int DiaDaSemana { get; set; }
+        public TimeSpan? HorarioInicio { get; set; }
+        public TimeSpan? HorarioFim { get; set; }
+    }
+}
