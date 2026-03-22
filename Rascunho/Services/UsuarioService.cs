@@ -1,4 +1,5 @@
-﻿using BCrypt.Net;
+﻿// Localização: Rascunho/Services/UsuarioService.cs
+using BCrypt.Net;
 using EFCore.BulkExtensions;
 using HashidsNet;
 using Microsoft.EntityFrameworkCore;
@@ -21,16 +22,40 @@ public class UsuarioService
         _hashids = hashids;
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // CRIAR USUÁRIO
+    //
+    // Fluxo:
+    //   1. Valida unicidade de e-mail
+    //   2. Valida unicidade de CPF (se informado)
+    //   3. Cria objeto concreto pelo Tipo
+    //   4. Define dados complementares (nascimento, telefone, CPF, foto)
+    //   5. Salva no banco
+    //   6. Professor → cria HabilidadeUsuario para cada ritmo
+    //   7. Bolsista  → define papel dominante e dias obrigatórios
+    // ──────────────────────────────────────────────────────────────
     public async Task<ObterUsuarioResponse> CriarUsuarioAsync(CriarUsuarioRequest request)
     {
+        // ── Validação de unicidade de e-mail ──────────────────────
         bool emailJaExiste = await _context.Usuarios
             .AnyAsync(u => u.Email.ToLower() == request.Email.ToLower());
-
         if (emailJaExiste)
-            throw new RegraNegocioException("Este e-mail já está em uso no sistema.");
+            throw new RegraNegocioException("Este e-mail já está em uso.");
+
+        // ── Validação de unicidade de CPF (quando informado) ──────
+        // Remove formatação antes de comparar para garantir consistência
+        if (!string.IsNullOrWhiteSpace(request.Cpf))
+        {
+            var cpfDigitos = new string(request.Cpf.Where(char.IsDigit).ToArray());
+            bool cpfJaExiste = await _context.Usuarios
+                .AnyAsync(u => u.Cpf == cpfDigitos);
+            if (cpfJaExiste)
+                throw new RegraNegocioException("Este CPF já está cadastrado no sistema.");
+        }
 
         string senhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha);
 
+        // ── Cria o objeto correto pelo discriminador Tipo ──────────
         Usuario usuario = request.Tipo switch
         {
             "Aluno" => new Aluno(request.Nome, request.Email, senhaHash),
@@ -42,51 +67,118 @@ public class UsuarioService
             _ => throw new RegraNegocioException("Tipo de usuário inválido.")
         };
 
+        // ── Dados complementares comuns a todos ───────────────────
+        usuario.DefinirDadosComplementares(
+            request.DataNascimento,
+            request.Telefone ?? "",
+            request.Cpf);
+
+        // ── Define foto se foi enviada ────────────────────────────
+        if (!string.IsNullOrEmpty(request.FotoUrl))
+            usuario.DefinirFoto(request.FotoUrl);
+
         _context.Usuarios.Add(usuario);
         await _context.SaveChangesAsync();
+
+        // ── Ações pós-criação por tipo ─────────────────────────────
+
+        // PROFESSOR: vincula os ritmos que ele leciona
+        // Cria um HabilidadeUsuario por ritmo com Nivel = "Professor"
+        // Isso permite que o sistema saiba quais ritmos ele pode ensinar
+        // e que o algoritmo de balanceamento o exclua das sugestões de bolsista
+        if (request.Tipo == "Professor" && request.RitmosIdHash?.Any() == true)
+        {
+            foreach (var ritmoHash in request.RitmosIdHash)
+            {
+                var ritmoDecoded = _hashids.Decode(ritmoHash);
+                if (ritmoDecoded.Length == 0) continue;
+
+                var ritmoExiste = await _context.Ritmos
+                    .AnyAsync(r => r.Id == ritmoDecoded[0]);
+                if (!ritmoExiste) continue;
+
+                _context.Set<HabilidadeUsuario>().Add(new HabilidadeUsuario
+                {
+                    UsuarioId = usuario.Id,
+                    RitmoId = ritmoDecoded[0],
+                    PapelDominante = "Ambos",    // Professor leciona ambos os papéis
+                    Nivel = "Professor" // Distingue de alunos avançados
+                });
+            }
+            await _context.SaveChangesAsync();
+        }
+
+        // BOLSISTA: define papel dominante e dias obrigatórios
+        // O EF Core já rastreia o objeto — só precisamos chamar os métodos
+        // e salvar novamente (sem nova query)
+        if (request.Tipo == "Bolsista" && usuario is Bolsista bolsista)
+        {
+            if (!string.IsNullOrEmpty(request.PapelDominante))
+                bolsista.DefinirPapelDominante(request.PapelDominante);
+
+            if (request.DiaObrigatorio1.HasValue && request.DiaObrigatorio2.HasValue)
+                bolsista.DefinirDiasObrigatorios(
+                    (DayOfWeek)request.DiaObrigatorio1.Value,
+                    (DayOfWeek)request.DiaObrigatorio2.Value);
+
+            await _context.SaveChangesAsync();
+        }
+
         return usuario.ToResponse(_hashids);
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // INSERÇÃO EM MASSA — mantida para compatibilidade
+    // ──────────────────────────────────────────────────────────────
     public async Task InserirUsuariosEmMassaAsync(IEnumerable<CriarUsuarioRequest> requests)
     {
-        var emailsRequisicao = requests.Select(r => r.Email).ToList();
+        var lista = requests.ToList();
 
-        var emailsDuplicadosNaLista = emailsRequisicao
-            .GroupBy(email => email.ToLower())
-            .Where(grupo => grupo.Count() > 1)
-            .Select(grupo => grupo.Key)
+        // Verifica duplicatas de e-mail dentro da própria lista enviada
+        var emailsDuplicados = lista
+            .GroupBy(r => r.Email.ToLower())
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
             .ToList();
 
-        if (emailsDuplicadosNaLista.Any())
-            throw new RegraNegocioException($"A lista enviada contém e-mails duplicados entre si: {string.Join(", ", emailsDuplicadosNaLista)}");
+        if (emailsDuplicados.Any())
+            throw new RegraNegocioException(
+                $"Lista com e-mails duplicados: {string.Join(", ", emailsDuplicados)}");
 
-        var emailsJaExistentesNoBanco = await _context.Usuarios
-            .Where(u => emailsRequisicao.Contains(u.Email))
+        // Verifica e-mails já existentes no banco
+        var emailsEnviados = lista.Select(r => r.Email).ToList();
+        var emailsExistentes = await _context.Usuarios
+            .Where(u => emailsEnviados.Contains(u.Email))
             .Select(u => u.Email)
             .ToListAsync();
 
-        if (emailsJaExistentesNoBanco.Any())
-            throw new RegraNegocioException($"Os seguintes e-mails já estão cadastrados e não podem ser reinseridos: {string.Join(", ", emailsJaExistentesNoBanco)}");
+        if (emailsExistentes.Any())
+            throw new RegraNegocioException(
+                $"E-mails já cadastrados: {string.Join(", ", emailsExistentes)}");
 
         var usuariosParaInserir = new List<Usuario>();
-        foreach (var request in requests)
+        foreach (var req in lista)
         {
-            string senhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha);
-            Usuario usuario = request.Tipo switch
+            string senhaHash = BCrypt.Net.BCrypt.HashPassword(req.Senha);
+            Usuario u = req.Tipo switch
             {
-                "Aluno" => new Aluno(request.Nome, request.Email, senhaHash),
-                "Professor" => new Professor(request.Nome, request.Email, senhaHash),
-                "Bolsista" => new Bolsista(request.Nome, request.Email, senhaHash),
-                "Gerente" => new Gerente(request.Nome, request.Email, senhaHash),
-                "Recepção" => new Recepcao(request.Nome, request.Email, senhaHash),
-                "Líder" => new Lider(request.Nome, request.Email, senhaHash),
-                _ => throw new RegraNegocioException($"Tipo de usuário inválido: {request.Tipo}")
+                "Aluno" => new Aluno(req.Nome, req.Email, senhaHash),
+                "Professor" => new Professor(req.Nome, req.Email, senhaHash),
+                "Bolsista" => new Bolsista(req.Nome, req.Email, senhaHash),
+                "Gerente" => new Gerente(req.Nome, req.Email, senhaHash),
+                "Recepção" => new Recepcao(req.Nome, req.Email, senhaHash),
+                "Líder" => new Lider(req.Nome, req.Email, senhaHash),
+                _ => throw new RegraNegocioException($"Tipo inválido: {req.Tipo}")
             };
-            usuariosParaInserir.Add(usuario);
+            u.DefinirDadosComplementares(req.DataNascimento, req.Telefone ?? "", req.Cpf);
+            if (!string.IsNullOrEmpty(req.FotoUrl)) u.DefinirFoto(req.FotoUrl);
+            usuariosParaInserir.Add(u);
         }
 
         await _context.BulkInsertAsync(usuariosParaInserir);
     }
+
+    // ── Listagens ─────────────────────────────────────────────────
 
     public async Task<IEnumerable<ObterUsuarioResponse>> ListarTodosUsuariosAsync()
     {
@@ -106,91 +198,53 @@ public class UsuarioService
         return usuarios.Select(u => u.ToResponse(_hashids));
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    // LISTAR POR TIPO COM ENVELOPE (método original — mantido para compatibilidade)
-    // Retorna: { Quantidade: int, Usuarios: List<ObterUsuarioResponse> }
-    // Usado por: GET /api/usuarios/tipo/{tipo} e /tipo/{tipo}/ativos
-    // ──────────────────────────────────────────────────────────────────────
     public async Task<object> ListarUsuariosPorTipoAsync(string tipo, bool? ativo = null)
     {
         var query = _context.Usuarios.Where(u => u.Tipo.ToLower() == tipo.ToLower());
-        if (ativo.HasValue)
-            query = query.Where(u => u.Ativo == ativo.Value);
+        if (ativo.HasValue) query = query.Where(u => u.Ativo == ativo.Value);
 
-        // Duas queries separadas: Count + ToList
-        // Para o MVP com poucos registros, aceitável.
         int quantidade = await query.CountAsync();
-        var usuariosDb = await query.ToListAsync();
-        var listaDto = usuariosDb.Select(u => u.ToResponse(_hashids));
-
-        return new { Quantidade = quantidade, Usuarios = listaDto };
+        var lista = (await query.ToListAsync()).Select(u => u.ToResponse(_hashids));
+        return new { Quantidade = quantidade, Usuarios = lista };
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    // NOVO: LISTAR POR TIPO COMO LISTA SIMPLES (sem envelope)
-    //
-    // Por que este novo método?
-    // O método anterior retorna { Quantidade, Usuarios } — um objeto anônimo
-    // que o Scalar/Swagger exibe bem, mas que o frontend não consegue
-    // desserializar diretamente para List<ItemDto>.
-    //
-    // Quando o GerenciarTurmas.razor faz:
-    //   Http.GetFromJsonAsync<List<ItemSimplesDto>>("api/usuarios/tipo/Professor/ativos")
-    // ...ele recebe { Quantidade: 5, Usuarios: [...] } e falha silenciosamente
-    // porque o JSON não é um array — é um objeto.
-    //
-    // Este método retorna IEnumerable<ObterUsuarioResponse> puro → array JSON direto.
-    // Usado pelo novo endpoint GET /tipo/{tipo}/ativos/lista
-    // ──────────────────────────────────────────────────────────────────────
     public async Task<IEnumerable<ObterUsuarioResponse>> ListarUsuariosPorTipoListaAsync(
-        string tipo,
-        bool? ativo = null)
+        string tipo, bool? ativo = null)
     {
-        var query = _context.Usuarios
-            .Where(u => u.Tipo.ToLower() == tipo.ToLower());
-
-        if (ativo.HasValue)
-            query = query.Where(u => u.Ativo == ativo.Value);
-
-        var usuarios = await query.ToListAsync();
-        return usuarios.Select(u => u.ToResponse(_hashids));
+        var query = _context.Usuarios.Where(u => u.Tipo.ToLower() == tipo.ToLower());
+        if (ativo.HasValue) query = query.Where(u => u.Ativo == ativo.Value);
+        return (await query.ToListAsync()).Select(u => u.ToResponse(_hashids));
     }
 
     public async Task<ObterUsuarioResponse> ObterUsuarioPorIdAsync(int id)
     {
-        var usuario = await _context.Usuarios.FindAsync(id);
-        if (usuario == null || !usuario.Ativo)
+        var u = await _context.Usuarios.FindAsync(id);
+        if (u == null || !u.Ativo)
             throw new RegraNegocioException("Usuário não encontrado.");
-
-        return usuario.ToResponse(_hashids);
+        return u.ToResponse(_hashids);
     }
 
     public async Task AtualizarPerfilAsync(int id, EditarPerfilRequest request)
     {
-        var usuario = await _context.Usuarios.FindAsync(id)
+        var u = await _context.Usuarios.FindAsync(id)
             ?? throw new RegraNegocioException("Usuário não encontrado.");
-
-        usuario.EditarPerfil(request.FotoUrl, request.NomeSocial, request.Biografia);
+        u.EditarPerfil(request.FotoUrl, request.NomeSocial, request.Biografia);
         await _context.SaveChangesAsync();
     }
 
     public async Task AlterarStatusAsync(int id, bool ativar)
     {
-        var usuario = await _context.Usuarios.FindAsync(id)
+        var u = await _context.Usuarios.FindAsync(id)
             ?? throw new RegraNegocioException("Usuário não encontrado.");
-
-        if (ativar) usuario.Ativar();
-        else usuario.Desativar();
-
+        if (ativar) u.Ativar(); else u.Desativar();
         await _context.SaveChangesAsync();
     }
 
     public async Task ExcluirUsuarioAsync(int id)
     {
-        var usuario = await _context.Usuarios.FindAsync(id)
+        var u = await _context.Usuarios.FindAsync(id)
             ?? throw new RegraNegocioException("Usuário não encontrado.");
-
-        _context.Usuarios.Remove(usuario);
+        _context.Usuarios.Remove(u);
         await _context.SaveChangesAsync();
     }
 }
