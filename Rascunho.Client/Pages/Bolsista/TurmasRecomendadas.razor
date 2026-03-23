@@ -1,8 +1,11 @@
 ﻿@* 
-  ROTA: /bolsista/turmas-recomendadas
-  ACESSO: Bolsista
-  
-  CORREÇÃO: T="string" em todos os MudChip desta página.
+  ARQUIVO: Rascunho.Client/Pages/Bolsista/TurmasRecomendadas.razor
+  ROTA:    /bolsista/turmas-recomendadas
+  ACESSO:  Bolsista
+
+  CORREÇÃO SPRINT 6:
+  Igual à TurmasObrigatorias.razor: os cards exibiam o hash criptografado
+  como título da turma. Agora exibem RitmoNome, DiaDaSemana e horário.
 *@
 
 @page "/bolsista/turmas-recomendadas"
@@ -16,10 +19,10 @@
 
 <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
     <MudIcon Icon="@Icons.Material.Filled.Recommend" Class="mr-2" />
-    Turmas que Precisam de Você Hoje
+    Turmas que Precisam de Você
 </MudText>
 <MudText Class="mb-6 mud-text-secondary">
-    Turmas analisadas pelo sistema com base no equilíbrio de papéis.
+    Turmas analisadas pelo sistema com base no equilíbrio de condutores e conduzidos.
 </MudText>
 
 @if (carregando)
@@ -42,7 +45,16 @@ else
                          Style="@($"border-left: 4px solid {CorStatus(analise.Status)};")">
                     <MudCardHeader>
                         <CardHeaderContent>
-                            <MudText Typo="Typo.h6">@analise.TurmaIdHash</MudText>
+                            @*
+                              CORREÇÃO SPRINT 6:
+                              ANTES: <MudText>@analise.TurmaIdHash</MudText>
+                              AGORA: RitmoNome + Dia + Horário legíveis
+                            *@
+                            <MudText Typo="Typo.h6">@analise.RitmoNome</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @DiaDaSemanaTexto(analise.DiaDaSemana) •
+                                @analise.HorarioInicio.ToString(@"hh\:mm")–@analise.HorarioFim.ToString(@"hh\:mm")
+                            </MudText>
                         </CardHeaderContent>
                         <CardHeaderActions>
                             <MudIcon Icon="@IconeStatus(analise.Status)"
@@ -50,7 +62,6 @@ else
                         </CardHeaderActions>
                     </MudCardHeader>
                     <MudCardContent>
-                        @* CORREÇÃO: T="string" obrigatório *@
                         <MudChip T="string"
                                  Color="@ChipCor(analise.Status)"
                                  Size="Size.Small"
@@ -58,6 +69,28 @@ else
                                  Class="mb-3">
                             @analise.Status
                         </MudChip>
+
+                        @* Resumo de condutores vs conduzidos *@
+                        <MudGrid Dense="true" Class="mb-2">
+                            <MudItem xs="6">
+                                <MudPaper Elevation="0" Class="pa-2 text-center rounded"
+                                          Style="background: #e8f5e9;">
+                                    <MudText Typo="Typo.h6" Color="Color.Success">
+                                        @analise.TotalCondutores
+                                    </MudText>
+                                    <MudText Typo="Typo.caption">Condutores</MudText>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="6">
+                                <MudPaper Elevation="0" Class="pa-2 text-center rounded"
+                                          Style="background: #fce4ec;">
+                                    <MudText Typo="Typo.h6" Color="Color.Error">
+                                        @analise.TotalConduzidos
+                                    </MudText>
+                                    <MudText Typo="Typo.caption">Conduzidos</MudText>
+                                </MudPaper>
+                            </MudItem>
+                        </MudGrid>
 
                         @if (analise.QuantidadeFaltante > 0)
                         {
@@ -74,7 +107,6 @@ else
                             </MudText>
                             @foreach (var sug in analise.Sugestoes.Take(3))
                             {
-                                @* CORREÇÃO: T="string" obrigatório *@
                                 <MudChip T="string"
                                          Size="Size.Small"
                                          Variant="Variant.Outlined"
@@ -108,6 +140,18 @@ else
         finally { carregando = false; }
     }
 
+    private string DiaDaSemanaTexto(int dia) => dia switch
+    {
+        0 => "Domingo",
+        1 => "Segunda-feira",
+        2 => "Terça-feira",
+        3 => "Quarta-feira",
+        4 => "Quinta-feira",
+        5 => "Sexta-feira",
+        6 => "Sábado",
+        _ => "—"
+    };
+
     private string CorStatus(string status) => status switch
     {
         "Balanceada" => "#4caf50",
@@ -129,6 +173,10 @@ else
         _ => Color.Warning
     };
 
+    // ──────────────────────────────────────────────────────────────
+    // DTO LOCAL — CORRIGIDO Sprint 6
+    // Campos adicionados: RitmoNome, DiaDaSemana, HorarioInicio, HorarioFim
+    // ──────────────────────────────────────────────────────────────
     public class SugestaoBalanceamentoDto
     {
         public string TurmaIdHash { get; set; } = "";
@@ -137,6 +185,12 @@ else
         public string Status { get; set; } = "";
         public int QuantidadeFaltante { get; set; }
         public List<BolsistaSugeridoDto> Sugestoes { get; set; } = new();
+
+        // NOVO Sprint 6
+        public string RitmoNome { get; set; } = "";
+        public int DiaDaSemana { get; set; }
+        public TimeSpan HorarioInicio { get; set; }
+        public TimeSpan HorarioFim { get; set; }
     }
 
     public class BolsistaSugeridoDto

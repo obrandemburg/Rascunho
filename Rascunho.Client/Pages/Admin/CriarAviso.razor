@@ -1,19 +1,18 @@
 ﻿@* 
-  ROTA: /admin/avisos
-  ACESSO: Recepção, Gerente
-  
-  FLUXO:
-  1. Formulário com Título, Conteúdo, Tipo (Geral/Equipe), DataExpiração
-  2. POST /api/avisos/admin/criar
-  
-  LÓGICA DE EXPIRAÇÃO DA API:
-  O AvisoService usa Auto-Exclusão Lógica: queries de leitura
-  já filtram por DataExpiracao > UtcNow. Não há CRON job.
-  Portanto: sempre defina uma DataExpiração futura.
-  
-  TIPOS DE VISIBILIDADE:
-  - "Geral": visível no site público (sem login)
-  - "Equipe": visível apenas para professores, bolsistas, staff
+  ARQUIVO: Rascunho.Client/Pages/Admin/CriarAviso.razor
+  ROTA:    /admin/avisos
+  ACESSO:  Recepção, Gerente
+
+  CORREÇÃO SPRINT 6:
+  O campo do formulário se chamava 'Conteudo' mas CriarAvisoRequest (no backend)
+  espera o campo 'Mensagem'. Isso fazia com que o FluentValidation rejeitasse
+  sempre o request (Mensagem estava vazio) e os avisos nunca eram criados.
+
+  ALTERAÇÕES:
+  - CriarAvisoForm.Conteudo → CriarAvisoForm.Mensagem
+  - @bind-Value do MudTextField atualizado
+  - Payload do POST corrigido: Conteudo → Mensagem
+  - Preview corrigido para ler novoAviso.Mensagem
 *@
 
 @page "/admin/avisos"
@@ -31,6 +30,7 @@
 </MudText>
 
 <MudGrid>
+    @* ── Formulário ─────────────────────────────────────────────── *@
     <MudItem xs="12" md="7">
         <MudPaper Elevation="4" Class="pa-8 rounded-xl">
             <EditForm Model="@novoAviso" OnValidSubmit="PublicarAviso">
@@ -39,17 +39,28 @@
                               Label="Título do Aviso"
                               Variant="Variant.Outlined"
                               Class="mb-4"
-                              MaxLength="200" />
+                              MaxLength="150"
+                              HelperText="Máximo 150 caracteres"
+                              Required="true" />
 
-                <MudTextField @bind-Value="novoAviso.Conteudo"
-                              Label="Conteúdo"
+                @*
+                  CORREÇÃO: era @bind-Value="novoAviso.Conteudo"
+                  Agora é  @bind-Value="novoAviso.Mensagem"
+                  A API valida o campo 'Mensagem' via FluentValidation (NotEmpty, MaxLength 1000).
+                *@
+                <MudTextField @bind-Value="novoAviso.Mensagem"
+                              Label="Conteúdo do Aviso"
                               Variant="Variant.Outlined"
                               Lines="5"
-                              Class="mb-4" />
+                              Class="mb-4"
+                              MaxLength="1000"
+                              HelperText="Máximo 1000 caracteres" />
 
                 @*
                   RadioGroup para tipo de visibilidade.
-                  Valores exatos que a API aceita (case-sensitive!).
+                  Valores exatos que a API aceita (case-sensitive!):
+                    "Geral"  → AllowAnonymous, visível no site público
+                    "Equipe" → requer role Professor/Bolsista/Líder/Recepção/Gerente
                 *@
                 <MudText Typo="Typo.body1" Class="mb-2">Visibilidade:</MudText>
                 <MudRadioGroup T="string" @bind-Value="novoAviso.TipoVisibilidade" Class="mb-4">
@@ -62,9 +73,9 @@
                 </MudRadioGroup>
 
                 @*
-                  Data de expiração: OBRIGATÓRIO e deve ser no futuro.
-                  A API rejeita datas passadas com 400.
-                  Sugestão: padrão de 30 dias.
+                  Data de expiração: obrigatória e deve ser no futuro.
+                  MinDate = amanhã para bloquear datas passadas já no picker.
+                  A API também valida: DataExpiracao > DateTime.UtcNow.
                 *@
                 <MudDatePicker @bind-Date="dataExpiracao"
                                Label="Válido até"
@@ -87,7 +98,7 @@
         </MudPaper>
     </MudItem>
 
-    @* Preview do aviso *@
+    @* ── Preview ────────────────────────────────────────────────── *@
     <MudItem xs="12" md="5">
         <MudText Typo="Typo.subtitle1" Class="mb-3">Pré-visualização:</MudText>
         <MudCard Elevation="3" Class="rounded-lg">
@@ -101,58 +112,125 @@
                         Publicado hoje · Expira: @(dataExpiracao?.ToString("dd/MM/yyyy") ?? "—")
                     </MudText>
                 </CardHeaderContent>
+                <CardHeaderActions>
+                    @if (novoAviso.TipoVisibilidade == "Equipe")
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
+                            🔒 Equipe
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                            🌐 Geral
+                        </MudChip>
+                    }
+                </CardHeaderActions>
             </MudCardHeader>
             <MudCardContent>
-                <MudText Typo="Typo.body2">
-                    @(string.IsNullOrEmpty(novoAviso.Conteudo) ? "Conteúdo do aviso aparecerá aqui..." : novoAviso.Conteudo)
+                @*
+                  CORREÇÃO: era novoAviso.Conteudo → agora novoAviso.Mensagem
+                *@
+                <MudText Typo="Typo.body2" Style="white-space: pre-line;">
+                    @(string.IsNullOrEmpty(novoAviso.Mensagem)
+                        ? "Conteúdo do aviso aparecerá aqui..."
+                        : novoAviso.Mensagem)
                 </MudText>
             </MudCardContent>
         </MudCard>
+
+        @* Dica sobre os tipos de visibilidade *@
+        <MudAlert Severity="Severity.Info" Class="mt-4" Dense="true">
+            <strong>Geral:</strong> aparece na Home sem login e em QuadroAvisos para todos.<br />
+            <strong>Equipe:</strong> visível apenas para professores, bolsistas e staff logados.
+        </MudAlert>
     </MudItem>
 </MudGrid>
 
 @code {
     private bool publicando = false;
     private DateTime? dataExpiracao = DateTime.Today.AddDays(30); // Padrão 30 dias
+
+    // CORREÇÃO: classe renomeada internamente para refletir o campo correto.
+    // Anteriormente tinha a propriedade 'Conteudo'; agora é 'Mensagem'
+    // para corresponder ao CriarAvisoRequest do backend.
     private CriarAvisoForm novoAviso = new();
 
     private async Task PublicarAviso()
     {
-        if (dataExpiracao == null) return;
+        if (dataExpiracao == null)
+        {
+            Snackbar.Add("Informe a data de expiração do aviso.", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(novoAviso.Titulo))
+        {
+            Snackbar.Add("O título é obrigatório.", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(novoAviso.Mensagem))
+        {
+            Snackbar.Add("O conteúdo do aviso é obrigatório.", Severity.Warning);
+            return;
+        }
+
         publicando = true;
 
         try
         {
-            // Monta o payload conforme a API espera
+            // CORREÇÃO: o payload agora usa 'Mensagem' (não 'Conteudo').
+            // CriarAvisoRequest no backend: record(Titulo, Mensagem, DataExpiracao, TipoVisibilidade)
+            // O FluentValidation verifica NotEmpty em 'Mensagem' — antes estava sempre vazio.
             var payload = new
             {
                 novoAviso.Titulo,
-                novoAviso.Conteudo,
+                Mensagem = novoAviso.Mensagem,           // ← era: Conteudo = novoAviso.Conteudo
                 novoAviso.TipoVisibilidade,
-                DataExpiracao = dataExpiracao.Value
+                DataExpiracao = dataExpiracao.Value.ToUniversalTime()
             };
 
-            // POST /api/avisos/admin/criar
             var response = await Http.PostAsJsonAsync("api/avisos/admin/criar", payload);
 
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("Aviso publicado com sucesso! 📢", Severity.Success);
+
+                // Reseta o formulário mantendo visibilidade padrão
                 novoAviso = new CriarAvisoForm();
                 dataExpiracao = DateTime.Today.AddDays(30);
             }
+            else if ((int)response.StatusCode == 400)
+            {
+                // FluentValidation retornou erros de campo
+                var corpo = await response.Content.ReadAsStringAsync();
+                Snackbar.Add("Dados inválidos. Verifique o título e o conteúdo.", Severity.Warning);
+            }
             else
             {
-                Snackbar.Add("Erro ao publicar aviso. Verifique os dados.", Severity.Error);
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Erro ao publicar aviso: {erro}", Severity.Error);
             }
         }
-        finally { publicando = false; }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro inesperado: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            publicando = false;
+        }
     }
 
+    // CORREÇÃO SPRINT 6:
+    // Propriedade renomeada de 'Conteudo' para 'Mensagem'.
+    // Isso garante que o formulário, o preview e o payload enviado à API
+    // todos usem o mesmo nome correto.
     public class CriarAvisoForm
     {
         public string Titulo { get; set; } = "";
-        public string Conteudo { get; set; } = "";
-        public string TipoVisibilidade { get; set; } = "Geral"; // Padrão: público
+        public string Mensagem { get; set; } = "";                  // ← era: Conteudo
+        public string TipoVisibilidade { get; set; } = "Geral";    // Padrão: público
     }
 }

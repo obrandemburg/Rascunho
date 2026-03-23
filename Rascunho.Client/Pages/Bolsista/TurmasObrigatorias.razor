@@ -1,4 +1,18 @@
-﻿@* ARQUIVO: Rascunho.Client/Pages/Bolsista/TurmasObrigatorias.razor *@
+﻿@* 
+  ARQUIVO: Rascunho.Client/Pages/Bolsista/TurmasObrigatorias.razor
+  ROTA:    /bolsista/turmas-obrigatorias
+  ACESSO:  Bolsista
+
+  CORREÇÃO SPRINT 6:
+  Os cards exibiam apenas analise.TurmaIdHash (ex: "aBcDeFgH") como título,
+  pois SugestaoBalanceamentoResponse não retornava dados legíveis da turma.
+
+  Após atualização de BolsistaDTOs.cs + BolsistaService.cs (Sprint 6),
+  o DTO agora inclui: RitmoNome, DiaDaSemana, HorarioInicio, HorarioFim.
+
+  Este arquivo atualiza o DTO local e o template para exibir essas informações.
+*@
+
 @page "/bolsista/turmas-obrigatorias"
 @using Microsoft.AspNetCore.Authorization
 @using System.Net.Http.Json
@@ -29,16 +43,28 @@ else if (!analises.Any())
 }
 else
 {
+    @* Legenda rápida *@
+    <MudText Typo="Typo.caption" Class="mb-4 mud-text-secondary">
+        @analises.Count turma(s) nos seus dias obrigatórios •
+        @analises.Count(a => a.Status != "Balanceada") com necessidade urgente
+    </MudText>
+
     <MudGrid>
         @foreach (var analise in analises)
         {
             bool urgente = analise.Status != "Balanceada" && analise.QuantidadeFaltante > 0;
 
             <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="@(urgente ? 5 : 2)" Class="rounded-lg"
+                <MudCard Elevation="@(urgente ? 5 : 2)" Class="rounded-lg h-100"
                          Style="@($"border-left: 5px solid {CorStatus(analise.Status)};")">
                     <MudCardHeader>
                         <CardHeaderContent>
+                            @*
+                              CORREÇÃO SPRINT 6:
+                              ANTES: <MudText>@analise.TurmaIdHash</MudText>
+                                     → exibia hash criptografado como "aBcDeFgH"
+                              AGORA: exibe o nome do ritmo e dia/horário legíveis
+                            *@
                             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                                 @if (urgente)
                                 {
@@ -46,8 +72,13 @@ else
                                              Style="@($"color: {CorStatus(analise.Status)}")"
                                              Size="Size.Small" />
                                 }
-                                <MudText Typo="Typo.h6">@analise.TurmaIdHash</MudText>
+                                <MudText Typo="Typo.h6">@analise.RitmoNome</MudText>
                             </MudStack>
+                            @* Dia e horário da turma — dados adicionados na Sprint 6 *@
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @DiaDaSemanaTexto(analise.DiaDaSemana) •
+                                @analise.HorarioInicio.ToString(@"hh\:mm")–@analise.HorarioFim.ToString(@"hh\:mm")
+                            </MudText>
                         </CardHeaderContent>
                         <CardHeaderActions>
                             <MudChip T="string" Size="Size.Small"
@@ -59,19 +90,23 @@ else
                     </MudCardHeader>
 
                     <MudCardContent>
-                        @* Resumo de condutores vs conduzidos *@
+                        @* Resumo visual de condutores vs conduzidos *@
                         <MudGrid Dense="true">
                             <MudItem xs="6">
                                 <MudPaper Elevation="0" Class="pa-2 text-center rounded"
                                           Style="background: #e8f5e9;">
-                                    <MudText Typo="Typo.h5" Color="Color.Success">@analise.TotalCondutores</MudText>
+                                    <MudText Typo="Typo.h5" Color="Color.Success">
+                                        @analise.TotalCondutores
+                                    </MudText>
                                     <MudText Typo="Typo.caption">Condutores</MudText>
                                 </MudPaper>
                             </MudItem>
                             <MudItem xs="6">
                                 <MudPaper Elevation="0" Class="pa-2 text-center rounded"
                                           Style="background: #fce4ec;">
-                                    <MudText Typo="Typo.h5" Color="Color.Error">@analise.TotalConduzidos</MudText>
+                                    <MudText Typo="Typo.h5" Color="Color.Error">
+                                        @analise.TotalConduzidos
+                                    </MudText>
                                     <MudText Typo="Typo.caption">Conduzidos</MudText>
                                 </MudPaper>
                             </MudItem>
@@ -99,7 +134,6 @@ else
     {
         try
         {
-            // Usa endpoint criado na Sprint 1 que analisa as turmas dos dias obrigatórios
             analises = await Http.GetFromJsonAsync<List<SugestaoDto>>(
                 "api/bolsistas/turmas-recomendadas") ?? new();
         }
@@ -109,6 +143,19 @@ else
         }
         finally { carregando = false; }
     }
+
+    // Converte int (DayOfWeek) para nome legível em português
+    private string DiaDaSemanaTexto(int dia) => dia switch
+    {
+        0 => "Domingo",
+        1 => "Segunda-feira",
+        2 => "Terça-feira",
+        3 => "Quarta-feira",
+        4 => "Quinta-feira",
+        5 => "Sexta-feira",
+        6 => "Sábado",
+        _ => "—"
+    };
 
     private string CorStatus(string status) => status switch
     {
@@ -125,6 +172,12 @@ else
         _ => Color.Warning
     };
 
+    // ──────────────────────────────────────────────────────────────
+    // DTO LOCAL — CORRIGIDO para corresponder ao SugestaoBalanceamentoResponse
+    // atualizado em BolsistaDTOs.cs (Sprint 6).
+    //
+    // Campos adicionados: RitmoNome, DiaDaSemana, HorarioInicio, HorarioFim
+    // ──────────────────────────────────────────────────────────────
     public class SugestaoDto
     {
         public string TurmaIdHash { get; set; } = "";
@@ -132,5 +185,11 @@ else
         public int TotalConduzidos { get; set; }
         public string Status { get; set; } = "";
         public int QuantidadeFaltante { get; set; }
+
+        // NOVO Sprint 6 — identificação legível da turma
+        public string RitmoNome { get; set; } = "";  // ← NOVO
+        public int DiaDaSemana { get; set; }        // ← NOVO
+        public TimeSpan HorarioInicio { get; set; }        // ← NOVO
+        public TimeSpan HorarioFim { get; set; }        // ← NOVO
     }
 }
