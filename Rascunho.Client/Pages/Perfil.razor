@@ -1,25 +1,36 @@
 ﻿@* 
-  ARQUIVO: Rascunho.Client/Pages/Perfil.razor  ← CRIAR ESTE ARQUIVO
-  
-  CAUSA DO 404: Esta página não existia. O MainLayout tem um link
-  Href="/perfil" no menu do avatar, mas nenhum componente tinha
-  @page "/perfil" registrado no roteador do Blazor.
-  
-  FUNCIONALIDADE:
-  - Exibe dados do usuário logado (lidos do JWT via AuthState)
-  - Permite editar Nome Social e Biografia
-  - PUT /api/usuarios/meu-perfil/atualizar
-  
-  O token JWT já identifica o usuário — não precisamos passar ID.
+  ARQUIVO: Rascunho.Client/Pages/Perfil.razor
+  ROTA:    /perfil
+  ACESSO:  Qualquer usuário autenticado
+
+  CORREÇÃO SPRINT 6:
+  O método SalvarPerfil enviava o payload { NomeSocial, Biografia }
+  sem o campo FotoUrl. EditarPerfilRequest é record(NomeSocial, Biografia, FotoUrl),
+  então FotoUrl chegava como null no backend.
+
+  O método usuario.EditarPerfil(fotoUrl, nomeSocial, biografia) no backend
+  faz: FotoUrl = fotoUrl — ou seja, null sobrescreve a foto existente.
+
+  SOLUÇÃO:
+  1. Injetar ILocalStorageService para ler 'userFotoUrl' salvo no login
+     (o AuthService agora salva a foto durante o login — ver AuthService.cs)
+  2. Incluir o fotoUrlAtual no payload do PUT
+  3. Exibir a foto atual do usuário no perfil usando um MudAvatar condicional
+
+  IMPORTANTE: Quando o usuário troca de foto (Sprint 7), AuthService deve
+  ser atualizado para armazenar a nova URL. Por agora, a foto exibida é a
+  que foi salva no último login.
 *@
 
 @page "/perfil"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Net.Http.Json
+@using Blazored.LocalStorage
 @attribute [Authorize]
 @inject HttpClient Http
 @inject ISnackbar Snackbar
+@inject ILocalStorageService LocalStorage
 
 <PageTitle>Meu Perfil — Ponto da Dança</PageTitle>
 
@@ -30,13 +41,30 @@
         Meu Perfil
     </MudText>
 
-    @* Cabeçalho com avatar e nome *@
+    @* Cabeçalho com avatar/foto e dados do usuário *@
     <MudPaper Elevation="3" Class="pa-6 rounded-xl mb-6">
         <div class="d-flex align-center gap-4 mb-4">
-            <MudAvatar Color="Color.Primary"
-                       Style="width: 64px; height: 64px; font-size: 1.8rem;">
-                @nomeInicial
-            </MudAvatar>
+            @*
+              NOVO Sprint 6: exibe a foto atual do usuário se disponível.
+              Se fotoUrlAtual estiver vazio, exibe MudAvatar com inicial.
+              A foto vem do LocalStorage (salva durante o login pelo AuthService).
+            *@
+            @if (!string.IsNullOrEmpty(fotoUrlAtual))
+            {
+                <MudAvatar Style="width: 72px; height: 72px;">
+                    <MudImage Src="@fotoUrlAtual"
+                              Alt="Foto de perfil"
+                              Style="width:100%; height:100%; object-fit:cover;" />
+                </MudAvatar>
+            }
+            else
+            {
+                <MudAvatar Color="Color.Primary"
+                           Style="width: 72px; height: 72px; font-size: 2rem;">
+                    @nomeInicial
+                </MudAvatar>
+            }
+
             <div>
                 <MudText Typo="Typo.h5" Class="font-weight-bold">
                     @nomeCompleto
@@ -49,14 +77,21 @@
                 </MudChip>
             </div>
         </div>
+
         <MudDivider Class="mb-4" />
+
         <MudText Typo="Typo.body2" Class="mud-text-secondary">
             <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" Class="mr-1" />
             @email
         </MudText>
+
+        @* Aviso sobre troca de foto — será implementado na Sprint 7 *@
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+            Para alterar sua foto de perfil, aguarde a próxima atualização do sistema.
+        </MudAlert>
     </MudPaper>
 
-    @* Formulário de edição *@
+    @* Formulário de edição de Nome Social e Biografia *@
     <MudPaper Elevation="3" Class="pa-6 rounded-xl">
         <MudText Typo="Typo.h6" Class="mb-4">Editar Informações</MudText>
 
@@ -92,34 +127,52 @@
 </MudContainer>
 
 @code {
-    // CascadingParameter para ler dados do usuário logado sem chamar a API
-    // Os dados básicos (nome, role, email) já estão no JWT
     [CascadingParameter]
     private Task<AuthenticationState>? AuthStateTask { get; set; }
 
     private bool salvando = false;
+
+    // Dados exibidos no cabeçalho (lidos das Claims do JWT)
     private string nomeCompleto = "";
     private string nomeInicial = "?";
     private string email = "";
     private string role = "";
 
+    // NOVO Sprint 6: URL da foto atual, lida do LocalStorage
+    // Salva pelo AuthService durante o login (ver AuthService.cs)
+    private string fotoUrlAtual = "";
+
     private EditarPerfilForm form = new();
 
     protected override async Task OnInitializedAsync()
     {
-        if (AuthStateTask == null) return;
+        // ── Lê dados das Claims do JWT ──────────────────────────
+        if (AuthStateTask != null)
+        {
+            var authState = await AuthStateTask;
+            var user = authState.User;
 
-        var authState = await AuthStateTask;
-        var user = authState.User;
+            nomeCompleto = user.Identity?.Name ?? "Usuário";
+            nomeInicial = nomeCompleto.FirstOrDefault().ToString().ToUpper();
+            email = user.FindFirst(c =>
+                c.Type == System.Security.Claims.ClaimTypes.Email)?.Value ?? "";
+            role = user.FindFirst(c =>
+                c.Type == System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+        }
 
-        // Lê as claims do JWT que foram decodificadas pelo CustomAuthStateProvider
-        nomeCompleto = user.Identity?.Name ?? "Usuário";
-        nomeInicial = nomeCompleto.FirstOrDefault().ToString().ToUpper();
-        email = user.FindFirst(c => c.Type == "email" ||
-                                    c.Type == System.Security.Claims.ClaimTypes.Email)
-                    ?.Value ?? "";
-        role = user.FindFirst(c => c.Type == System.Security.Claims.ClaimTypes.Role)
-                    ?.Value ?? "";
+        // ── NOVO Sprint 6: Lê a foto do LocalStorage ───────────
+        // O AuthService armazena 'userFotoUrl' durante o login.
+        // GetItemAsync retorna null se a chave não existe (usuário
+        // que fez login antes desta atualização), então usamos ?? "".
+        try
+        {
+            fotoUrlAtual = await LocalStorage.GetItemAsync<string>("userFotoUrl") ?? "";
+        }
+        catch
+        {
+            // Se falhar (ex: localStorage não disponível), continua sem foto
+            fotoUrlAtual = "";
+        }
     }
 
     private async Task SalvarPerfil()
@@ -127,10 +180,26 @@
         salvando = true;
         try
         {
-            // PUT /api/usuarios/meu-perfil/atualizar
-            // O token JWT identifica o usuário — não precisamos passar ID
-            var response = await Http.PutAsJsonAsync(
-                "api/usuarios/meu-perfil/atualizar", form);
+            // ── CORREÇÃO SPRINT 6 ────────────────────────────────
+            // Antes: o payload não incluía FotoUrl, que chegava como null
+            //        no backend e apagava a foto do usuário.
+            //
+            // Agora: incluímos fotoUrlAtual (lido do LocalStorage).
+            //        Se o usuário não tem foto (string vazia), enviamos ""
+            //        em vez de null, e o backend mantém o campo inalterado
+            //        (EditarPerfil(fotoUrl, ...) só altera se fotoUrl != null).
+            //
+            // EditarPerfilRequest é record(NomeSocial, Biografia, FotoUrl).
+            // O backend valida: NomeSocial max 100 chars, Biografia max 500 chars.
+            // FotoUrl não tem validação no FluentValidation (campo livre).
+            var payload = new
+            {
+                NomeSocial = form.NomeSocial ?? "",
+                Biografia = form.Biografia ?? "",
+                FotoUrl = fotoUrlAtual        // ← CORREÇÃO: era omitido
+            };
+
+            var response = await Http.PutAsJsonAsync("api/usuarios/meu-perfil/atualizar", payload);
 
             if (response.IsSuccessStatusCode)
             {
@@ -138,8 +207,12 @@
             }
             else if ((int)response.StatusCode == 400)
             {
+                Snackbar.Add("Dados inválidos. Verifique os campos e tente novamente.", Severity.Warning);
+            }
+            else if ((int)response.StatusCode == 422)
+            {
                 var erro = await response.Content.ReadAsStringAsync();
-                Snackbar.Add($"Dados inválidos: {erro}", Severity.Warning);
+                Snackbar.Add($"Erro: {erro}", Severity.Error);
             }
             else
             {
@@ -149,7 +222,9 @@
         finally { salvando = false; }
     }
 
-    // DTO espelhando o EditarPerfilRequest do backend
+    // Modelo do formulário de edição.
+    // Não inclui FotoUrl pois o upload de foto será implementado na Sprint 7.
+    // A FotoUrl atual é lida do LocalStorage e incluída diretamente no payload.
     public class EditarPerfilForm
     {
         public string? NomeSocial { get; set; }

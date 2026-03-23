@@ -1,4 +1,21 @@
-﻿using HashidsNet;
+﻿// ARQUIVO: Rascunho/Services/BolsistaService.cs
+//
+// ALTERAÇÕES SPRINT 6:
+//
+// 1. AnalisarEBalancearTurmaAsync:
+//    - Adicionado .Include(t => t.Ritmo) na query da turma
+//    - Preenchidos os novos campos do SugestaoBalanceamentoResponse:
+//      RitmoNome, DiaDaSemana, HorarioInicio, HorarioFim
+//
+// 2. TurmasRecomendadasParaBolsistaAsync:
+//    - Adicionado .Include(t => t.Ritmo) na query de turmasDoDia
+//    (necessário para que AnalisarEBalancearTurmaAsync acesse Ritmo sem nova query)
+//
+// Sem essas alterações, os campos RitmoNome/DiaDaSemana/HorarioInicio/HorarioFim
+// retornavam valores nulos/padrão, e as telas de bolsista exibiam hashes
+// criptografados como título dos cards de turma.
+
+using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
 using Rascunho.Shared.DTOs;
@@ -51,19 +68,7 @@ public class BolsistaService
     }
 
     // ──────────────────────────────────────────────────────────────
-    // NOVO Sprint 2: MEU DESEMPENHO
-    //
-    // Como funciona o cálculo:
-    //   1. Busca TODOS os RegistroPresenca do bolsista (qualquer turma)
-    //   2. Classifica cada registro como "dia obrigatório" ou "dia extra"
-    //      comparando o DayOfWeek da DataAula com DiaObrigatorio1/2
-    //   3. Calcula percentuais separados
-    //   4. Determina o indicador de situação (baseado só no obrigatório)
-    //   5. Monta histórico cronológico aula-a-aula
-    //
-    // IMPORTANTE: O bolsista não se matricula formalmente em turmas de salão
-    // (RN-BOL09), mas RegistroPresenca pode existir para qualquer turma.
-    // Por isso usamos RegistroPresenca como fonte de verdade, não Matriculas.
+    // MEU DESEMPENHO (Sprint 2 — sem alterações nesta sprint)
     // ──────────────────────────────────────────────────────────────
     public async Task<DesempenhoResponse> MeuDesempenhoAsync(int bolsistaId)
     {
@@ -71,7 +76,6 @@ public class BolsistaService
             .FirstOrDefaultAsync(b => b.Id == bolsistaId)
             ?? throw new RegraNegocioException("Bolsista não encontrado.");
 
-        // Uma única query com todos os includes necessários para o histórico
         var todasPresencas = await _context.RegistrosPresencas
             .Include(rp => rp.Turma).ThenInclude(t => t.Ritmo)
             .Include(rp => rp.Turma).ThenInclude(t => t.Professores).ThenInclude(tp => tp.Professor)
@@ -79,12 +83,10 @@ public class BolsistaService
             .OrderByDescending(rp => rp.DataAula)
             .ToListAsync();
 
-        // Monta a lista de dias obrigatórios para comparação eficiente
         var diasObrigatorios = new HashSet<DayOfWeek>();
         if (bolsista.DiaObrigatorio1.HasValue) diasObrigatorios.Add(bolsista.DiaObrigatorio1.Value);
         if (bolsista.DiaObrigatorio2.HasValue) diasObrigatorios.Add(bolsista.DiaObrigatorio2.Value);
 
-        // Separa em memória — sem query adicional
         var presencasObrigatorias = todasPresencas
             .Where(rp => diasObrigatorios.Contains(rp.DataAula.DayOfWeek))
             .ToList();
@@ -93,7 +95,6 @@ public class BolsistaService
             .Where(rp => !diasObrigatorios.Contains(rp.DataAula.DayOfWeek))
             .ToList();
 
-        // Calcula percentuais (0% se não houver registros ainda)
         double freqObrigatoria = presencasObrigatorias.Count > 0
             ? (double)presencasObrigatorias.Count(p => p.Presente) / presencasObrigatorias.Count * 100
             : 0;
@@ -102,8 +103,6 @@ public class BolsistaService
             ? (double)presencasExtras.Count(p => p.Presente) / presencasExtras.Count * 100
             : 0;
 
-        // Indicador de situação baseado na frequência obrigatória
-        // Thresholds definidos no planejamento MVP v3
         string indicador = freqObrigatoria switch
         {
             >= 85 => "Excelente",
@@ -112,15 +111,11 @@ public class BolsistaService
             _ => "Crítico"
         };
 
-        // Caso especial: sem registros ainda → situação neutra
-        if (!todasPresencas.Any())
-            indicador = "Sem registros";
+        if (!todasPresencas.Any()) indicador = "Sem registros";
 
-        // Monta histórico com todas as presenças ordenadas por data
         var historico = todasPresencas.Select(rp => new HistoricoPresencaItem(
             rp.DataAula,
             rp.Turma?.Ritmo?.Nome ?? "Turma desconhecida",
-            // Pega o primeiro professor da turma (turmas geralmente têm 1 professor)
             rp.Turma?.Professores?.FirstOrDefault()?.Professor?.Nome ?? "Professor desconhecido",
             rp.Presente,
             diasObrigatorios.Contains(rp.DataAula.DayOfWeek)
@@ -142,6 +137,17 @@ public class BolsistaService
         );
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // TURMAS RECOMENDADAS PARA O BOLSISTA LOGADO
+    //
+    // SPRINT 6: Adicionado .Include(t => t.Ritmo) na query de turmasDoDia.
+    //
+    // Por que era necessário?
+    // AnalisarEBalancearTurmaAsync recebe o turmaId e faz sua própria query
+    // do banco. Porém, para preencher os novos campos (RitmoNome, HorarioInicio etc.)
+    // ele precisa que a turma já tenha Ritmo carregado. Adicionamos Include aqui
+    // para garantir que o dado esteja disponível sem uma query adicional.
+    // ──────────────────────────────────────────────────────────────
     public async Task<IEnumerable<SugestaoBalanceamentoResponse>> TurmasRecomendadasParaBolsistaAsync(int bolsistaId)
     {
         var bolsista = await _context.Usuarios.OfType<Bolsista>()
@@ -153,8 +159,11 @@ public class BolsistaService
 
         var diasObrigatorios = new[] { bolsista.DiaObrigatorio1.Value, bolsista.DiaObrigatorio2.Value };
 
+        // SPRINT 6: .Include(t => t.Ritmo) adicionado para garantir que
+        // AnalisarEBalancearTurmaAsync possa preencher RitmoNome sem nova query.
         var turmasDoDia = await _context.Turmas
             .Include(t => t.Matriculas)
+            .Include(t => t.Ritmo)                  // ← NOVO Sprint 6
             .Where(t => t.Ativa && diasObrigatorios.Contains(t.DiaDaSemana))
             .ToListAsync();
 
@@ -170,10 +179,26 @@ public class BolsistaService
             .ThenByDescending(r => r.QuantidadeFaltante);
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // ANALISAR E BALANCEAR TURMA
+    //
+    // SPRINT 6:
+    // 1. Adicionado .Include(t => t.Ritmo) na query principal
+    // 2. Novos campos preenchidos no retorno:
+    //    - RitmoNome   = turma.Ritmo?.Nome ?? "—"
+    //    - DiaDaSemana = (int)turma.DiaDaSemana
+    //    - HorarioInicio / HorarioFim
+    //
+    // Sem essas adições, os cards de TurmasObrigatorias e TurmasRecomendadas
+    // exibiam o hash criptografado (ex: "aBcDeFgH") como título,
+    // impossibilitando o bolsista de identificar qual turma era qual.
+    // ──────────────────────────────────────────────────────────────
     public async Task<SugestaoBalanceamentoResponse> AnalisarEBalancearTurmaAsync(int turmaId)
     {
+        // SPRINT 6: .Include(t => t.Ritmo) adicionado para preencher RitmoNome.
         var turma = await _context.Turmas
             .Include(t => t.Matriculas)
+            .Include(t => t.Ritmo)                  // ← NOVO Sprint 6
             .FirstOrDefaultAsync(t => t.Id == turmaId)
             ?? throw new RegraNegocioException("Turma não encontrada.");
 
@@ -233,29 +258,30 @@ public class BolsistaService
             }
         }
 
+        // SPRINT 6: novos campos adicionados ao final do construtor do record.
+        // A ordem deve corresponder EXATAMENTE à declaração em BolsistaDTOs.cs.
         return new SugestaoBalanceamentoResponse(
-            _hashids.Encode(turma.Id), condutores, conduzidos, status, quantidadeFaltante, sugestoes);
+            _hashids.Encode(turma.Id),
+            condutores,
+            conduzidos,
+            status,
+            quantidadeFaltante,
+            sugestoes,
+            turma.Ritmo?.Nome ?? "—",        // ← NOVO Sprint 6: RitmoNome
+            (int)turma.DiaDaSemana,           // ← NOVO Sprint 6: DiaDaSemana
+            turma.HorarioInicio,              // ← NOVO Sprint 6: HorarioInicio
+            turma.HorarioFim                  // ← NOVO Sprint 6: HorarioFim
+        );
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    // RELATÓRIO DE HORAS SEMANAIS — CORRIGIDO (RN-BOL09)
-    //
-    // PROBLEMA ANTERIOR: usava apenas Matriculas para calcular horas.
-    // Bolsistas em turmas de SALÃO não têm Matricula formal (RN-BOL09),
-    // então suas horas de salão nunca eram contabilizadas. Bug crítico.
-    //
-    // CORREÇÃO:
-    //   → Horas de turmas SOLO: via Matriculas (bolsista é formalmente matriculado)
-    //   → Horas de turmas de SALÃO: via RegistroPresença da semana atual
-    //     (bolsista frequenta sem matrícula; a chamada registra a presença)
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────
+    // RELATÓRIO DE HORAS SEMANAIS (Sprint 2/3 — sem alterações)
+    // ──────────────────────────────────────────────────────────────
     public async Task<RelatorioHorasBolsistaResponse> RelatorioHorasSemanaisAsync(int bolsistaId)
     {
         var bolsista = await _context.Usuarios.FindAsync(bolsistaId)
             ?? throw new RegraNegocioException("Bolsista não encontrado.");
 
-        // ── 1. Horas de turmas SOLO (via Matriculas) ─────────────────
-        // Bolsista SE MATRICULA em turmas de dança solo — as horas vêm da grade
         var matriculasSolo = await _context.Matriculas
             .Include(m => m.Turma).ThenInclude(t => t.Ritmo)
             .Where(m => m.AlunoId == bolsistaId &&
@@ -263,24 +289,17 @@ public class BolsistaService
                         m.Turma.Ritmo.Modalidade.ToLower() == "dança solo")
             .ToListAsync();
 
-        // Soma a duração de cada turma solo (HorarioFim - HorarioInicio em horas)
         double horasSolo = matriculasSolo.Sum(m =>
             (m.Turma.HorarioFim - m.Turma.HorarioInicio).TotalHours);
 
-        // ── 2. Horas de turmas de SALÃO (via RegistroPresença) ───────
-        // Bolsista NÃO se matricula em salão — presença é via chamada do professor.
-        // Contamos apenas a semana corrente para mostrar o progresso atual.
-        //
-        // "Início da semana" = domingo anterior ao dia de hoje.
-        // DayOfWeek.Sunday = 0, então subtrai 0 a 6 dias para achar o domingo.
         var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
-        var inicioSemana = hoje.AddDays(-(int)hoje.DayOfWeek);   // retrocede ao Domingo
-        var fimSemana = inicioSemana.AddDays(7);                  // próximo Domingo (exclusive)
+        var inicioSemana = hoje.AddDays(-(int)hoje.DayOfWeek);
+        var fimSemana = inicioSemana.AddDays(7);
 
         var presencasSalao = await _context.RegistrosPresencas
             .Include(rp => rp.Turma).ThenInclude(t => t.Ritmo)
             .Where(rp => rp.AlunoId == bolsistaId &&
-                         rp.Presente &&                           // só presença confirmada
+                         rp.Presente &&
                          rp.DataAula >= inicioSemana &&
                          rp.DataAula < fimSemana &&
                          rp.Turma.Ritmo.Modalidade.ToLower() == "dança de salão")
@@ -289,15 +308,14 @@ public class BolsistaService
         double horasSalao = presencasSalao.Sum(rp =>
             (rp.Turma.HorarioFim - rp.Turma.HorarioInicio).TotalHours);
 
-        // ── 3. Total e cálculo de meta ────────────────────────────────
         double totalHoras = horasSolo + horasSalao;
-        const double metaSemanal = 6.0;
+        const double meta = 6.0;
 
         return new RelatorioHorasBolsistaResponse(
             _hashids.Encode(bolsista.Id),
             bolsista.Nome,
             Math.Round(totalHoras, 1),
-            Math.Max(0, metaSemanal - totalHoras),
-            totalHoras >= metaSemanal);
+            Math.Max(0, meta - totalHoras),
+            totalHoras >= meta);
     }
 }

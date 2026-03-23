@@ -3,11 +3,17 @@
   ROTA:    /aulas-particulares
   ACESSO:  Aluno, Bolsista
 
-  NOVIDADES Sprint 4:
-  - Exibe ValorCobrado com indicador de desconto para bolsistas
-  - Botão "Reagendar" para aulas Pendentes ou Aceitas
-    → Abre dialog com seletor de data e horário
-    → Chama PUT /api/aulas-particulares/{id}/reagendar
+  CORREÇÃO SPRINT 6:
+  AulaParticularDto tinha campos com nomes errados vs ObterAulaParticularResponse:
+
+  ANTES (errado)          → DEPOIS (correto)
+  ────────────────────────────────────────────────────────────────────
+  ProfessorNome (string)  → NomeProfessor (string)
+  RitmoNome     (string)  → NomeRitmo     (string)
+
+  Consequência anterior: nome do professor e ritmo sempre apareciam
+  como strings vazias nos cards, pois o JSON ignorava campos
+  cujo nome não correspondia ao objeto.
 *@
 
 @page "/aulas-particulares"
@@ -26,7 +32,7 @@
 </MudText>
 
 <MudGrid>
-    @* ── COLUNA ESQUERDA: Formulário de solicitação ─────────────── *@
+    @* ── Formulário de solicitação ──────────────────────────────── *@
     <MudItem xs="12" md="5">
         <MudPaper Elevation="3" Class="pa-6 rounded-xl">
             <MudText Typo="Typo.h6" Class="mb-4">Solicitar Nova Aula</MudText>
@@ -105,7 +111,7 @@
         </MudPaper>
     </MudItem>
 
-    @* ── COLUNA DIREITA: Lista de aulas existentes ───────────────── *@
+    @* ── Lista de aulas existentes ──────────────────────────────── *@
     <MudItem xs="12" md="7">
         @if (carregando)
         {
@@ -124,20 +130,26 @@
                 <MudCard Elevation="2" Class="rounded-lg mb-3">
                     <MudCardHeader>
                         <CardHeaderContent>
+                            @*
+                              CORREÇÃO: era aula.ProfessorNome → agora aula.NomeProfessor
+                              CORREÇÃO: era aula.RitmoNome → agora aula.NomeRitmo
+                            *@
                             <MudText Typo="Typo.subtitle1">
-                                Prof. <b>@aula.ProfessorNome</b> — @aula.RitmoNome
+                                Prof. <b>@aula.NomeProfessor</b> — @aula.NomeRitmo
                             </MudText>
                             <MudText Typo="Typo.caption" Class="mud-text-secondary">
                                 📅 @aula.DataHoraInicio.ToString("dd/MM/yyyy — HH:mm")
                                 até @aula.DataHoraFim.ToString("HH:mm")
                             </MudText>
-                            @* NOVO: Exibição do valor cobrado *@
+                            @* Exibição do valor cobrado com destaque para desconto de bolsista *@
                             <MudText Typo="Typo.caption"
-                                     Style="@(ehBolsista && aula.ValorCobrado < precoBase ? "color: #4caf50; font-weight: bold;" : "")">
+                                     Style="@(ehBolsista && aula.ValorCobrado < precoBase
+                                                                                                                   ? "color: #4caf50; font-weight: bold;"
+                                                                                                                   : "")">
                                 💰 @(aula.ValorCobrado == 0
-                                                                       ? "Gratuito"
-                                                                       : $"R$ {aula.ValorCobrado:F2}")
-                                @if (ehBolsista && aula.ValorCobrado < precoBase)
+                                                                    ? "Gratuito"
+                                                                    : $"R$ {aula.ValorCobrado:F2}")
+                                @if (ehBolsista && aula.ValorCobrado > 0 && aula.ValorCobrado < precoBase)
                                 {
                                     <text> (50% desconto bolsista)</text>
                                 }
@@ -160,7 +172,7 @@
                             Cancelar
                         </MudButton>
 
-                        @* NOVO: Botão Reagendar *@
+                        @* Botão Reagendar: disponível apenas para Pendente ou Aceita *@
                         @if (aula.Status == "Pendente" || aula.Status == "Aceita")
                         {
                             <MudButton Color="Color.Info"
@@ -177,14 +189,17 @@
     </MudItem>
 </MudGrid>
 
-@* ── DIALOG DE REAGENDAMENTO ─────────────────────────────────────── *@
+@* ── Dialog de reagendamento ───────────────────────────────────── *@
 @if (aulaParaReagendar != null)
 {
     <MudDialog @bind-IsVisible="dialogReagendarAberto"
                Options="@(new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true })">
         <TitleContent>
+            @*
+              CORREÇÃO: era aulaParaReagendar.ProfessorNome → agora aulaParaReagendar.NomeProfessor
+            *@
             <MudText Typo="Typo.h6">
-                Reagendar — Prof. @aulaParaReagendar.ProfessorNome
+                Reagendar — Prof. @aulaParaReagendar.NomeProfessor
             </MudText>
         </TitleContent>
         <DialogContent>
@@ -251,14 +266,12 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Verifica role do usuário para exibir preços corretos
         if (AuthStateTask != null)
         {
             var authState = await AuthStateTask;
             ehBolsista = authState.User.IsInRole("Bolsista");
         }
 
-        // Carrega dados em paralelo
         var profTask = Http.GetFromJsonAsync<List<ProfessorSimples>>("api/usuarios/tipo/Professor/ativos/lista");
         var ritmoTask = Http.GetFromJsonAsync<List<RitmoSimples>>("api/ritmos/listar");
         var aulasTask = Http.GetFromJsonAsync<List<AulaParticularDto>>("api/aulas-particulares/minhas");
@@ -270,7 +283,6 @@
         ritmos = (ritmoTask.Result ?? new()).Where(r => r.Ativo).ToList();
         aulasParticulares = aulasTask.Result ?? new();
 
-        // Tenta obter preço atualizado (pode falhar se não for Gerente)
         try
         {
             var config = await configTask;
@@ -283,7 +295,17 @@
 
     private async Task SolicitarAula()
     {
-        if (dataInicio == null || horaInicio == null || horaFim == null) return;
+        if (dataInicio == null || horaInicio == null || horaFim == null)
+        {
+            Snackbar.Add("Preencha data, horário de início e horário de fim.", Severity.Warning);
+            return;
+        }
+
+        if (horaFim <= horaInicio)
+        {
+            Snackbar.Add("O horário de fim deve ser maior que o horário de início.", Severity.Warning);
+            return;
+        }
 
         enviando = true;
         try
@@ -349,7 +371,6 @@
         processando = true;
         try
         {
-            var decodedHash = aulaParaReagendar.IdHash;
             var payload = new
             {
                 NovaDataHoraInicio = novaDataReagendar.Value.Date + novaHoraInicioReagendar.Value,
@@ -357,13 +378,11 @@
             };
 
             var response = await Http.PutAsJsonAsync(
-                $"api/aulas-particulares/{decodedHash}/reagendar", payload);
+                $"api/aulas-particulares/{aulaParaReagendar.IdHash}/reagendar", payload);
 
             if (response.IsSuccessStatusCode)
             {
-                Snackbar.Add(
-                    "Aula reagendada! O professor receberá a nova solicitação. ✅",
-                    Severity.Success);
+                Snackbar.Add("Aula reagendada! O professor receberá a nova solicitação. ✅", Severity.Success);
                 dialogReagendarAberto = false;
                 aulasParticulares = await Http.GetFromJsonAsync<List<AulaParticularDto>>(
                     "api/aulas-particulares/minhas") ?? new();
@@ -391,16 +410,33 @@
         public string RitmoIdHash { get; set; } = "";
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // CORREÇÃO SPRINT 6:
+    // Campos renomeados para corresponder ao ObterAulaParticularResponse:
+    //
+    //   record ObterAulaParticularResponse(
+    //     string IdHash,
+    //     string ProfessorIdHash,
+    //     string NomeProfessor,   ← era: ProfessorNome
+    //     string NomeAluno,
+    //     string NomeRitmo,       ← era: RitmoNome
+    //     DateTime DataHoraInicio,
+    //     DateTime DataHoraFim,
+    //     string Status,
+    //     string Observacao,
+    //     decimal ValorCobrado
+    //   )
+    // ──────────────────────────────────────────────────────────────
     public class AulaParticularDto
     {
         public string IdHash { get; set; } = "";
         public string ProfessorIdHash { get; set; } = "";
-        public string ProfessorNome { get; set; } = "";
-        public string RitmoNome { get; set; } = "";
+        public string NomeProfessor { get; set; } = "";  // ← era: ProfessorNome
+        public string NomeRitmo { get; set; } = "";  // ← era: RitmoNome
         public DateTime DataHoraInicio { get; set; }
         public DateTime DataHoraFim { get; set; }
         public string Status { get; set; } = "";
-        public decimal ValorCobrado { get; set; }    // NOVO Sprint 3/4
+        public decimal ValorCobrado { get; set; }
     }
 
     public class ProfessorSimples
@@ -417,7 +453,6 @@
         public bool Ativo { get; set; }
     }
 
-    // Para leitura do preço atual (tentativa)
     public class ConfigDto
     {
         public decimal PrecoAulaParticular { get; set; }

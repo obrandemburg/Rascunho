@@ -1,18 +1,19 @@
 ﻿@* 
   ARQUIVO: Rascunho.Client/Pages/Turmas/QuadroTurmas.razor
+  ROTA:    /quadro-turmas
+  ACESSO:  Anônimo
+
+  CORREÇÕES SPRINT 6:
+  O TurmaDto local não correspondia ao ObterTurmaResponse da API:
   
-  PROBLEMA CORRIGIDO:
-  O AuthorizeView dentro do foreach em um loop de items causava
-  múltiplas instâncias simultâneas tentando resolver o AuthState
-  antes do CascadingAuthenticationState estar propagado.
+  ANTES (errado)          → DEPOIS (correto)
+  ─────────────────────────────────────────────────────
+  DiaSemana (string)      → DiaDaSemana (int)
+  ProfessorNome (string)  → NomesProfessores (List<string>)
+  AlunosMatriculados      → QuantidadeMatriculados
   
-  SOLUÇÃO: usar AuthenticationState injetado diretamente via
-  [CascadingParameter] no @code, e verificar a role localmente
-  — sem AuthorizeView no template. Isso é mais performático
-  e elimina a cascata de erros de AuthState.
-  
-  ROTA: /quadro-turmas
-  ACESSO: Anônimo (visitantes veem as turmas, alunos podem matricular)
+  Consequência: dia da semana, professor e contagem de vagas
+  apareciam sempre como vazio/zero nos cards.
 *@
 
 @page "/quadro-turmas"
@@ -85,7 +86,11 @@
         <MudGrid>
             @foreach (var turma in turmasExibidas)
             {
-                bool cheia = turma.AlunosMatriculados >= turma.LimiteAlunos;
+                @*
+                  CORREÇÃO: era turma.AlunosMatriculados → agora turma.QuantidadeMatriculados
+                  QuantidadeMatriculados é o campo correto em ObterTurmaResponse.
+                *@
+                bool cheia = turma.QuantidadeMatriculados >= turma.LimiteAlunos;
 
                 <MudItem xs="12" sm="6" md="4">
                     <MudCard Elevation="3" Class="rounded-lg h-100">
@@ -99,12 +104,6 @@
                                 <MudText Typo="Typo.caption">@turma.Nivel</MudText>
                             </CardHeaderContent>
                             <CardHeaderActions>
-                                @*
-                                  CORREÇÃO: sem AuthorizeView aqui.
-                                  Usamos a variável "ehAluno" calculada no @code
-                                  para evitar múltiplas instâncias de AuthorizeView
-                                  dentro do foreach — causa do crash.
-                                *@
                                 <MudChip T="string"
                                          Color="@(cheia ? Color.Error : Color.Success)"
                                          Size="Size.Small"
@@ -114,17 +113,32 @@
                             </CardHeaderActions>
                         </MudCardHeader>
                         <MudCardContent>
+                            @*
+                              CORREÇÃO: era @turma.DiaSemana (string)
+                              Agora: @DiaDaSemanaTexto(turma.DiaDaSemana) converte o int para string legível.
+                              DiaDaSemana é int na API: 0=Domingo, 1=Segunda ... 6=Sábado.
+                            *@
                             <MudText Typo="Typo.body1">
-                                <b>@turma.DiaSemana</b>
+                                <b>@DiaDaSemanaTexto(turma.DiaDaSemana)</b>
                             </MudText>
                             <MudText Typo="Typo.body2">
                                 @turma.HorarioInicio — @turma.HorarioFim
                             </MudText>
+
+                            @*
+                              CORREÇÃO: era @turma.ProfessorNome (string inexistente na API)
+                              A API retorna NomesProfessores (List<string>).
+                              Exibimos o primeiro da lista ou "—" se vazio.
+                            *@
                             <MudText Typo="Typo.body2">
-                                Prof: @turma.ProfessorNome
+                                Prof: @(turma.NomesProfessores.FirstOrDefault() ?? "—")
                             </MudText>
+
+                            @*
+                              CORREÇÃO: era turma.AlunosMatriculados → turma.QuantidadeMatriculados
+                            *@
                             <MudText Typo="Typo.caption" Class="mud-text-secondary mt-1">
-                                @turma.AlunosMatriculados / @turma.LimiteAlunos vagas
+                                @turma.QuantidadeMatriculados / @turma.LimiteAlunos vagas
                             </MudText>
                         </MudCardContent>
                         <MudCardActions>
@@ -163,10 +177,6 @@
 </MudContainer>
 
 @code {
-    // CascadingParameter: recebe o AuthenticationState propagado pelo
-    // CascadingAuthenticationState que envolve o App.razor.
-    // Usando Task<AuthenticationState> ao invés de AuthorizeView no template
-    // — mais eficiente e elimina o crash de múltiplas instâncias.
     [CascadingParameter]
     private Task<AuthenticationState>? AuthStateTask { get; set; }
 
@@ -175,13 +185,13 @@
     private bool estaLogado = false;
     private string filtroRitmo = "Todos";
     private string filtroDia = "Todos";
+
     private List<TurmaDto> todasTurmas = new();
     private List<TurmaDto> turmasExibidas = new();
     private List<string> nomeRitmos = new();
 
     protected override async Task OnInitializedAsync()
     {
-        // Resolve o estado de autenticação UMA vez, antes de renderizar o template
         if (AuthStateTask != null)
         {
             var authState = await AuthStateTask;
@@ -197,12 +207,11 @@
         carregando = true;
         try
         {
-            // GET /api/turmas/listar-ativas — endpoint público da API
             var res = await Http.GetFromJsonAsync<List<TurmaDto>>("api/turmas/listar-ativas");
             todasTurmas = res ?? new();
             turmasExibidas = todasTurmas;
 
-            // Extrai nomes únicos de ritmos para popular o filtro dinamicamente
+            // Extrai nomes únicos de ritmos para o filtro
             nomeRitmos = todasTurmas
                 .Select(t => t.RitmoNome)
                 .Distinct()
@@ -218,25 +227,27 @@
 
     private void Filtrar()
     {
+        //
+        // CORREÇÃO: o filtro de dia era por turma.DiaSemana (string) que estava sempre vazio.
+        // Agora convertemos turma.DiaDaSemana (int) para string com DiaDaSemanaTexto()
+        // e comparamos com o filtroSelecionado.
+        //
         turmasExibidas = todasTurmas
             .Where(t => filtroRitmo == "Todos" || t.RitmoNome == filtroRitmo)
-            .Where(t => filtroDia == "Todos" || t.DiaSemana == filtroDia)
+            .Where(t => filtroDia == "Todos" || DiaDaSemanaTexto(t.DiaDaSemana) == filtroDia)
             .ToList();
     }
 
     private async Task Matricular(string turmaIdHash)
     {
-        // POST /api/turmas/{idHash}/matricular
-        // Se houver vaga → matrícula. Se lotada → entra na fila de espera.
         var payload = new { Papel = "Ambos" };
-        var response = await Http.PostAsJsonAsync(
-            $"api/turmas/{turmaIdHash}/matricular", payload);
+        var response = await Http.PostAsJsonAsync($"api/turmas/{turmaIdHash}/matricular", payload);
 
         if (response.IsSuccessStatusCode)
         {
             var msg = await response.Content.ReadAsStringAsync();
             Snackbar.Add(msg, Severity.Success);
-            await CarregarTurmas(); // Atualiza contadores
+            await CarregarTurmas();
         }
         else
         {
@@ -248,23 +259,54 @@
     private async Task MarcarInteresse(string turmaIdHash)
     {
         var payload = new { Papel = "Ambos" };
-        var response = await Http.PostAsJsonAsync(
-            $"api/turmas/{turmaIdHash}/matricular", payload);
-
+        var response = await Http.PostAsJsonAsync($"api/turmas/{turmaIdHash}/matricular", payload);
         var msg = await response.Content.ReadAsStringAsync();
         Snackbar.Add(msg, Severity.Info);
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // NOVO: converte DiaDaSemana (int) para nome legível.
+    // DayOfWeek C#: 0=Domingo, 1=Segunda ... 6=Sábado
+    // Esse método é chamado no template e no filtro.
+    // ──────────────────────────────────────────────────────────────
+    private string DiaDaSemanaTexto(int dia) => dia switch
+    {
+        0 => "Domingo",
+        1 => "Segunda-feira",
+        2 => "Terça-feira",
+        3 => "Quarta-feira",
+        4 => "Quinta-feira",
+        5 => "Sexta-feira",
+        6 => "Sábado",
+        _ => "—"
+    };
+
+    // ──────────────────────────────────────────────────────────────
+    // DTO LOCAL — CORRIGIDO para corresponder a ObterTurmaResponse:
+    //
+    //  ObterTurmaResponse(
+    //    IdHash, RitmoNome, SalaNome, DataInicio,
+    //    DiaDaSemana (int),             ← era DiaSemana (string)
+    //    HorarioInicio (TimeSpan → JSON "18:00:00"),
+    //    HorarioFim    (TimeSpan → JSON "19:00:00"),
+    //    Nivel,
+    //    LimiteAlunos,
+    //    QuantidadeMatriculados (int),  ← era AlunosMatriculados
+    //    LinkWhatsApp,
+    //    Ativa,
+    //    NomesProfessores (List<string>) ← era ProfessorNome (string)
+    //  )
+    // ──────────────────────────────────────────────────────────────
     public class TurmaDto
     {
         public string IdHash { get; set; } = "";
         public string RitmoNome { get; set; } = "";
         public string Nivel { get; set; } = "";
-        public string DiaSemana { get; set; } = "";
+        public int DiaDaSemana { get; set; }         // ← era: string DiaSemana
         public string HorarioInicio { get; set; } = "";
         public string HorarioFim { get; set; } = "";
-        public string ProfessorNome { get; set; } = "";
+        public List<string> NomesProfessores { get; set; } = new();// ← era: string ProfessorNome
         public int LimiteAlunos { get; set; }
-        public int AlunosMatriculados { get; set; }
+        public int QuantidadeMatriculados { get; set; }         // ← era: AlunosMatriculados
     }
 }

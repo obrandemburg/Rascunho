@@ -1,18 +1,57 @@
-﻿namespace Rascunho.Shared.DTOs;
+﻿// ARQUIVO: Rascunho.Shared/DTOs/BolsistaDTOs.cs
+//
+// ALTERAÇÃO SPRINT 6:
+// SugestaoBalanceamentoResponse recebia apenas TurmaIdHash, sem dados
+// legíveis da turma. As telas TurmasObrigatorias.razor e TurmasRecomendadas.razor
+// exibiam o hash criptografado (ex: "aBcDeFgH") como título do card, tornando
+// impossível para o bolsista identificar qual turma estava sendo exibida.
+//
+// CAMPOS ADICIONADOS:
+//   - RitmoNome   (string)    : nome do ritmo da turma
+//   - DiaDaSemana (int)       : dia da semana (0=Dom, 1=Seg ... 6=Sáb)
+//   - HorarioInicio (TimeSpan): horário de início da turma
+//   - HorarioFim    (TimeSpan): horário de fim da turma
+//
+// ATENÇÃO: Como SugestaoBalanceamentoResponse é um record no C#, a ordem
+// dos parâmetros no construtor importa. Os novos campos foram adicionados
+// ao FINAL para não quebrar código existente que usa argumento posicional.
+
+namespace Rascunho.Shared.DTOs;
 
 public record DefinirDiasObrigatoriosRequest(int Dia1, int Dia2);
 public record AdicionarHabilidadeRequest(string RitmoIdHash, string PapelDominante, string Nivel);
 
+/// <summary>
+/// Resposta do endpoint de análise de balanceamento de turmas.
+/// Usada nas telas TurmasObrigatorias (Bolsista) e TurmasRecomendadas (Bolsista).
+///
+/// SPRINT 6: adicionados RitmoNome, DiaDaSemana, HorarioInicio e HorarioFim
+/// para que as telas possam exibir informações legíveis ao bolsista,
+/// em vez de mostrar apenas o hash criptografado da turma.
+/// </summary>
 public record SugestaoBalanceamentoResponse(
     string TurmaIdHash,
     int TotalCondutores,
     int TotalConduzidos,
     string Status,
     int QuantidadeFaltante,
-    List<BolsistaSugerido> Sugestoes
+    List<BolsistaSugerido> Sugestoes,
+
+    // ── NOVO Sprint 6 — identificação legível da turma ────────────
+    // Sem esses campos, as telas exibiam apenas o hash (ex: "aBcDeFgH")
+    // como título do card, impossibilitando o bolsista de identificar a turma.
+    string RitmoNome,       // ex: "Forró"
+    int DiaDaSemana,        // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
+    TimeSpan HorarioInicio, // ex: 18:00:00
+    TimeSpan HorarioFim     // ex: 19:00:00
 );
 
-public record BolsistaSugerido(string BolsistaIdHash, string Nome, string PapelDominante, string Nivel);
+public record BolsistaSugerido(
+    string BolsistaIdHash,
+    string Nome,
+    string PapelDominante,
+    string Nivel
+);
 
 public record RelatorioHorasBolsistaResponse(
     string BolsistaIdHash,
@@ -22,35 +61,26 @@ public record RelatorioHorasBolsistaResponse(
     bool MetaAtingida
 );
 
-// ── NOVO Sprint 2: Desempenho de frequência do bolsista ──────────
+// ── Sprint 2: Desempenho de frequência do bolsista ──────────────
 
 /// <summary>
 /// Detalha a frequência do bolsista separando dias obrigatórios de dias extras.
-/// Indicadores de situação (baseado na frequência obrigatória):
-///   Excelente    → ≥ 85%
-///   Vamos melhorar → 75% a 84%
-///   Atenção      → 60% a 74%
-///   Crítico      → abaixo de 60%
 /// </summary>
 public record DesempenhoResponse(
     string BolsistaIdHash,
     string Nome,
-    int? DiaObrigatorio1,            // null se não configurado ainda
+    int? DiaObrigatorio1,
     int? DiaObrigatorio2,
-    double FrequenciaObrigatoriaPct, // percentual só dos dias obrigatórios
-    string IndicadorSituacao,        // "Excelente" | "Vamos melhorar" | "Atenção" | "Crítico"
-    int TotalAulasObrigatorias,      // total de registros nos dias obrigatórios
-    int TotalPresencasObrigatorias,  // quantas foram presença
-    double FrequenciaExtraPct,       // percentual nos dias extras (informativo)
+    double FrequenciaObrigatoriaPct,
+    string IndicadorSituacao,
+    int TotalAulasObrigatorias,
+    int TotalPresencasObrigatorias,
+    double FrequenciaExtraPct,
     int TotalAulasExtras,
     int TotalPresencasExtras,
     List<HistoricoPresencaItem> Historico
 );
 
-/// <summary>
-/// Um item do histórico aula-a-aula do bolsista.
-/// EhDiaObrigatorio = true → esta aula conta para o indicador de frequência obrigatória.
-/// </summary>
 public record HistoricoPresencaItem(
     DateOnly DataAula,
     string NomeTurma,
