@@ -70,16 +70,35 @@ public static class GerenteEndpoints
                 return Results.Ok(ordenados);
             });
 
-        // 5. DESEMPENHO DE UM BOLSISTA ESPECÍFICO
-        group.MapGet("/desempenho-bolsistas/{idHash}",
-            async (string idHash, BolsistaService bolsistaService, IHashids hashids) =>
+        // 4. LISTAR TODOS COM DESEMPENHO (ordenado por prioridade)
+        group.MapGet("/desempenho-bolsistas",
+            async (BolsistaService bolsistaService, AppDbContext db) =>
             {
-                var decoded = hashids.Decode(idHash);
-                if (decoded.Length == 0)
-                    return Results.BadRequest(new { erro = "ID inválido." });
+                var ids = await db.Usuarios
+                    .OfType<Rascunho.Entities.Bolsista>()
+                    .Where(b => b.Ativo)
+                    .Select(b => b.Id)
+                    .ToListAsync();
 
-                var response = await bolsistaService.MeuDesempenhoAsync(decoded[0]);
-                return Results.Ok(response);
+                // CORREÇÃO: Execução sequencial para evitar o erro de concorrência 
+                // "A second operation was started on this context" do AppDbContext
+                var resultados = new List<Rascunho.Shared.DTOs.DesempenhoResponse>();
+                foreach (var id in ids)
+                {
+                    resultados.Add(await bolsistaService.MeuDesempenhoAsync(id));
+                }
+
+                // Ordena por urgência: Crítico → Atenção → Vamos melhorar → Excelente
+                var ordenados = resultados.OrderBy(r => r.IndicadorSituacao switch
+                {
+                    "Crítico" => 0,
+                    "Atenção" => 1,
+                    "Vamos melhorar" => 2,
+                    "Excelente" => 3,
+                    _ => 4
+                });
+
+                return Results.Ok(ordenados);
             });
 
         // 6. REGISTRAR CONVERSA

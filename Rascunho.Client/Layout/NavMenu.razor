@@ -13,14 +13,14 @@
     @* ══════════════════════════════════════════════════════════════
        LINKS PÚBLICOS — Visíveis para todos (com ou sem login)
     ══════════════════════════════════════════════════════════════ *@
-    <MudNavLink Href="/" Match="NavLinkMatch.All"
-                Icon="@Icons.Material.Filled.Home">
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
         Início
     </MudNavLink>
-
-    <MudNavLink Href="/turmas"
-                Icon="@Icons.Material.Filled.Groups">
-        Quadro de Turmas
+    <MudNavLink Href="/ritmos" Icon="@Icons.Material.Filled.MusicNote">
+        Conheça os Ritmos
+    </MudNavLink>
+    <MudNavLink Href="/turmas" Icon="@Icons.Material.Filled.Groups">
+        Conheça as Turmas
     </MudNavLink>
 
     @* ══════════════════════════════════════════════════════════════
@@ -193,11 +193,6 @@
                 <MudNavLink Href="/admin/avisos"
                             Icon="@Icons.Material.Filled.Campaign">
                     Criar Avisos
-                </MudNavLink>
-
-                <MudNavLink Href="/admin/eventos"
-                            Icon="@Icons.Material.Filled.EventNote">
-                    Gerenciar Eventos
                 </MudNavLink>
 
                 <MudNavLink Href="/quadro-avisos"

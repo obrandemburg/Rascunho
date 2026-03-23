@@ -103,13 +103,15 @@ public class TurmaService
 
         await _context.SaveChangesAsync();
 
-        // Carrega as navegações necessárias para o Mapper funcionar
-        await _context.Entry(turma).Reference(t => t.Ritmo).LoadAsync();
-        await _context.Entry(turma).Reference(t => t.Sala).LoadAsync();
-        await _context.Entry(turma).Collection(t => t.Professores)
-            .Query().Include(p => p.Professor).LoadAsync();
+        // CORREÇÃO: Busca a turma salva recém-criada diretamente do banco 
+        // para garantir que todas as navegações (Ritmo, Sala, Professores) existam no EF Core.
+        var turmaSalva = await _context.Turmas
+            .Include(t => t.Ritmo)
+            .Include(t => t.Sala)
+            .Include(t => t.Professores).ThenInclude(tp => tp.Professor)
+            .FirstAsync(t => t.Id == turma.Id);
 
-        return turma.ToResponse(_hashids);
+        return turmaSalva.ToResponse(_hashids);
     }
 
     // ──────────────────────────────────────────────────────────────────────
