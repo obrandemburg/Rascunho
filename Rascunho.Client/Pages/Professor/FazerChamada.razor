@@ -1,4 +1,5 @@
 ﻿@* ARQUIVO: Rascunho.Client/Pages/Professor/FazerChamada.razor *@
+@* SPRINT 7: MudAvatar com inicial substituído por UserAvatar em toda a tela. *@
 @page "/professor/chamada"
 @using Microsoft.AspNetCore.Authorization
 @using System.Net.Http.Json
@@ -78,7 +79,11 @@ else if (alunos.Any() || extrasAdicionados.Any())
             <RowTemplate Context="aluno">
                 <MudTd>
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <MudAvatar Size="Size.Small" Color="Color.Primary">@aluno.Nome.FirstOrDefault()</MudAvatar>
+                        @*
+                          SPRINT 7: substituído MudAvatar com inicial por UserAvatar.
+                          AlunoPresencaDto já tem FotoUrl — só precisávamos usar.
+                        *@
+                        <UserAvatar FotoUrl="@aluno.FotoUrl" Nome="@aluno.Nome" Size="Size.Small" />
                         <MudText>@aluno.Nome</MudText>
                     </MudStack>
                 </MudTd>
@@ -89,7 +94,6 @@ else if (alunos.Any() || extrasAdicionados.Any())
                                Label="@(aluno.Presente ? "Presente" : "Faltou")" />
                 </MudTd>
                 <MudTd>
-                    @* Campo de observação colapsado por padrão *@
                     @if (!aluno.ObservacaoExpandida)
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.NoteAdd"
@@ -119,7 +123,7 @@ else if (alunos.Any() || extrasAdicionados.Any())
         </MudTable>
     </MudPaper>
 
-    @* ── SEÇÃO B: Participantes extras (bolsistas / experimentais) ─ *@
+    @* ── SEÇÃO B: Participantes extras ─────────────────────────── *@
     <MudPaper Elevation="3" Class="rounded-xl mb-4">
         <div class="pa-4">
             <MudText Typo="Typo.subtitle1" Class="mb-3">
@@ -127,7 +131,6 @@ else if (alunos.Any() || extrasAdicionados.Any())
                 <b>Seção B</b> — Adicionar Participante Extra
             </MudText>
 
-            @* Campo de busca *@
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
                 <MudTextField @bind-Value="termoBusca"
                               Placeholder="Buscar bolsista ou aluno com experimental..."
@@ -141,7 +144,6 @@ else if (alunos.Any() || extrasAdicionados.Any())
                 }
             </MudStack>
 
-            @* Resultados da busca *@
             @if (resultadosBusca.Any())
             {
                 <MudPaper Elevation="1" Class="mb-3 pa-2" Style="max-height: 200px; overflow-y: auto;">
@@ -152,11 +154,15 @@ else if (alunos.Any() || extrasAdicionados.Any())
                                      Disabled="@jaAdicionado"
                                      OnClick="@(() => AdicionarExtra(participante))">
                             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                <MudAvatar Size="Size.Small" Color="Color.Secondary">
-                                    @participante.Nome.FirstOrDefault()
-                                </MudAvatar>
+                                @*
+                                  SPRINT 7: UserAvatar em vez de MudAvatar com inicial
+                                  nos resultados de busca da Seção B.
+                                *@
+                                <UserAvatar FotoUrl="@participante.FotoUrl"
+                                            Nome="@participante.Nome"
+                                            Size="Size.Small"
+                                            Color="Color.Secondary" />
                                 <MudText>@participante.Nome</MudText>
-                                @* Badge de tipo do participante *@
                                 <MudChip T="string" Size="Size.Small"
                                          Color="@(participante.TipoParticipante == "Bolsista" ? Color.Secondary : Color.Info)"
                                          Variant="Variant.Filled">
@@ -175,7 +181,6 @@ else if (alunos.Any() || extrasAdicionados.Any())
                 </MudPaper>
             }
 
-            @* Extras já adicionados à chamada *@
             @if (extrasAdicionados.Any())
             {
                 <MudText Typo="Typo.body2" Class="mb-2 mud-text-secondary">
@@ -191,7 +196,11 @@ else if (alunos.Any() || extrasAdicionados.Any())
                     <RowTemplate Context="extra">
                         <MudTd>
                             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                                <MudAvatar Size="Size.Small" Color="Color.Secondary">@extra.Nome.FirstOrDefault()</MudAvatar>
+                                @* SPRINT 7: UserAvatar nos extras da Seção B *@
+                                <UserAvatar FotoUrl="@extra.FotoUrl"
+                                            Nome="@extra.Nome"
+                                            Size="Size.Small"
+                                            Color="Color.Secondary" />
                                 <MudText>@extra.Nome</MudText>
                                 <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">@extra.Papel</MudChip>
                             </MudStack>
@@ -223,7 +232,6 @@ else if (alunos.Any() || extrasAdicionados.Any())
         </div>
     </MudPaper>
 
-    @* ── Botão Finalizar (abre resumo) ─────────────────────────── *@
     <MudButton OnClick="@(() => mostrarResumo = true)"
                Variant="Variant.Filled" Color="Color.Success"
                FullWidth="true" Size="Size.Large"
@@ -233,7 +241,7 @@ else if (alunos.Any() || extrasAdicionados.Any())
     </MudButton>
 }
 
-@* ── MODAL: Resumo antes de confirmar ───────────────────────────── *@
+@* ── MODAL: Resumo ─────────────────────────────────────────────── *@
 <MudDialog @bind-IsVisible="mostrarResumo" Options="@(new DialogOptions { MaxWidth = MaxWidth.ExtraSmall })">
     <TitleContent>
         <MudText Typo="Typo.h6">📋 Resumo da Chamada</MudText>
@@ -277,8 +285,6 @@ else if (alunos.Any() || extrasAdicionados.Any())
 </MudDialog>
 
 @code {
-    // Parâmetro de query string: permite que MinhasTurmas.razor navegue
-    // para /professor/chamada?turmaIdHash=xxx e pré-selecione a turma
     [SupplyParameterFromQuery]
     private string? TurmaIdHash { get; set; }
 
@@ -303,7 +309,6 @@ else if (alunos.Any() || extrasAdicionados.Any())
         }
         catch { Snackbar.Add("Erro ao carregar turmas.", Severity.Error); }
 
-        // Pré-seleciona turma se veio da navegação (MinhasTurmas → Fazer Chamada)
         if (!string.IsNullOrEmpty(TurmaIdHash))
             turmaSelecionadaHash = TurmaIdHash;
     }
@@ -313,20 +318,14 @@ else if (alunos.Any() || extrasAdicionados.Any())
         if (string.IsNullOrEmpty(turmaSelecionadaHash) || dataAula == null) return;
 
         carregandoChamada = true;
-        alunos = new();
-        extrasAdicionados = new();
-        resultadosBusca = new();
+        alunos = new(); extrasAdicionados = new(); resultadosBusca = new();
 
         try
         {
             var dataFormatada = DateOnly.FromDateTime(dataAula.Value).ToString("yyyy-MM-dd");
-
-            // MODIFICADO Sprint 2: resposta agora inclui Extras e Observacao
-            // Usa ObterChamadaDto (local) que espelha ObterChamadaResponse do backend
             var chamadaData = await Http.GetFromJsonAsync<ObterChamadaDto>(
                 $"api/turmas/{turmaSelecionadaHash}/chamada?dataAula={dataFormatada}");
 
-            // Mapeia matriculados (Seção A)
             alunos = chamadaData?.Alunos.Select(a => new AlunoPresencaDto
             {
                 AlunoIdHash = a.AlunoIdHash,
@@ -337,7 +336,6 @@ else if (alunos.Any() || extrasAdicionados.Any())
                 Observacao = a.Observacao
             }).ToList() ?? new();
 
-            // Mapeia extras já salvos (Seção B carregada)
             extrasAdicionados = chamadaData?.Extras.Select(e => new AlunoPresencaDto
             {
                 AlunoIdHash = e.AlunoIdHash,
@@ -348,17 +346,12 @@ else if (alunos.Any() || extrasAdicionados.Any())
                 Observacao = e.Observacao
             }).ToList() ?? new();
         }
-        catch
-        {
-            Snackbar.Add("Erro ao carregar lista de alunos.", Severity.Error);
-        }
+        catch { Snackbar.Add("Erro ao carregar lista de alunos.", Severity.Error); }
         finally { carregandoChamada = false; }
     }
 
     private System.Timers.Timer? _debounceTimer;
 
-    // Debounce: espera 400ms após o usuário parar de digitar antes de buscar
-    // Evita uma request por tecla pressionada
     private void BuscarExtras(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
         _debounceTimer?.Stop();
@@ -401,7 +394,7 @@ else if (alunos.Any() || extrasAdicionados.Any())
             Nome = participante.Nome,
             FotoUrl = participante.FotoUrl,
             Papel = participante.TipoParticipante,
-            Presente = true  // padrão: presente (professor adicionou = está aqui)
+            Presente = true
         });
         StateHasChanged();
     }
@@ -460,7 +453,6 @@ else if (alunos.Any() || extrasAdicionados.Any())
         _ => "—"
     };
 
-    // ── DTOs locais ──────────────────────────────────────────────
     public class AlunoPresencaDto
     {
         public string AlunoIdHash { get; set; } = "";
@@ -469,7 +461,7 @@ else if (alunos.Any() || extrasAdicionados.Any())
         public string Papel { get; set; } = "";
         public bool Presente { get; set; }
         public string? Observacao { get; set; }
-        public bool ObservacaoExpandida { get; set; } = false; // estado de UI
+        public bool ObservacaoExpandida { get; set; } = false;
     }
 
     public class ParticipanteExtraDto
@@ -480,7 +472,6 @@ else if (alunos.Any() || extrasAdicionados.Any())
         public string TipoParticipante { get; set; } = "";
     }
 
-    // Espelha ObterChamadaResponse do backend
     public class ObterChamadaDto
     {
         public string TurmaIdHash { get; set; } = "";

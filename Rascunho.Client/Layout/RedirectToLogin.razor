@@ -1,9 +1,0 @@
-﻿@inject NavigationManager NavigationManager
-
-@code {
-    protected override void OnInitialized()
-    {
-        // Força o redirecionamento para a rota de login sempre que esse componente for renderizado
-        NavigationManager.NavigateTo("/login", true);
-    }
-}

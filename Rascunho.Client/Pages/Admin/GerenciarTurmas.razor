@@ -3,16 +3,9 @@
   ROTA:    /admin/turmas
   ACESSO:  Recepção, Gerente
 
-  CORREÇÃO SPRINT 6:
-  TurmaListaDto tinha campo 'DiaSemana' (string) mas ObterTurmaResponse
-  retorna 'DiaDaSemana' (int). A coluna "Dia" sempre aparecia vazia no grid.
-
-  ALTERAÇÕES:
-  - TurmaListaDto.DiaSemana (string) → DiaDaSemana (int)
-  - Adicionado método DiaDaSemanaTexto(int) para conversão no template
-  - Coluna Dia no MudDataGrid corrigida para usar DiaDaSemanaTexto()
-  - DiaSemanaParaInt() mantido (usado no payload de criação, estava correto)
-  - Demais funcionalidades (criar turma, encerrar, modal alunos) sem alterações
+  SPRINT 6: TurmaListaDto corrigido (DiaSemana→DiaDaSemana, etc.)
+  SPRINT 7: Modal "Ver Alunos" usa <UserAvatar> em vez de MudAvatar com inicial.
+            AlunoMatriculadoDto.FotoUrl já existia — só precisava ser renderizado.
 *@
 
 @page "/admin/turmas"
@@ -48,38 +41,26 @@
             <EditForm Model="@novaTurma" OnValidSubmit="CriarTurma">
                 <MudGrid>
                     <MudItem xs="12" sm="6" md="4">
-                        <MudSelect T="string" Label="Ritmo"
-                                   @bind-Value="novaTurma.RitmoIdHash"
-                                   Variant="Variant.Outlined" Required="true"
-                                   AnchorOrigin="Origin.BottomCenter">
+                        <MudSelect T="string" Label="Ritmo" @bind-Value="novaTurma.RitmoIdHash"
+                                   Variant="Variant.Outlined" Required="true" AnchorOrigin="Origin.BottomCenter">
                             @foreach (var ritmo in ritmos)
                             {
-                                <MudSelectItem T="string" Value="@ritmo.IdHash">
-                                    @ritmo.Nome
-                                </MudSelectItem>
+                                <MudSelectItem T="string" Value="@ritmo.IdHash">@ritmo.Nome</MudSelectItem>
                             }
                         </MudSelect>
                     </MudItem>
-
                     <MudItem xs="12" sm="6" md="4">
-                        <MudSelect T="string" Label="Professor"
-                                   @bind-Value="novaTurma.ProfessorIdHash"
-                                   Variant="Variant.Outlined" Required="true"
-                                   AnchorOrigin="Origin.BottomCenter">
+                        <MudSelect T="string" Label="Professor" @bind-Value="novaTurma.ProfessorIdHash"
+                                   Variant="Variant.Outlined" Required="true" AnchorOrigin="Origin.BottomCenter">
                             @foreach (var prof in professores)
                             {
-                                <MudSelectItem T="string" Value="@prof.IdHash">
-                                    @prof.Nome
-                                </MudSelectItem>
+                                <MudSelectItem T="string" Value="@prof.IdHash">@prof.Nome</MudSelectItem>
                             }
                         </MudSelect>
                     </MudItem>
-
                     <MudItem xs="12" sm="6" md="4">
-                        <MudSelect T="string" Label="Sala"
-                                   @bind-Value="novaTurma.SalaIdHash"
-                                   Variant="Variant.Outlined" Required="true"
-                                   AnchorOrigin="Origin.BottomCenter">
+                        <MudSelect T="string" Label="Sala" @bind-Value="novaTurma.SalaIdHash"
+                                   Variant="Variant.Outlined" Required="true" AnchorOrigin="Origin.BottomCenter">
                             @foreach (var sala in salas)
                             {
                                 <MudSelectItem T="string" Value="@sala.IdHash">
@@ -88,12 +69,9 @@
                             }
                         </MudSelect>
                     </MudItem>
-
                     <MudItem xs="12" sm="6" md="3">
-                        <MudSelect T="string" Label="Dia da Semana"
-                                   @bind-Value="novaTurma.DiaSemana"
-                                   Variant="Variant.Outlined" Required="true"
-                                   AnchorOrigin="Origin.BottomCenter">
+                        <MudSelect T="string" Label="Dia da Semana" @bind-Value="novaTurma.DiaSemana"
+                                   Variant="Variant.Outlined" Required="true" AnchorOrigin="Origin.BottomCenter">
                             <MudSelectItem T="string" Value="@("Segunda-feira")">Segunda-feira</MudSelectItem>
                             <MudSelectItem T="string" Value="@("Terça-feira")">Terça-feira</MudSelectItem>
                             <MudSelectItem T="string" Value="@("Quarta-feira")">Quarta-feira</MudSelectItem>
@@ -102,43 +80,32 @@
                             <MudSelectItem T="string" Value="@("Sábado")">Sábado</MudSelectItem>
                         </MudSelect>
                     </MudItem>
-
                     <MudItem xs="12" sm="6" md="3">
-                        <MudSelect T="string" Label="Nível"
-                                   @bind-Value="novaTurma.Nivel"
-                                   Variant="Variant.Outlined" Required="true"
-                                   AnchorOrigin="Origin.BottomCenter">
+                        <MudSelect T="string" Label="Nível" @bind-Value="novaTurma.Nivel"
+                                   Variant="Variant.Outlined" Required="true" AnchorOrigin="Origin.BottomCenter">
                             <MudSelectItem T="string" Value="@("Iniciante")">Iniciante</MudSelectItem>
                             <MudSelectItem T="string" Value="@("Intermediário")">Intermediário</MudSelectItem>
                             <MudSelectItem T="string" Value="@("Avançado")">Avançado</MudSelectItem>
                         </MudSelect>
                     </MudItem>
-
                     <MudItem xs="12" sm="6" md="3">
-                        <MudTimePicker @bind-Time="horarioInicio"
-                                       Label="Horário de Início"
+                        <MudTimePicker @bind-Time="horarioInicio" Label="Horário de Início"
                                        Variant="Variant.Outlined" AmPm="false" Required="true" />
                     </MudItem>
-
                     <MudItem xs="12" sm="6" md="3">
-                        <MudTimePicker @bind-Time="horarioFim"
-                                       Label="Horário de Fim"
+                        <MudTimePicker @bind-Time="horarioFim" Label="Horário de Fim"
                                        Variant="Variant.Outlined" AmPm="false" Required="true" />
                     </MudItem>
-
                     <MudItem xs="12" sm="6" md="3">
-                        <MudDatePicker @bind-Date="dataInicio"
-                                       Label="Data de Início"
+                        <MudDatePicker @bind-Date="dataInicio" Label="Data de Início"
                                        Variant="Variant.Outlined" DateFormat="dd/MM/yyyy"
                                        MinDate="@DateTime.Today" />
                     </MudItem>
-
                     <MudItem xs="12" sm="6" md="3">
                         <MudNumericField T="int" @bind-Value="novaTurma.LimiteAlunos"
-                                         Label="Limite de Alunos"
-                                         Variant="Variant.Outlined" Min="1" Required="true" />
+                                         Label="Limite de Alunos" Variant="Variant.Outlined"
+                                         Min="1" Required="true" />
                     </MudItem>
-
                     <MudItem xs="12" sm="6">
                         <MudTextField @bind-Value="novaTurma.LinkWhatsApp"
                                       Label="Link do Grupo WhatsApp (opcional)"
@@ -147,7 +114,6 @@
                                       AdornmentIcon="@Icons.Material.Filled.Chat"
                                       HelperText="https://chat.whatsapp.com/..." />
                     </MudItem>
-
                     <MudItem xs="12" Class="d-flex justify-end mt-4">
                         <MudButton ButtonType="ButtonType.Submit"
                                    Variant="Variant.Filled" Color="Color.Primary"
@@ -165,9 +131,7 @@
     <MudText Typo="Typo.h5" Class="mb-4 font-weight-bold">
         Turmas Cadastradas
         <MudChip T="string" Size="Size.Small" Color="Color.Primary"
-                 Variant="Variant.Filled" Class="ml-2">
-            @turmas.Count
-        </MudChip>
+                 Variant="Variant.Filled" Class="ml-2">@turmas.Count</MudChip>
     </MudText>
 
     @if (carregandoTurmas)
@@ -188,26 +152,16 @@
             <Columns>
                 <PropertyColumn Property="t => t.RitmoNome" Title="Ritmo" Sortable="true" />
 
-                @*
-                  CORREÇÃO SPRINT 6:
-                  ANTES: <PropertyColumn Property="t => t.DiaSemana" Title="Dia" />
-                         → campo string que sempre vinha vazio (nome errado vs API)
-                  AGORA: TemplateColumn que converte DiaDaSemana (int) para texto
-                         usando DiaDaSemanaTexto()
-                *@
+                @* SPRINT 6: DiaSemana(string)→DiaDaSemana(int) com conversão para texto *@
                 <TemplateColumn Title="Dia">
                     <CellTemplate Context="cell">
-                        <MudText Typo="Typo.body2">
-                            @DiaDaSemanaTexto(cell.Item.DiaDaSemana)
-                        </MudText>
+                        <MudText Typo="Typo.body2">@DiaDaSemanaTexto(cell.Item.DiaDaSemana)</MudText>
                     </CellTemplate>
                 </TemplateColumn>
 
                 <TemplateColumn Title="Horário">
                     <CellTemplate Context="cell">
-                        <MudText Typo="Typo.body2">
-                            @cell.Item.HorarioInicio — @cell.Item.HorarioFim
-                        </MudText>
+                        <MudText Typo="Typo.body2">@cell.Item.HorarioInicio — @cell.Item.HorarioFim</MudText>
                     </CellTemplate>
                 </TemplateColumn>
 
@@ -221,10 +175,10 @@
                                 @cell.Item.QuantidadeMatriculados / @cell.Item.LimiteAlunos
                             </MudText>
                             <MudProgressLinear Color="@(cell.Item.QuantidadeMatriculados >= cell.Item.LimiteAlunos
-                                                                                                               ? Color.Error : Color.Success)"
+                                                                                                                     ? Color.Error : Color.Success)"
                                                Value="@(cell.Item.LimiteAlunos > 0
-                                                                                                ? (double)cell.Item.QuantidadeMatriculados / cell.Item.LimiteAlunos * 100
-                                                                                                : 0)"
+                                                                                                      ? (double)cell.Item.QuantidadeMatriculados / cell.Item.LimiteAlunos * 100
+                                                                                                      : 0)"
                                                Style="width: 60px;" Rounded="true" />
                         </div>
                     </CellTemplate>
@@ -247,7 +201,6 @@
                                            Color="Color.Primary" Size="Size.Small"
                                            OnClick="@(() => AbrirModalAlunos(cell.Item))" />
                         </MudTooltip>
-
                         @if (cell.Item.Ativa)
                         {
                             <MudTooltip Text="Encerrar turma">
@@ -295,13 +248,16 @@
                 {
                     <MudListItem T="AlunoMatriculadoDto">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                            <MudAvatar Color="Color.Primary" Size="Size.Small">
-                                @aluno.Nome.FirstOrDefault()
-                            </MudAvatar>
+                            @*
+                              SPRINT 7: UserAvatar substitui MudAvatar estático.
+                              AlunoMatriculadoDto.FotoUrl já vinha do backend (AlunoMatriculadoResponse)
+                              — só faltava renderizá-lo aqui.
+                            *@
+                            <UserAvatar FotoUrl="@aluno.FotoUrl"
+                                        Nome="@aluno.Nome"
+                                        Size="Size.Small" />
                             <div style="flex: 1;">
-                                <MudText Typo="Typo.body2" Class="font-weight-medium">
-                                    @aluno.Nome
-                                </MudText>
+                                <MudText Typo="Typo.body2" Class="font-weight-medium">@aluno.Nome</MudText>
                             </div>
                             <MudChip T="string" Size="Size.Small"
                                      Color="Color.Default" Variant="Variant.Outlined">
@@ -315,9 +271,7 @@
         }
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="@(() => modalAlunosAberto = false)" Variant="Variant.Text">
-            Fechar
-        </MudButton>
+        <MudButton OnClick="@(() => modalAlunosAberto = false)" Variant="Variant.Text">Fechar</MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -353,7 +307,6 @@
         ritmos = ritmoTask.Result ?? new();
         salas = salaTask.Result ?? new();
         turmas = turmasTask.Result ?? new();
-
         carregandoDependencias = false;
         carregandoTurmas = false;
     }
@@ -365,7 +318,6 @@
             Snackbar.Add("Preencha a data de início e os horários.", Severity.Warning);
             return;
         }
-
         if (horarioFim <= horarioInicio)
         {
             Snackbar.Add("O horário de fim deve ser maior que o de início.", Severity.Warning);
@@ -380,7 +332,7 @@
                 RitmoIdHash = novaTurma.RitmoIdHash,
                 SalaIdHash = novaTurma.SalaIdHash,
                 DataInicio = dataInicio.Value,
-                DiaDaSemana = DiaSemanaParaInt(novaTurma.DiaSemana), // string → int para a API
+                DiaDaSemana = DiaSemanaParaInt(novaTurma.DiaSemana),
                 HorarioInicio = horarioInicio.Value,
                 HorarioFim = horarioFim.Value,
                 Nivel = novaTurma.Nivel,
@@ -394,12 +346,8 @@
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("Turma criada com sucesso! ✅", Severity.Success);
-
                 novaTurma = new TurmaRequest { LimiteAlunos = 30 };
-                horarioInicio = null;
-                horarioFim = null;
-                dataInicio = DateTime.Today;
-
+                horarioInicio = null; horarioFim = null; dataInicio = DateTime.Today;
                 turmas = await Http.GetFromJsonAsync<List<TurmaListaDto>>(
                     "api/turmas/listar-ativas") ?? new();
             }
@@ -428,10 +376,7 @@
             alunosDaTurma = await Http.GetFromJsonAsync<List<AlunoMatriculadoDto>>(
                 $"api/turmas/{turma.IdHash}/alunos") ?? new();
         }
-        catch
-        {
-            Snackbar.Add("Erro ao carregar alunos da turma.", Severity.Error);
-        }
+        catch { Snackbar.Add("Erro ao carregar alunos da turma.", Severity.Error); }
         finally { carregandoAlunos = false; }
     }
 
@@ -442,8 +387,7 @@
             { "ContentText",
                 $"Encerrar a turma '{turma.RitmoNome} — {turma.Nivel}'?\n\n" +
                 $"• {turma.QuantidadeMatriculados} aluno(s) deixarão de ver esta turma\n" +
-                "• Todos os dados (presenças, matrículas) são preservados\n" +
-                "• A turma não aparecerá mais em nenhuma tela do sistema\n\n" +
+                "• Todos os dados (presenças, matrículas) são preservados\n\n" +
                 "Esta ação não pode ser desfeita." },
             { "ButtonText", "Encerrar Turma" },
             { "Color", Color.Warning }
@@ -455,7 +399,6 @@
         if (result != null && !result.Canceled)
         {
             var response = await Http.PutAsync($"api/turmas/{turma.IdHash}/encerrar", null);
-
             if (response.IsSuccessStatusCode)
             {
                 turmas.RemoveAll(t => t.IdHash == turma.IdHash);
@@ -469,10 +412,6 @@
         }
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // NOVO Sprint 6: converte DiaDaSemana (int) para texto legível.
-    // Usado na coluna "Dia" do MudDataGrid.
-    // ──────────────────────────────────────────────────────────────
     private string DiaDaSemanaTexto(int dia) => dia switch
     {
         0 => "Domingo",
@@ -485,7 +424,6 @@
         _ => "—"
     };
 
-    // Converte o nome selecionado no select para o int que a API espera
     private int DiaSemanaParaInt(string dia) => dia switch
     {
         "Segunda-feira" => 1,
@@ -497,13 +435,12 @@
         _ => 0
     };
 
-    // ── DTOs locais ──────────────────────────────────────────────
     public class TurmaRequest
     {
         public string RitmoIdHash { get; set; } = "";
         public string ProfessorIdHash { get; set; } = "";
         public string SalaIdHash { get; set; } = "";
-        public string DiaSemana { get; set; } = ""; // string para o select (convertido para int no payload)
+        public string DiaSemana { get; set; } = "";
         public string Nivel { get; set; } = "";
         public int LimiteAlunos { get; set; }
         public string? LinkWhatsApp { get; set; }
@@ -520,20 +457,13 @@
         public int CapacidadeMaxima { get; set; }
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // CORREÇÃO SPRINT 6:
-    // DiaSemana (string) → DiaDaSemana (int)
-    //
-    // ObterTurmaResponse retorna DiaDaSemana como int (0–6).
-    // O campo DiaSemana (string) nunca era preenchido, causando
-    // a coluna "Dia" sempre vazia na listagem administrativa.
-    // ──────────────────────────────────────────────────────────────
+    // SPRINT 6: DiaSemana(string) → DiaDaSemana(int)
     public class TurmaListaDto
     {
         public string IdHash { get; set; } = "";
         public string RitmoNome { get; set; } = "";
         public string SalaNome { get; set; } = "";
-        public int DiaDaSemana { get; set; }   // ← era: string DiaSemana
+        public int DiaDaSemana { get; set; }
         public string HorarioInicio { get; set; } = "";
         public string HorarioFim { get; set; } = "";
         public string Nivel { get; set; } = "";

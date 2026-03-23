@@ -1,4 +1,14 @@
-﻿@* ARQUIVO: Rascunho.Client/Pages/Bolsista/Desempenho.razor *@
+﻿@* 
+  ARQUIVO: Rascunho.Client/Pages/Bolsista/Desempenho.razor
+  ROTA:    /bolsista/desempenho
+  ACESSO:  Bolsista
+
+  SPRINT 7:
+  - DesempenhoDto local agora inclui FotoUrl (campo novo em DesempenhoResponse)
+  - Cabeçalho da tela usa <UserAvatar> com a foto do bolsista logado
+  - Substituído MudAvatar estático por componente dinâmico
+*@
+
 @page "/bolsista/desempenho"
 @using Microsoft.AspNetCore.Authorization
 @using System.Net.Http.Json
@@ -19,48 +29,84 @@
 }
 else if (desempenho == null)
 {
-    <MudAlert Severity="Severity.Warning">Não foi possível carregar seu desempenho. Tente novamente.</MudAlert>
+    <MudAlert Severity="Severity.Warning">
+        Não foi possível carregar seu desempenho. Tente novamente.
+    </MudAlert>
 }
 else if (desempenho.TotalAulasObrigatorias == 0 && desempenho.TotalAulasExtras == 0)
 {
+    @* ── Cabeçalho mesmo sem dados ──────────────────────────────── *@
+    <MudPaper Elevation="2" Class="pa-4 rounded-xl mb-6">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+            @*
+              SPRINT 7: UserAvatar usa a FotoUrl retornada pelo backend.
+              O bolsista pode ver sua própria foto no topo da tela de desempenho.
+            *@
+            <UserAvatar FotoUrl="@desempenho.FotoUrl"
+                        Nome="@desempenho.Nome"
+                        Size="Size.Large"
+                        Color="Color.Secondary" />
+            <div>
+                <MudText Typo="Typo.h6" Class="font-weight-bold">@desempenho.Nome</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    Dias obrigatórios: @DiaDaSemana(desempenho.DiaObrigatorio1 ?? 0) e @DiaDaSemana(desempenho.DiaObrigatorio2 ?? 0)
+                </MudText>
+            </div>
+        </MudStack>
+    </MudPaper>
+
     <MudAlert Severity="Severity.Info">
         Nenhuma presença registrada ainda. Seus registros aparecerão aqui após as primeiras chamadas.
     </MudAlert>
 }
 else
 {
-    @* ── Indicador principal ────────────────────────────────────── *@
+    @* ── Cabeçalho com foto ──────────────────────────────────────── *@
+    <MudPaper Elevation="2" Class="pa-4 rounded-xl mb-6">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+            <UserAvatar FotoUrl="@desempenho.FotoUrl"
+                        Nome="@desempenho.Nome"
+                        Size="Size.Large"
+                        Color="Color.Secondary" />
+            <div>
+                <MudText Typo="Typo.h6" Class="font-weight-bold">@desempenho.Nome</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    Dias obrigatórios: @DiaDaSemana(desempenho.DiaObrigatorio1 ?? 0) e @DiaDaSemana(desempenho.DiaObrigatorio2 ?? 0)
+                </MudText>
+            </div>
+        </MudStack>
+    </MudPaper>
+
+    @* ── Cards de métricas principais ─────────────────────────── *@
     <MudGrid Class="mb-6">
+
+        @* Card 1: Frequência obrigatória *@
         <MudItem xs="12" md="6">
             <MudPaper Elevation="4" Class="pa-6 rounded-xl text-center"
                       Style="@($"border-top: 6px solid {CorIndicador(desempenho.IndicadorSituacao)};")">
-                <MudText Typo="Typo.h2" Style="@($"color: {CorIndicador(desempenho.IndicadorSituacao)}; font-weight: bold;")">
+                <MudText Typo="Typo.h2" Class="font-weight-bold"
+                         Style="@($"color: {CorIndicador(desempenho.IndicadorSituacao)};")">
                     @desempenho.FrequenciaObrigatoriaPct%
                 </MudText>
                 <MudText Typo="Typo.h6" Class="mt-1">Frequência nos Dias Obrigatórios</MudText>
-                <MudText Typo="Typo.body1" Class="mt-2"
-                         Style="@($"color: {CorIndicador(desempenho.IndicadorSituacao)}; font-weight: bold;")">
+                <MudText Typo="Typo.body1" Class="mt-2 font-weight-bold"
+                         Style="@($"color: {CorIndicador(desempenho.IndicadorSituacao)};")">
                     @MensagemIndicador(desempenho.IndicadorSituacao)
                 </MudText>
                 <MudDivider Class="my-3" />
                 <MudText Typo="Typo.caption" Class="mud-text-secondary">
                     @desempenho.TotalPresencasObrigatorias presentes de @desempenho.TotalAulasObrigatorias aulas
                 </MudText>
-                @if (desempenho.DiaObrigatorio1.HasValue)
-                {
-                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                        Dias: @DiaDaSemana(desempenho.DiaObrigatorio1.Value) e @DiaDaSemana(desempenho.DiaObrigatorio2 ?? 0)
-                    </MudText>
-                }
             </MudPaper>
         </MudItem>
 
+        @* Card 2: Frequência extra (informativo) *@
         @if (desempenho.TotalAulasExtras > 0)
         {
             <MudItem xs="12" md="6">
                 <MudPaper Elevation="3" Class="pa-6 rounded-xl text-center"
                           Style="border-top: 6px solid #2196f3;">
-                    <MudText Typo="Typo.h2" Style="color: #2196f3; font-weight: bold;">
+                    <MudText Typo="Typo.h2" Class="font-weight-bold" Color="Color.Info">
                         @desempenho.FrequenciaExtraPct%
                     </MudText>
                     <MudText Typo="Typo.h6" Class="mt-1">Frequência nos Dias Extras</MudText>
@@ -76,9 +122,50 @@ else
         }
     </MudGrid>
 
+    @* ── Barra de progresso visual ──────────────────────────────── *@
+    <MudPaper Elevation="3" Class="pa-6 rounded-xl mb-6">
+        <div class="d-flex justify-space-between mb-2">
+            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Progresso da Semana</MudText>
+            <MudText Typo="Typo.subtitle1"
+                     Color="@(desempenho.FrequenciaObrigatoriaPct >= 85 ? Color.Success : Color.Default)">
+                @desempenho.TotalPresencasObrigatorias / @desempenho.TotalAulasObrigatorias presenças
+            </MudText>
+        </div>
+        <MudProgressLinear Color="@(desempenho.IndicadorSituacao == "Excelente" ? Color.Success
+                                                      : desempenho.IndicadorSituacao == "Vamos melhorar" ? Color.Warning
+                                                      : Color.Error)"
+                           Value="@desempenho.FrequenciaObrigatoriaPct"
+                           Size="Size.Large"
+                           Rounded="true"
+                           Class="mb-4"
+                           Style="height: 20px;" />
+
+        @if (desempenho.IndicadorSituacao == "Excelente")
+        {
+            <MudAlert Severity="Severity.Success" Dense="true">
+                🎉 Excelente frequência! Continue assim.
+            </MudAlert>
+        }
+        else if (desempenho.IndicadorSituacao is "Vamos melhorar" or "Atenção")
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true">
+                Você precisa melhorar a presença nos seus dias obrigatórios.
+                Converse com o líder se precisar de ajuda.
+            </MudAlert>
+        }
+        else if (desempenho.IndicadorSituacao == "Crítico")
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">
+                ⚠️ Frequência crítica. Converse imediatamente com o líder sobre sua situação.
+            </MudAlert>
+        }
+    </MudPaper>
+
     @* ── Histórico aula-a-aula ──────────────────────────────────── *@
     <MudText Typo="Typo.h6" Class="mb-3">Histórico Completo</MudText>
-    <MudTable T="HistoricoItemDto" Items="@desempenho.Historico" Hover="true" Dense="true"
+    <MudTable T="HistoricoItemDto"
+              Items="@desempenho.Historico"
+              Hover="true" Dense="true"
               Elevation="3" Class="rounded-xl">
         <HeaderContent>
             <MudTh>Data</MudTh>
@@ -94,11 +181,15 @@ else
             <MudTd>
                 @if (item.EhDiaObrigatorio)
                 {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">Obrigatório</MudChip>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">
+                        Obrigatório
+                    </MudChip>
                 }
                 else
                 {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Extra</MudChip>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                        Extra
+                    </MudChip>
                 }
             </MudTd>
             <MudTd>
@@ -162,10 +253,17 @@ else
         _ => "domingo"
     };
 
+    // ──────────────────────────────────────────────────────────────
+    // DTO LOCAL — espelha DesempenhoResponse do backend.
+    //
+    // SPRINT 7: FotoUrl adicionado na posição 3 (após Nome),
+    // correspondendo à nova declaração em BolsistaDTOs.cs.
+    // ──────────────────────────────────────────────────────────────
     public class DesempenhoDto
     {
         public string BolsistaIdHash { get; set; } = "";
         public string Nome { get; set; } = "";
+        public string FotoUrl { get; set; } = "";   // ← NOVO Sprint 7
         public int? DiaObrigatorio1 { get; set; }
         public int? DiaObrigatorio2 { get; set; }
         public double FrequenciaObrigatoriaPct { get; set; }

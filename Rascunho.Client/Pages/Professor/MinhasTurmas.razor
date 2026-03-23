@@ -1,4 +1,5 @@
 ﻿@* ARQUIVO: Rascunho.Client/Pages/Professor/MinhasTurmas.razor *@
+@* SPRINT 7: UserAvatar no modal de alunos. AlunoMatriculadoDto.FotoUrl já existia. *@
 @page "/professor/minhas-turmas"
 @using Microsoft.AspNetCore.Authorization
 @using System.Net.Http.Json
@@ -56,7 +57,6 @@ else
                     </MudCardContent>
 
                     <MudCardActions Class="justify-space-between pa-3">
-                        @* Botão Ver Alunos: abre modal com lista de matriculados *@
                         <MudButton Variant="Variant.Outlined"
                                    Color="Color.Primary"
                                    Size="Size.Small"
@@ -64,9 +64,6 @@ else
                                    OnClick="@(() => AbrirModalAlunos(turma))">
                             Ver Alunos
                         </MudButton>
-
-                        @* Botão Fazer Chamada: navega para a tela de chamada
-                           com a turma pré-selecionada via query string *@
                         <MudButton Variant="Variant.Filled"
                                    Color="Color.Primary"
                                    Size="Size.Small"
@@ -81,7 +78,7 @@ else
     </MudGrid>
 }
 
-@* ── MODAL: Lista de alunos matriculados ──────────────────────── *@
+@* ── MODAL: Lista de alunos ──────────────────────────────────────── *@
 <MudDialog @bind-IsVisible="modalAberto" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
     <TitleContent>
         <MudText Typo="Typo.h6">
@@ -105,9 +102,14 @@ else
                 {
                     <MudListItem T="AlunoMatriculadoDto">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                            <MudAvatar Color="Color.Primary" Size="Size.Small">
-                                @aluno.Nome.FirstOrDefault()
-                            </MudAvatar>
+                            @*
+                              SPRINT 7: UserAvatar substitui MudAvatar com inicial.
+                              AlunoMatriculadoDto.FotoUrl já retornava o campo do backend —
+                              só precisávamos renderizá-lo.
+                            *@
+                            <UserAvatar FotoUrl="@aluno.FotoUrl"
+                                        Nome="@aluno.Nome"
+                                        Size="Size.Small" />
                             <div>
                                 <MudText Typo="Typo.body1">@aluno.Nome</MudText>
                                 <MudText Typo="Typo.caption" Class="mud-text-secondary">@aluno.Papel</MudText>
@@ -139,14 +141,9 @@ else
     {
         try
         {
-            // Usa o endpoint /minhas-turmas criado na Sprint 1
-            // Retorna só as turmas onde o professor logado está vinculado
             turmas = await Http.GetFromJsonAsync<List<TurmaDto>>("api/turmas/minhas-turmas") ?? new();
         }
-        catch
-        {
-            Snackbar.Add("Erro ao carregar suas turmas.", Severity.Error);
-        }
+        catch { Snackbar.Add("Erro ao carregar suas turmas.", Severity.Error); }
         finally { carregando = false; }
     }
 
@@ -159,14 +156,10 @@ else
 
         try
         {
-            // Endpoint criado no arquivo 13 (ProfessorEndpoints)
             alunosDaTurma = await Http.GetFromJsonAsync<List<AlunoMatriculadoDto>>(
                 $"api/turmas/{turma.IdHash}/alunos") ?? new();
         }
-        catch
-        {
-            Snackbar.Add("Erro ao carregar alunos.", Severity.Error);
-        }
+        catch { Snackbar.Add("Erro ao carregar alunos.", Severity.Error); }
         finally { carregandoAlunos = false; }
     }
 

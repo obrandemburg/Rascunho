@@ -2,16 +2,8 @@
   ROTA: /painel (redirecionamento pós-login)
   ACESSO: Roles = Aluno, Bolsista
   
-  FLUXO:
-  1. [Authorize] bloqueia não autenticados → redireciona para /login
-  2. AuthorizeView com Roles renderiza conteúdo específico por perfil
-  3. Cards de acesso rápido com Href direto para sub-páginas
-  4. Notificações: buscamos aulas da semana atual
-  
-  SEGURANÇA: O [Authorize] atributo protege a rota.
-  AuthorizeView dentro protege seções específicas dentro da página.
-  Dupla proteção garante que mesmo com URL direta, o usuário vê
-  apenas o que tem direito.
+  SPRINT 8: Removido card de Ingressos/Eventos (fora do escopo do MVP atual).
+  O backend de eventos está preservado para a fase 1.2.
 *@
 
 @page "/painel"
@@ -56,6 +48,7 @@
 
 @* ============================================================
    CARDS DE ACESSO RÁPIDO
+   SPRINT 8: Card de Ingressos de Eventos removido
 ============================================================ *@
 <AuthorizeView Roles="Aluno,Bolsista">
     <Authorized>
@@ -63,7 +56,7 @@
         <MudGrid>
 
             @* Card: Minhas Aulas *@
-            <MudItem xs="12" sm="6" md="4">
+            <MudItem xs="12" sm="6" md="6">
                 <MudCard Elevation="3" Class="rounded-lg h-100"
                          Style="border-left: 4px solid #1b5e20;">
                     <MudCardHeader>
@@ -92,7 +85,7 @@
             </MudItem>
 
             @* Card: Aulas Particulares *@
-            <MudItem xs="12" sm="6" md="4">
+            <MudItem xs="12" sm="6" md="6">
                 <MudCard Elevation="3" Class="rounded-lg h-100"
                          Style="border-left: 4px solid #fbc02d;">
                     <MudCardHeader>
@@ -119,54 +112,25 @@
                 </MudCard>
             </MudItem>
 
-            @* Card: Ingressos de Eventos *@
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="3" Class="rounded-lg h-100"
-                         Style="border-left: 4px solid #9c27b0;">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">Eventos & Ingressos</MudText>
-                        </CardHeaderContent>
-                        <CardHeaderActions>
-                            <MudIcon Icon="@Icons.Material.Filled.ConfirmationNumber"
-                                     Color="Color.Secondary" />
-                        </CardHeaderActions>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        <MudText Typo="Typo.body2">
-                            Compre ingressos para bailes, workshops e eventos especiais.
-                        </MudText>
-                    </MudCardContent>
-                    <MudCardActions>
-                        <MudButton Href="/ingressos"
-                                   Variant="Variant.Text"
-                                   Color="Color.Secondary">
-                            Ver Eventos
-                        </MudButton>
-                    </MudCardActions>
-                </MudCard>
-            </MudItem>
+            @* Card de Ingressos/Eventos removido na Sprint 8 *@
+            @* Será reintroduzido na fase 1.2 (Eventos e Ingressos) *@
 
         </MudGrid>
     </Authorized>
 </AuthorizeView>
 
 @code {
-    // DTO simplificado para próxima aula
     private TurmaResumoDto? proximaAula;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            // GET /api/turmas/minhas-turmas — retorna turmas do aluno logado
-            // O token JWT já identifica o aluno via Claims
             var turmas = await Http.GetFromJsonAsync<List<TurmaResumoDto>>(
                 "api/turmas/minhas-turmas");
 
             if (turmas != null && turmas.Any())
             {
-                // Pega a próxima aula mais próxima do dia atual
                 var hoje = (int)DateTime.Now.DayOfWeek;
                 proximaAula = turmas
                     .OrderBy(t => ((t.DiaDaSemana - hoje + 7) % 7))
@@ -179,7 +143,6 @@
         }
     }
 
-    // Converte int do DayOfWeek para português
     private string DiaDaSemana(int dia) => dia switch
     {
         0 => "Domingo",

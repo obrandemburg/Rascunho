@@ -1,19 +1,11 @@
 ﻿// ARQUIVO: Rascunho/Services/BolsistaService.cs
 //
-// ALTERAÇÕES SPRINT 6:
+// SPRINT 6: .Include(t => t.Ritmo) em AnalisarEBalancearTurmaAsync e
+//           TurmasRecomendadasParaBolsistaAsync; novos campos no retorno
+//           de SugestaoBalanceamentoResponse.
 //
-// 1. AnalisarEBalancearTurmaAsync:
-//    - Adicionado .Include(t => t.Ritmo) na query da turma
-//    - Preenchidos os novos campos do SugestaoBalanceamentoResponse:
-//      RitmoNome, DiaDaSemana, HorarioInicio, HorarioFim
-//
-// 2. TurmasRecomendadasParaBolsistaAsync:
-//    - Adicionado .Include(t => t.Ritmo) na query de turmasDoDia
-//    (necessário para que AnalisarEBalancearTurmaAsync acesse Ritmo sem nova query)
-//
-// Sem essas alterações, os campos RitmoNome/DiaDaSemana/HorarioInicio/HorarioFim
-// retornavam valores nulos/padrão, e as telas de bolsista exibiam hashes
-// criptografados como título dos cards de turma.
+// SPRINT 7: bolsista.FotoUrl passado como 3° argumento em
+//           MeuDesempenhoAsync (posição nova no record DesempenhoResponse).
 
 using HashidsNet;
 using Microsoft.EntityFrameworkCore;
@@ -55,7 +47,8 @@ public class BolsistaService
         bool jaPossui = await _context.Set<HabilidadeUsuario>()
             .AnyAsync(h => h.UsuarioId == bolsistaId && h.RitmoId == ritmoId);
 
-        if (jaPossui) throw new RegraNegocioException("O bolsista já possui este ritmo nas suas habilidades.");
+        if (jaPossui)
+            throw new RegraNegocioException("O bolsista já possui este ritmo nas suas habilidades.");
 
         _context.Set<HabilidadeUsuario>().Add(new HabilidadeUsuario
         {
@@ -68,7 +61,11 @@ public class BolsistaService
     }
 
     // ──────────────────────────────────────────────────────────────
-    // MEU DESEMPENHO (Sprint 2 — sem alterações nesta sprint)
+    // MEU DESEMPENHO
+    //
+    // SPRINT 7: bolsista.FotoUrl passado como 3° argumento.
+    //   DesempenhoResponse(BolsistaIdHash, Nome, FotoUrl, DiaObrigatorio1, ...)
+    //   A ordem IMPORTA porque é um record posicional.
     // ──────────────────────────────────────────────────────────────
     public async Task<DesempenhoResponse> MeuDesempenhoAsync(int bolsistaId)
     {
@@ -88,17 +85,13 @@ public class BolsistaService
         if (bolsista.DiaObrigatorio2.HasValue) diasObrigatorios.Add(bolsista.DiaObrigatorio2.Value);
 
         var presencasObrigatorias = todasPresencas
-            .Where(rp => diasObrigatorios.Contains(rp.DataAula.DayOfWeek))
-            .ToList();
-
+            .Where(rp => diasObrigatorios.Contains(rp.DataAula.DayOfWeek)).ToList();
         var presencasExtras = todasPresencas
-            .Where(rp => !diasObrigatorios.Contains(rp.DataAula.DayOfWeek))
-            .ToList();
+            .Where(rp => !diasObrigatorios.Contains(rp.DataAula.DayOfWeek)).ToList();
 
         double freqObrigatoria = presencasObrigatorias.Count > 0
             ? (double)presencasObrigatorias.Count(p => p.Presente) / presencasObrigatorias.Count * 100
             : 0;
-
         double freqExtra = presencasExtras.Count > 0
             ? (double)presencasExtras.Count(p => p.Presente) / presencasExtras.Count * 100
             : 0;
@@ -110,7 +103,6 @@ public class BolsistaService
             >= 60 => "Atenção",
             _ => "Crítico"
         };
-
         if (!todasPresencas.Any()) indicador = "Sem registros";
 
         var historico = todasPresencas.Select(rp => new HistoricoPresencaItem(
@@ -124,6 +116,7 @@ public class BolsistaService
         return new DesempenhoResponse(
             _hashids.Encode(bolsista.Id),
             bolsista.Nome,
+            bolsista.FotoUrl,                                                   // ← NOVO Sprint 7
             bolsista.DiaObrigatorio1.HasValue ? (int?)bolsista.DiaObrigatorio1.Value : null,
             bolsista.DiaObrigatorio2.HasValue ? (int?)bolsista.DiaObrigatorio2.Value : null,
             Math.Round(freqObrigatoria, 1),
@@ -139,16 +132,10 @@ public class BolsistaService
 
     // ──────────────────────────────────────────────────────────────
     // TURMAS RECOMENDADAS PARA O BOLSISTA LOGADO
-    //
-    // SPRINT 6: Adicionado .Include(t => t.Ritmo) na query de turmasDoDia.
-    //
-    // Por que era necessário?
-    // AnalisarEBalancearTurmaAsync recebe o turmaId e faz sua própria query
-    // do banco. Porém, para preencher os novos campos (RitmoNome, HorarioInicio etc.)
-    // ele precisa que a turma já tenha Ritmo carregado. Adicionamos Include aqui
-    // para garantir que o dado esteja disponível sem uma query adicional.
+    // SPRINT 6: .Include(t => t.Ritmo) adicionado.
     // ──────────────────────────────────────────────────────────────
-    public async Task<IEnumerable<SugestaoBalanceamentoResponse>> TurmasRecomendadasParaBolsistaAsync(int bolsistaId)
+    public async Task<IEnumerable<SugestaoBalanceamentoResponse>> TurmasRecomendadasParaBolsistaAsync(
+        int bolsistaId)
     {
         var bolsista = await _context.Usuarios.OfType<Bolsista>()
             .FirstOrDefaultAsync(b => b.Id == bolsistaId)
@@ -157,13 +144,12 @@ public class BolsistaService
         if (!bolsista.DiaObrigatorio1.HasValue || !bolsista.DiaObrigatorio2.HasValue)
             return Enumerable.Empty<SugestaoBalanceamentoResponse>();
 
-        var diasObrigatorios = new[] { bolsista.DiaObrigatorio1.Value, bolsista.DiaObrigatorio2.Value };
+        var diasObrigatorios = new[]
+            { bolsista.DiaObrigatorio1.Value, bolsista.DiaObrigatorio2.Value };
 
-        // SPRINT 6: .Include(t => t.Ritmo) adicionado para garantir que
-        // AnalisarEBalancearTurmaAsync possa preencher RitmoNome sem nova query.
         var turmasDoDia = await _context.Turmas
             .Include(t => t.Matriculas)
-            .Include(t => t.Ritmo)                  // ← NOVO Sprint 6
+            .Include(t => t.Ritmo)                  // ← Sprint 6
             .Where(t => t.Ativa && diasObrigatorios.Contains(t.DiaDaSemana))
             .ToListAsync();
 
@@ -181,24 +167,13 @@ public class BolsistaService
 
     // ──────────────────────────────────────────────────────────────
     // ANALISAR E BALANCEAR TURMA
-    //
-    // SPRINT 6:
-    // 1. Adicionado .Include(t => t.Ritmo) na query principal
-    // 2. Novos campos preenchidos no retorno:
-    //    - RitmoNome   = turma.Ritmo?.Nome ?? "—"
-    //    - DiaDaSemana = (int)turma.DiaDaSemana
-    //    - HorarioInicio / HorarioFim
-    //
-    // Sem essas adições, os cards de TurmasObrigatorias e TurmasRecomendadas
-    // exibiam o hash criptografado (ex: "aBcDeFgH") como título,
-    // impossibilitando o bolsista de identificar qual turma era qual.
+    // SPRINT 6: .Include(t => t.Ritmo) + novos campos no retorno.
     // ──────────────────────────────────────────────────────────────
     public async Task<SugestaoBalanceamentoResponse> AnalisarEBalancearTurmaAsync(int turmaId)
     {
-        // SPRINT 6: .Include(t => t.Ritmo) adicionado para preencher RitmoNome.
         var turma = await _context.Turmas
             .Include(t => t.Matriculas)
-            .Include(t => t.Ritmo)                  // ← NOVO Sprint 6
+            .Include(t => t.Ritmo)                  // ← Sprint 6
             .FirstOrDefaultAsync(t => t.Id == turmaId)
             ?? throw new RegraNegocioException("Turma não encontrada.");
 
@@ -207,23 +182,23 @@ public class BolsistaService
 
         string status = "Balanceada";
         string papelNecessario = "";
-        int quantidadeFaltante = 0;
+        int quantFaltante = 0;
 
         if (condutores > conduzidos)
         {
             status = "Faltam Conduzidos";
             papelNecessario = "Conduzido";
-            quantidadeFaltante = condutores - conduzidos;
+            quantFaltante = condutores - conduzidos;
         }
         else if (conduzidos > condutores)
         {
             status = "Faltam Condutores";
             papelNecessario = "Condutor";
-            quantidadeFaltante = conduzidos - condutores;
+            quantFaltante = conduzidos - condutores;
         }
 
         var sugestoes = new List<BolsistaSugerido>();
-        if (quantidadeFaltante > 0)
+        if (quantFaltante > 0)
         {
             var bolsistasQualificados = await _context.Set<HabilidadeUsuario>()
                 .Include(h => h.Usuario)
@@ -258,24 +233,22 @@ public class BolsistaService
             }
         }
 
-        // SPRINT 6: novos campos adicionados ao final do construtor do record.
-        // A ordem deve corresponder EXATAMENTE à declaração em BolsistaDTOs.cs.
         return new SugestaoBalanceamentoResponse(
             _hashids.Encode(turma.Id),
             condutores,
             conduzidos,
             status,
-            quantidadeFaltante,
+            quantFaltante,
             sugestoes,
-            turma.Ritmo?.Nome ?? "—",        // ← NOVO Sprint 6: RitmoNome
-            (int)turma.DiaDaSemana,           // ← NOVO Sprint 6: DiaDaSemana
-            turma.HorarioInicio,              // ← NOVO Sprint 6: HorarioInicio
-            turma.HorarioFim                  // ← NOVO Sprint 6: HorarioFim
+            turma.Ritmo?.Nome ?? "—",       // ← Sprint 6
+            (int)turma.DiaDaSemana,          // ← Sprint 6
+            turma.HorarioInicio,             // ← Sprint 6
+            turma.HorarioFim                 // ← Sprint 6
         );
     }
 
     // ──────────────────────────────────────────────────────────────
-    // RELATÓRIO DE HORAS SEMANAIS (Sprint 2/3 — sem alterações)
+    // RELATÓRIO DE HORAS SEMANAIS
     // ──────────────────────────────────────────────────────────────
     public async Task<RelatorioHorasBolsistaResponse> RelatorioHorasSemanaisAsync(int bolsistaId)
     {
@@ -308,14 +281,14 @@ public class BolsistaService
         double horasSalao = presencasSalao.Sum(rp =>
             (rp.Turma.HorarioFim - rp.Turma.HorarioInicio).TotalHours);
 
-        double totalHoras = horasSolo + horasSalao;
+        double total = horasSolo + horasSalao;
         const double meta = 6.0;
 
         return new RelatorioHorasBolsistaResponse(
             _hashids.Encode(bolsista.Id),
             bolsista.Nome,
-            Math.Round(totalHoras, 1),
-            Math.Max(0, meta - totalHoras),
-            totalHoras >= meta);
+            Math.Round(total, 1),
+            Math.Max(0, meta - total),
+            total >= meta);
     }
 }
