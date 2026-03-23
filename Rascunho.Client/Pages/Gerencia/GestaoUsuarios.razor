@@ -1,12 +1,11 @@
 ﻿@* 
-  ROTA: /gerencia/usuarios
-  ACESSO: Gerente
-  
-  CORREÇÕES APLICADAS:
-  - MudSwitch T="bool" explícito
-  - ValueChanged substituído por handler separado para evitar CS0411/CS1662
-  - @using Rascunho.Client.Shared para resolver ConfirmDialog
-  - Null check em result.Canceled para resolver CS8602
+  ARQUIVO: Rascunho.Client/Pages/Gerencia/GestaoUsuarios.razor
+  ROTA:    /gerencia/usuarios
+  ACESSO:  Gerente
+
+  SPRINT 7: Adicionado campo FotoUrl ao UsuarioDto local e coluna visual
+  com UserAvatar na listagem. ObterUsuarioResponse do backend já retorna
+  FotoUrl — só faltava deserializar o campo e exibir.
 *@
 
 @page "/gerencia/usuarios"
@@ -28,7 +27,6 @@
     Gerencie todos os usuários cadastrados no sistema.
 </MudText>
 
-@* Barra de filtros *@
 <MudPaper Elevation="1" Class="pa-4 mb-4 rounded-lg">
     <MudGrid>
         <MudItem xs="12" sm="4">
@@ -88,6 +86,19 @@ else
                  Elevation="3"
                  Class="rounded-xl">
         <Columns>
+            @*
+              SPRINT 7: Coluna de foto adicionada no início.
+              UserAvatar mostra a foto ou a inicial — nunca quebra se a URL estiver vazia.
+            *@
+            <TemplateColumn Title="" CellClass="pa-1" HeaderStyle="width: 52px;">
+                <CellTemplate Context="cell">
+                    <UserAvatar FotoUrl="@cell.Item.FotoUrl"
+                                Nome="@cell.Item.Nome"
+                                Size="Size.Small"
+                                Color="@CorTipoAvatar(cell.Item.Tipo)" />
+                </CellTemplate>
+            </TemplateColumn>
+
             <PropertyColumn Property="u => u.Nome" Title="Nome" Sortable="true" />
             <PropertyColumn Property="u => u.Email" Title="E-mail" />
             <TemplateColumn Title="Tipo">
@@ -102,12 +113,6 @@ else
             </TemplateColumn>
             <TemplateColumn Title="Status">
                 <CellTemplate Context="cell">
-                    @*
-                      CORREÇÃO CS0411 + CS1662:
-                      Removemos ValueChanged com lambda inline.
-                      Usamos evento OnChange separado que recebe bool diretamente.
-                      MudSwitch T="bool" explícito resolve a inferência.
-                    *@
                     <MudSwitch T="bool"
                                Value="@cell.Item.Ativo"
                                ValueChanged="@((bool v) => OnStatusChanged(cell.Item, v))"
@@ -164,9 +169,6 @@ else
         finally { carregando = false; }
     }
 
-    // CORREÇÃO CS0411/CS1662:
-    // Handler separado com assinatura explícita Task(UsuarioDto, bool)
-    // Isso evita a ambiguidade do compilador ao inferir T na lambda inline.
     private async Task OnStatusChanged(UsuarioDto usuario, bool novoStatus)
     {
         var response = await Http.PutAsJsonAsync(
@@ -181,7 +183,6 @@ else
         }
         else
         {
-            // Reverte: volta ao valor anterior e força re-render
             usuario.Ativo = !novoStatus;
             Snackbar.Add("Erro ao alterar status.", Severity.Error);
             StateHasChanged();
@@ -197,15 +198,12 @@ else
             { "Color", Color.Error }
         };
 
-        var dialog = await DialogService.ShowAsync<ConfirmDialog>(
-            "Confirmar Exclusão", parametros);
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirmar Exclusão", parametros);
         var result = await dialog.Result;
 
-        // CORREÇÃO CS8602: verificação de nulo antes de acessar .Canceled
         if (result != null && !result.Canceled)
         {
-            var response = await Http.DeleteAsync(
-                $"api/usuarios/deletar/{usuario.IdHash}");
+            var response = await Http.DeleteAsync($"api/usuarios/deletar/{usuario.IdHash}");
 
             if (response.IsSuccessStatusCode)
             {
@@ -224,6 +222,18 @@ else
         _ => Color.Default
     };
 
+    // Cor do avatar quando não há foto (mesma lógica do chip de tipo)
+    private Color CorTipoAvatar(string tipo) => tipo switch
+    {
+        "Gerente" => Color.Error,
+        "Recepção" => Color.Warning,
+        "Professor" => Color.Info,
+        "Bolsista" => Color.Secondary,
+        _ => Color.Primary
+    };
+
+    // SPRINT 7: FotoUrl adicionado ao DTO local.
+    // ObterUsuarioResponse já retorna FotoUrl — só precisava deserializar.
     public class UsuarioDto
     {
         public string IdHash { get; set; } = "";
@@ -231,5 +241,6 @@ else
         public string Email { get; set; } = "";
         public string Tipo { get; set; } = "";
         public bool Ativo { get; set; }
+        public string FotoUrl { get; set; } = "";   // ← NOVO Sprint 7
     }
 }

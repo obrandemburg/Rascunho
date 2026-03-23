@@ -1,20 +1,15 @@
 ﻿// ARQUIVO: Rascunho.Shared/DTOs/BolsistaDTOs.cs
 //
-// ALTERAÇÃO SPRINT 6:
-// SugestaoBalanceamentoResponse recebia apenas TurmaIdHash, sem dados
-// legíveis da turma. As telas TurmasObrigatorias.razor e TurmasRecomendadas.razor
-// exibiam o hash criptografado (ex: "aBcDeFgH") como título do card, tornando
-// impossível para o bolsista identificar qual turma estava sendo exibida.
+// SPRINT 6: Adicionados RitmoNome, DiaDaSemana, HorarioInicio, HorarioFim
+//           ao SugestaoBalanceamentoResponse (cards de turma exibiam hash criptografado).
 //
-// CAMPOS ADICIONADOS:
-//   - RitmoNome   (string)    : nome do ritmo da turma
-//   - DiaDaSemana (int)       : dia da semana (0=Dom, 1=Seg ... 6=Sáb)
-//   - HorarioInicio (TimeSpan): horário de início da turma
-//   - HorarioFim    (TimeSpan): horário de fim da turma
+// SPRINT 7: Adicionado FotoUrl ao DesempenhoResponse para que
+//           QuadroDesempenho (Gerente) e Desempenho (Bolsista) possam
+//           exibir a foto do bolsista nos cards e no cabeçalho.
 //
-// ATENÇÃO: Como SugestaoBalanceamentoResponse é um record no C#, a ordem
-// dos parâmetros no construtor importa. Os novos campos foram adicionados
-// ao FINAL para não quebrar código existente que usa argumento posicional.
+// ATENÇÃO: records posicionais em C# geram construtores com ordem fixa.
+// Ao adicionar campos, a ORDEM dos argumentos em BolsistaService.cs
+// deve corresponder EXATAMENTE à ordem declarada aqui.
 
 namespace Rascunho.Shared.DTOs;
 
@@ -26,8 +21,7 @@ public record AdicionarHabilidadeRequest(string RitmoIdHash, string PapelDominan
 /// Usada nas telas TurmasObrigatorias (Bolsista) e TurmasRecomendadas (Bolsista).
 ///
 /// SPRINT 6: adicionados RitmoNome, DiaDaSemana, HorarioInicio e HorarioFim
-/// para que as telas possam exibir informações legíveis ao bolsista,
-/// em vez de mostrar apenas o hash criptografado da turma.
+/// para exibir informações legíveis em vez do hash criptografado.
 /// </summary>
 public record SugestaoBalanceamentoResponse(
     string TurmaIdHash,
@@ -36,14 +30,11 @@ public record SugestaoBalanceamentoResponse(
     string Status,
     int QuantidadeFaltante,
     List<BolsistaSugerido> Sugestoes,
-
-    // ── NOVO Sprint 6 — identificação legível da turma ────────────
-    // Sem esses campos, as telas exibiam apenas o hash (ex: "aBcDeFgH")
-    // como título do card, impossibilitando o bolsista de identificar a turma.
-    string RitmoNome,       // ex: "Forró"
-    int DiaDaSemana,        // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
-    TimeSpan HorarioInicio, // ex: 18:00:00
-    TimeSpan HorarioFim     // ex: 19:00:00
+    // ── SPRINT 6 ──────────────────────────────────────────────────
+    string RitmoNome,
+    int DiaDaSemana,
+    TimeSpan HorarioInicio,
+    TimeSpan HorarioFim
 );
 
 public record BolsistaSugerido(
@@ -61,14 +52,17 @@ public record RelatorioHorasBolsistaResponse(
     bool MetaAtingida
 );
 
-// ── Sprint 2: Desempenho de frequência do bolsista ──────────────
-
 /// <summary>
 /// Detalha a frequência do bolsista separando dias obrigatórios de dias extras.
+///
+/// SPRINT 7: adicionado FotoUrl após Nome para exibir a foto do bolsista
+/// nos cards do QuadroDesempenho (Gerente) e na tela Desempenho (Bolsista).
+/// Posição 3 no construtor — atualizar BolsistaService.MeuDesempenhoAsync na mesma posição.
 /// </summary>
 public record DesempenhoResponse(
     string BolsistaIdHash,
     string Nome,
+    string FotoUrl,                 // ← NOVO Sprint 7 — posição 3
     int? DiaObrigatorio1,
     int? DiaObrigatorio2,
     double FrequenciaObrigatoriaPct,

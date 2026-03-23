@@ -1,0 +1,91 @@
+﻿@* 
+  ARQUIVO: Rascunho.Client/Shared/UserAvatar.razor
+
+  SPRINT 7 — Componente centralizado de avatar de usuário.
+
+  MOTIVAÇÃO:
+  Antes da Sprint 7, cada tela repetia a mesma lógica:
+    - Se tem foto: <img>
+    - Se não tem: <MudAvatar> com a inicial do nome
+  Isso gerava duplicação e inconsistência visual.
+
+  ESTE COMPONENTE resolve isso com uma única fonte da verdade.
+
+  PARÂMETROS:
+    FotoUrl (string?) — URL pública da foto (ex: http://IP:8080/uploads/fotos/uuid.jpg)
+                        Vazio ou nulo → exibe inicial do nome
+    Nome    (string)  — Nome do usuário (usado para a inicial e para o alt da imagem)
+    Size    (Size)    — Tamanho do MudAvatar (padrão: Size.Medium)
+    Color   (Color)   — Cor de fundo quando não há foto (padrão: Color.Primary)
+
+  USO:
+    <UserAvatar FotoUrl="@aluno.FotoUrl" Nome="@aluno.Nome" Size="Size.Small" />
+    <UserAvatar FotoUrl="@usuario.FotoUrl" Nome="@usuario.Nome" />
+
+  COMO FUNCIONA:
+  1. Tenta renderizar a <img> dentro do MudAvatar se FotoUrl não está vazio.
+  2. O <img> usa object-fit:cover para preencher o círculo sem deformar.
+  3. Se a URL falhar (404, timeout), o browser simplesmente não renderiza o <img>
+     — o MudAvatar fica visível com a cor de fundo, sem erro para o usuário.
+  4. Fallback com a inicial do Nome quando FotoUrl é vazio/nulo.
+*@
+
+@using MudBlazor
+
+@if (!string.IsNullOrWhiteSpace(FotoUrl))
+{
+    @*
+      Exibe a foto dentro de um MudAvatar.
+      border-radius: 50% garante que a imagem respeita o shape circular do Avatar.
+      overflow: hidden no MudAvatar já cuida disso no MudBlazor, mas
+      definimos aqui como garantia extra para qualquer versão do componente.
+    *@
+    <MudAvatar Size="@Size" Color="@Color" Style="overflow: hidden; padding: 0;">
+        <img src="@FotoUrl"
+             alt="Foto de @Nome"
+             style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block;" />
+    </MudAvatar>
+}
+else
+{
+    @*
+      Fallback: exibe a inicial do primeiro nome.
+      FirstOrDefault() retorna '\0' se a string estiver vazia — 
+      ToString() de '\0' é string vazia, o que é aceitável no MudAvatar.
+    *@
+    <MudAvatar Size="@Size" Color="@Color">
+        @(Nome?.FirstOrDefault().ToString().ToUpperInvariant())
+    </MudAvatar>
+}
+
+@code {
+    /// <summary>
+    /// URL pública da foto do usuário.
+    /// Formato esperado: http://IP:8080/uploads/fotos/uuid.jpg
+    /// Nulo ou vazio → exibe a inicial do nome.
+    /// </summary>
+    [Parameter]
+    public string? FotoUrl { get; set; }
+
+    /// <summary>
+    /// Nome completo do usuário.
+    /// Usado para o alt da imagem e para calcular a inicial no fallback.
+    /// </summary>
+    [Parameter]
+    public string Nome { get; set; } = "";
+
+    /// <summary>
+    /// Tamanho do avatar. Padrão: Size.Medium.
+    /// Use Size.Small em tabelas e listas densas.
+    /// </summary>
+    [Parameter]
+    public Size Size { get; set; } = Size.Medium;
+
+    /// <summary>
+    /// Cor de fundo quando o avatar exibe a inicial (sem foto).
+    /// Padrão: Color.Primary (verde da identidade visual).
+    /// Use Color.Secondary para bolsistas, Color.Info para professores etc.
+    /// </summary>
+    [Parameter]
+    public Color Color { get; set; } = Color.Primary;
+}

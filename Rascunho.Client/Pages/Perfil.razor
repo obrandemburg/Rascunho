@@ -3,34 +3,36 @@
   ROTA:    /perfil
   ACESSO:  Qualquer usuário autenticado
 
-  CORREÇÃO SPRINT 6:
-  O método SalvarPerfil enviava o payload { NomeSocial, Biografia }
-  sem o campo FotoUrl. EditarPerfilRequest é record(NomeSocial, Biografia, FotoUrl),
-  então FotoUrl chegava como null no backend.
+  SPRINT 7 — Adicionado fluxo completo de upload e troca de foto de perfil.
 
-  O método usuario.EditarPerfil(fotoUrl, nomeSocial, biografia) no backend
-  faz: FotoUrl = fotoUrl — ou seja, null sobrescreve a foto existente.
+  FLUXO DE TROCA DE FOTO:
+  1. Usuário clica "Trocar Foto"
+  2. JS (fileUpload.js já existente) aciona o <InputFile> oculto
+  3. OnChange="SelecionarFoto" gera preview em base64 localmente
+  4. Ao clicar "Salvar": POST /api/upload/foto → obtém URL pública
+  5. URL incluída no PUT /api/usuarios/meu-perfil/atualizar
+  6. localStorage "userFotoUrl" atualizado com a nova URL
+  7. fotoUrlAtual atualizado no estado → UI reflete a nova foto imediatamente
 
-  SOLUÇÃO:
-  1. Injetar ILocalStorageService para ler 'userFotoUrl' salvo no login
-     (o AuthService agora salva a foto durante o login — ver AuthService.cs)
-  2. Incluir o fotoUrlAtual no payload do PUT
-  3. Exibir a foto atual do usuário no perfil usando um MudAvatar condicional
+  IMPORTANTE — O fileUpload.js JÁ EXISTE em wwwroot/js/fileUpload.js.
+  Ele expõe window.fileUpload.abrirSeletor(inputId) que faz .click()
+  no elemento HTML com o id informado. Não é necessário criar um novo arquivo JS.
 
-  IMPORTANTE: Quando o usuário troca de foto (Sprint 7), AuthService deve
-  ser atualizado para armazenar a nova URL. Por agora, a foto exibida é a
-  que foi salva no último login.
+  CORREÇÃO SPRINT 6 MANTIDA:
+  FotoUrl atual é incluído no payload do PUT para não apagar a foto ao salvar.
 *@
 
 @page "/perfil"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
 @using System.Net.Http.Json
 @using Blazored.LocalStorage
 @attribute [Authorize]
 @inject HttpClient Http
 @inject ISnackbar Snackbar
 @inject ILocalStorageService LocalStorage
+@inject IJSRuntime JS
 
 <PageTitle>Meu Perfil — Ponto da Dança</PageTitle>
 
@@ -41,57 +43,90 @@
         Meu Perfil
     </MudText>
 
-    @* Cabeçalho com avatar/foto e dados do usuário *@
+    @* ── Cabeçalho: foto atual + dados básicos ─────────────────── *@
     <MudPaper Elevation="3" Class="pa-6 rounded-xl mb-6">
         <div class="d-flex align-center gap-4 mb-4">
+
             @*
-              NOVO Sprint 6: exibe a foto atual do usuário se disponível.
-              Se fotoUrlAtual estiver vazio, exibe MudAvatar com inicial.
-              A foto vem do LocalStorage (salva durante o login pelo AuthService).
+              SPRINT 7: exibe foto ou inicial usando UserAvatar.
+              A foto vem do localStorage (salvo pelo AuthService no login).
+              Se o usuário trocou a foto nesta sessão, fotoUrlAtual
+              já reflete a URL nova antes mesmo de relogar.
             *@
-            @if (!string.IsNullOrEmpty(fotoUrlAtual))
-            {
-                <MudAvatar Style="width: 72px; height: 72px;">
-                    <MudImage Src="@fotoUrlAtual"
-                              Alt="Foto de perfil"
-                              Style="width:100%; height:100%; object-fit:cover;" />
-                </MudAvatar>
-            }
-            else
-            {
-                <MudAvatar Color="Color.Primary"
-                           Style="width: 72px; height: 72px; font-size: 2rem;">
-                    @nomeInicial
-                </MudAvatar>
-            }
+            <UserAvatar FotoUrl="@fotoUrlAtual" Nome="@nomeCompleto" Size="Size.Large" />
 
             <div>
-                <MudText Typo="Typo.h5" Class="font-weight-bold">
-                    @nomeCompleto
-                </MudText>
-                <MudChip T="string"
-                         Size="Size.Small"
-                         Color="Color.Primary"
-                         Variant="Variant.Filled">
+                <MudText Typo="Typo.h5" Class="font-weight-bold">@nomeCompleto</MudText>
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">
                     @role
                 </MudChip>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+                    <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" Class="mr-1" />
+                    @email
+                </MudText>
             </div>
         </div>
 
+        @* ── Área de troca de foto ────────────────────────────── *@
         <MudDivider Class="mb-4" />
 
-        <MudText Typo="Typo.body2" Class="mud-text-secondary">
-            <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" Class="mr-1" />
-            @email
-        </MudText>
+        <MudText Typo="Typo.subtitle2" Class="mb-3">Foto de Perfil</MudText>
 
-        @* Aviso sobre troca de foto — será implementado na Sprint 7 *@
-        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
-            Para alterar sua foto de perfil, aguarde a próxima atualização do sistema.
-        </MudAlert>
+        <div class="d-flex align-center gap-3 flex-wrap">
+
+            @*
+              SPRINT 7: InputFile OCULTO — acionado via JS.
+              Por que oculto?
+              O Blazor não permite acionar <input type="file"> programaticamente
+              pelo C#. O arquivo fileUpload.js já existente na wwwroot faz
+              document.getElementById('inputFotoPerfil').click() para nós.
+              
+              IMPORTANTE: o id "inputFotoPerfil" é diferente do "inputFoto"
+              usado em CriarUsuario.razor para evitar conflitos se ambas
+              as páginas fossem renderizadas juntas (improvável, mas seguro).
+            *@
+            <InputFile id="inputFotoPerfil"
+                       OnChange="SelecionarFoto"
+                       accept="image/jpeg,image/jpg,image/png,image/webp"
+                       style="display: none;" />
+
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.CameraAlt"
+                       OnClick="AbrirSeletorFoto"
+                       Disabled="@(salvando)">
+                @(string.IsNullOrEmpty(novaFotoPreviewUrl) ? "Escolher Foto" : "Trocar Novamente")
+            </MudButton>
+
+            @if (!string.IsNullOrEmpty(nomeFotoSelecionada))
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    📎 @nomeFotoSelecionada
+                </MudText>
+            }
+        </div>
+
+        @* Preview da nova foto selecionada (antes de salvar) *@
+        @if (!string.IsNullOrEmpty(novaFotoPreviewUrl))
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+                Nova foto selecionada. Clique em <strong>Salvar Alterações</strong> para confirmar.
+            </MudAlert>
+            <div class="mt-3 d-flex align-center gap-3">
+                <MudAvatar Style="width: 64px; height: 64px; overflow: hidden; padding: 0;">
+                    <img src="@novaFotoPreviewUrl" alt="Preview"
+                         style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;" />
+                </MudAvatar>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Preview da nova foto</MudText>
+            </div>
+        }
+
+        <MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">
+            Formatos aceitos: JPG, PNG, WEBP · Tamanho máximo: 5 MB
+        </MudText>
     </MudPaper>
 
-    @* Formulário de edição de Nome Social e Biografia *@
+    @* ── Formulário de Nome Social e Biografia ─────────────────── *@
     <MudPaper Elevation="3" Class="pa-6 rounded-xl">
         <MudText Typo="Typo.h6" Class="mb-4">Editar Informações</MudText>
 
@@ -119,7 +154,15 @@
                        Size="Size.Large"
                        Disabled="@salvando"
                        StartIcon="@Icons.Material.Filled.Save">
-                @(salvando ? "Salvando..." : "Salvar Alterações")
+                @if (salvando)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    @statusSalvamento
+                }
+                else
+                {
+                    <text>Salvar Alterações</text>
+                }
             </MudButton>
         </EditForm>
     </MudPaper>
@@ -131,100 +174,211 @@
     private Task<AuthenticationState>? AuthStateTask { get; set; }
 
     private bool salvando = false;
+    private string statusSalvamento = "Salvando...";
 
-    // Dados exibidos no cabeçalho (lidos das Claims do JWT)
+    // Dados lidos das Claims do JWT
     private string nomeCompleto = "";
-    private string nomeInicial = "?";
     private string email = "";
     private string role = "";
 
-    // NOVO Sprint 6: URL da foto atual, lida do LocalStorage
-    // Salva pelo AuthService durante o login (ver AuthService.cs)
+    // Foto atual (do localStorage, salva no login pelo AuthService)
     private string fotoUrlAtual = "";
+
+    // Estado da nova foto selecionada (ainda não salva)
+    private string? novaFotoPreviewUrl = null;
+    private string nomeFotoSelecionada = "";
+    private IBrowserFile? arquivoFotoSelecionado = null;
 
     private EditarPerfilForm form = new();
 
     protected override async Task OnInitializedAsync()
     {
-        // ── Lê dados das Claims do JWT ──────────────────────────
+        // Lê dados do JWT (Claims injetadas pelo CustomAuthStateProvider)
         if (AuthStateTask != null)
         {
             var authState = await AuthStateTask;
             var user = authState.User;
-
             nomeCompleto = user.Identity?.Name ?? "Usuário";
-            nomeInicial = nomeCompleto.FirstOrDefault().ToString().ToUpper();
-            email = user.FindFirst(c =>
-                c.Type == System.Security.Claims.ClaimTypes.Email)?.Value ?? "";
-            role = user.FindFirst(c =>
-                c.Type == System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+            email = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "";
+            role = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
         }
 
-        // ── NOVO Sprint 6: Lê a foto do LocalStorage ───────────
-        // O AuthService armazena 'userFotoUrl' durante o login.
-        // GetItemAsync retorna null se a chave não existe (usuário
-        // que fez login antes desta atualização), então usamos ?? "".
+        // Lê a URL da foto atual do localStorage
+        // O AuthService salva "userFotoUrl" durante o login
         try
         {
             fotoUrlAtual = await LocalStorage.GetItemAsync<string>("userFotoUrl") ?? "";
         }
+        catch { fotoUrlAtual = ""; }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // ABRE O SELETOR DE ARQUIVO DO SISTEMA OPERACIONAL
+    //
+    // Por que usamos JS aqui?
+    // O Blazor WASM não pode chamar .click() diretamente em um elemento
+    // do DOM via C#. O fileUpload.js (em wwwroot/js/fileUpload.js) expõe
+    // a função window.fileUpload.abrirSeletor(id) que faz exatamente isso.
+    //
+    // O arquivo JS já está carregado no index.html:
+    //   <script src="js/fileUpload.js"></script>
+    // ──────────────────────────────────────────────────────────────
+    private async Task AbrirSeletorFoto()
+    {
+        await JS.InvokeVoidAsync("fileUpload.abrirSeletor", "inputFotoPerfil");
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // PROCESSA O ARQUIVO SELECIONADO
+    //
+    // Gera um preview em base64 localmente (sem enviar ao servidor).
+    // O arquivo real só é enviado ao servidor quando o usuário clicar
+    // em "Salvar Alterações".
+    //
+    // Limite de leitura para preview: 5MB (igual ao limite do endpoint).
+    // Se o arquivo for maior, o preview é ignorado (o upload ainda funciona).
+    // ──────────────────────────────────────────────────────────────
+    private async Task SelecionarFoto(InputFileChangeEventArgs e)
+    {
+        arquivoFotoSelecionado = e.File;
+        nomeFotoSelecionada = e.File.Name;
+        novaFotoPreviewUrl = null; // limpa preview anterior
+
+        try
+        {
+            var buffer = new byte[arquivoFotoSelecionado.Size];
+            await arquivoFotoSelecionado
+                .OpenReadStream(maxAllowedSize: 5 * 1024 * 1024)
+                .ReadAsync(buffer);
+
+            var base64 = Convert.ToBase64String(buffer);
+            novaFotoPreviewUrl = $"data:{arquivoFotoSelecionado.ContentType};base64,{base64}";
+        }
         catch
         {
-            // Se falhar (ex: localStorage não disponível), continua sem foto
-            fotoUrlAtual = "";
+            // Se o arquivo for muito grande para o preview, mostra só o nome
+            Snackbar.Add("Arquivo grande demais para preview — será enviado ao salvar.", Severity.Info);
         }
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // SALVA O PERFIL (com ou sem nova foto)
+    //
+    // FLUXO:
+    //   1. Se há nova foto selecionada:
+    //      a. POST /api/upload/foto (multipart/form-data)
+    //      b. Obtém a URL pública retornada
+    //      c. Atualiza fotoUrlAtual (UI) e localStorage "userFotoUrl"
+    //   2. PUT /api/usuarios/meu-perfil/atualizar com:
+    //      - NomeSocial (pode estar vazio)
+    //      - Biografia  (pode estar vazia)
+    //      - FotoUrl    (URL nova ou URL atual — nunca null)
+    //
+    // POR QUE INCLUIR FotoUrl NO PUT?
+    //   EditarPerfilRequest é record(NomeSocial, Biografia, FotoUrl).
+    //   Se FotoUrl for null, o backend executa: usuario.FotoUrl = null
+    //   apagando a foto do usuário. Sempre passar a URL atual evita isso.
+    // ──────────────────────────────────────────────────────────────
     private async Task SalvarPerfil()
     {
         salvando = true;
+        statusSalvamento = "Salvando...";
+
         try
         {
-            // ── CORREÇÃO SPRINT 6 ────────────────────────────────
-            // Antes: o payload não incluía FotoUrl, que chegava como null
-            //        no backend e apagava a foto do usuário.
-            //
-            // Agora: incluímos fotoUrlAtual (lido do LocalStorage).
-            //        Se o usuário não tem foto (string vazia), enviamos ""
-            //        em vez de null, e o backend mantém o campo inalterado
-            //        (EditarPerfil(fotoUrl, ...) só altera se fotoUrl != null).
-            //
-            // EditarPerfilRequest é record(NomeSocial, Biografia, FotoUrl).
-            // O backend valida: NomeSocial max 100 chars, Biografia max 500 chars.
-            // FotoUrl não tem validação no FluentValidation (campo livre).
+            var fotoParaEnviar = fotoUrlAtual; // mantém a foto atual por padrão
+
+            // ── PASSO 1: Upload da nova foto (se houver) ──────────
+            if (arquivoFotoSelecionado != null)
+            {
+                statusSalvamento = "Enviando foto...";
+                StateHasChanged();
+
+                using var content = new MultipartFormDataContent();
+                using var stream = arquivoFotoSelecionado
+                    .OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+                using var streamContent = new StreamContent(stream);
+                streamContent.Headers.ContentType =
+                    new System.Net.Http.Headers.MediaTypeHeaderValue(
+                        arquivoFotoSelecionado.ContentType);
+                content.Add(streamContent, "foto", arquivoFotoSelecionado.Name);
+
+                var uploadResponse = await Http.PostAsync("api/upload/foto", content);
+
+                if (uploadResponse.IsSuccessStatusCode)
+                {
+                    var resultado = await uploadResponse.Content
+                        .ReadFromJsonAsync<UploadFotoDto>();
+
+                    if (resultado != null && !string.IsNullOrEmpty(resultado.Url))
+                    {
+                        fotoParaEnviar = resultado.Url;
+
+                        // Atualiza estado local imediatamente (UI reflete antes mesmo de relogar)
+                        fotoUrlAtual = fotoParaEnviar;
+
+                        // Persiste no localStorage para futuras sessões e para Perfil.razor
+                        await LocalStorage.SetItemAsync("userFotoUrl", fotoParaEnviar);
+
+                        // Limpa o estado de "foto selecionada" — upload concluído
+                        arquivoFotoSelecionado = null;
+                        novaFotoPreviewUrl = null;
+                        nomeFotoSelecionada = "";
+                    }
+                }
+                else
+                {
+                    Snackbar.Add("Não foi possível enviar a foto. Tente novamente.", Severity.Warning);
+                    return; // Aborta para não salvar o perfil sem a foto pretendida
+                }
+            }
+
+            // ── PASSO 2: Atualiza perfil ──────────────────────────
+            statusSalvamento = "Salvando perfil...";
+            StateHasChanged();
+
             var payload = new
             {
                 NomeSocial = form.NomeSocial ?? "",
                 Biografia = form.Biografia ?? "",
-                FotoUrl = fotoUrlAtual        // ← CORREÇÃO: era omitido
+                FotoUrl = fotoParaEnviar      // nunca null — evita apagar a foto
             };
 
-            var response = await Http.PutAsJsonAsync("api/usuarios/meu-perfil/atualizar", payload);
+            var perfilResponse = await Http.PutAsJsonAsync(
+                "api/usuarios/meu-perfil/atualizar", payload);
 
-            if (response.IsSuccessStatusCode)
+            if (perfilResponse.IsSuccessStatusCode)
             {
                 Snackbar.Add("Perfil atualizado com sucesso! ✅", Severity.Success);
             }
-            else if ((int)response.StatusCode == 400)
+            else if ((int)perfilResponse.StatusCode == 400)
             {
-                Snackbar.Add("Dados inválidos. Verifique os campos e tente novamente.", Severity.Warning);
-            }
-            else if ((int)response.StatusCode == 422)
-            {
-                var erro = await response.Content.ReadAsStringAsync();
-                Snackbar.Add($"Erro: {erro}", Severity.Error);
+                Snackbar.Add("Dados inválidos. Verifique os campos.", Severity.Warning);
             }
             else
             {
-                Snackbar.Add("Erro ao salvar. Tente novamente.", Severity.Error);
+                var erro = await perfilResponse.Content.ReadAsStringAsync();
+                Snackbar.Add($"Erro ao salvar: {erro}", Severity.Error);
             }
         }
-        finally { salvando = false; }
+        finally
+        {
+            salvando = false;
+            statusSalvamento = "Salvando...";
+        }
     }
 
-    // Modelo do formulário de edição.
-    // Não inclui FotoUrl pois o upload de foto será implementado na Sprint 7.
-    // A FotoUrl atual é lida do LocalStorage e incluída diretamente no payload.
+    // ── DTOs e modelos ────────────────────────────────────────────
+
+    // Resposta do endpoint POST /api/upload/foto
+    public class UploadFotoDto
+    {
+        public string Url { get; set; } = "";
+        public string NomeArquivo { get; set; } = "";
+        public long TamanhoBytes { get; set; }
+    }
+
+    // Modelo do formulário (campos editáveis que não são a foto)
     public class EditarPerfilForm
     {
         public string? NomeSocial { get; set; }

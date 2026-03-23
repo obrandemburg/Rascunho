@@ -3,15 +3,11 @@
   ROTA:    /gerencia/bolsistas
   ACESSO:  Gerente
 
-  FLUXO:
-  1. GET /api/gerente/desempenho-bolsistas → lista ordenada por urgência
-  2. Cards de resumo calculados em memória
-  3. Filtros aplicados no cliente (sem nova chamada à API)
-  4. Clique no card → modal com histórico completo + ações
-  5. Ações disponíveis no modal:
-     - Editar dias obrigatórios: PUT /api/bolsistas/{id}/dias-obrigatorios
-     - Registrar conversa: POST /api/gerente/bolsistas/{id}/registrar-conversa
-     - Desativar bolsa: PUT /api/gerente/bolsistas/{id}/desativar-bolsa
+  SPRINT 7:
+  - BolsistaDesempenhoDto agora inclui FotoUrl (campo novo em DesempenhoResponse)
+  - Cards da lista de bolsistas usam <UserAvatar> com foto real
+  - Cabeçalho do modal de detalhes usa <UserAvatar>
+  - Substituídos todos os MudAvatar estáticos com inicial
 *@
 
 @page "/gerencia/bolsistas"
@@ -46,47 +42,39 @@
 }
 else
 {
-    @* ── CARDS RESUMO ────────────────────────────────────────────── *@
+    @* ── CARDS RESUMO ─────────────────────────────────────────────── *@
     <MudGrid Class="mb-6">
         <MudItem xs="6" sm="3">
             <MudPaper Elevation="3" Class="pa-4 text-center rounded-xl"
                       Style="border-top: 4px solid #1b5e20;">
-                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Success">
-                    @totalAtivos
-                </MudText>
+                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Success">@totalAtivos</MudText>
                 <MudText Typo="Typo.body2" Class="mud-text-secondary">Bolsistas Ativos</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
             <MudPaper Elevation="3" Class="pa-4 text-center rounded-xl"
                       Style="border-top: 4px solid #f44336;">
-                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Error">
-                    @totalCriticos
-                </MudText>
+                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Error">@totalCriticos</MudText>
                 <MudText Typo="Typo.body2" Class="mud-text-secondary">Críticos (&lt;60%)</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
             <MudPaper Elevation="3" Class="pa-4 text-center rounded-xl"
                       Style="border-top: 4px solid #ff9800;">
-                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Warning">
-                    @totalAlerta
-                </MudText>
+                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Warning">@totalAlerta</MudText>
                 <MudText Typo="Typo.body2" Class="mud-text-secondary">Em Alerta (60–74%)</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
             <MudPaper Elevation="3" Class="pa-4 text-center rounded-xl"
                       Style="border-top: 4px solid #4caf50;">
-                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Success">
-                    @totalSaudavel
-                </MudText>
+                <MudText Typo="Typo.h3" Class="font-weight-bold" Color="Color.Success">@totalSaudavel</MudText>
                 <MudText Typo="Typo.body2" Class="mud-text-secondary">Saudável (75%+)</MudText>
             </MudPaper>
         </MudItem>
     </MudGrid>
 
-    @* ── FILTROS ─────────────────────────────────────────────────── *@
+    @* ── FILTROS ──────────────────────────────────────────────────── *@
     <MudPaper Elevation="1" Class="pa-4 mb-6 rounded-xl">
         <MudGrid>
             <MudItem xs="12" sm="5">
@@ -113,9 +101,7 @@ else
             </MudItem>
             <MudItem xs="12" sm="2" Class="d-flex align-end">
                 <MudButton OnClick="LimparFiltros" Variant="Variant.Outlined"
-                           FullWidth="true" Color="Color.Default">
-                    Limpar
-                </MudButton>
+                           FullWidth="true" Color="Color.Default">Limpar</MudButton>
             </MudItem>
         </MudGrid>
     </MudPaper>
@@ -123,7 +109,9 @@ else
     @* ── LISTA DE BOLSISTAS ───────────────────────────────────────── *@
     @if (!bolsistasFiltrados.Any())
     {
-        <MudAlert Severity="Severity.Info">Nenhum bolsista encontrado com os filtros aplicados.</MudAlert>
+        <MudAlert Severity="Severity.Info">
+            Nenhum bolsista encontrado com os filtros aplicados.
+        </MudAlert>
     }
     else
     {
@@ -138,9 +126,16 @@ else
                         <MudCardHeader>
                             <CardHeaderContent>
                                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                    <MudAvatar Color="@(urgente? Color.Error: Color.Primary)" Size="Size.Medium">
-                                        @b.Nome.FirstOrDefault()
-                                    </MudAvatar>
+                                    @*
+                                      SPRINT 7: UserAvatar com foto do bolsista.
+                                      Gerente agora vê a foto de cada bolsista nos cards,
+                                      facilitando a identificação visual rápida.
+                                      Cor urgente = Error; normal = Secondary (cor padrão de bolsista).
+                                    *@
+                                    <UserAvatar FotoUrl="@b.FotoUrl"
+                                                Nome="@b.Nome"
+                                                Size="Size.Medium"
+                                                Color="@(urgente ? Color.Error : Color.Secondary)" />
                                     <div>
                                         <MudText Typo="Typo.subtitle1" Class="font-weight-bold">@b.Nome</MudText>
                                         <MudText Typo="Typo.caption" Class="mud-text-secondary">
@@ -158,7 +153,6 @@ else
                             </CardHeaderActions>
                         </MudCardHeader>
                         <MudCardContent>
-                            @* Barra de progresso da frequência obrigatória *@
                             <div class="d-flex justify-space-between mb-1">
                                 <MudText Typo="Typo.caption">Freq. Obrigatória</MudText>
                                 <MudText Typo="Typo.caption"
@@ -169,7 +163,6 @@ else
                             <MudProgressLinear Color="@CorBarra(b.IndicadorSituacao)"
                                                Value="@b.FrequenciaObrigatoriaPct"
                                                Rounded="true" Size="Size.Medium" Class="mb-2" />
-
                             <MudText Typo="Typo.caption" Class="mud-text-secondary">
                                 @b.TotalPresencasObrigatorias / @b.TotalAulasObrigatorias presenças
                                 em dias obrigatórios
@@ -196,8 +189,15 @@ else
     <TitleContent>
         @if (bolsistaSelecionado != null)
         {
+            @*
+              SPRINT 7: UserAvatar no cabeçalho do modal.
+              O gerente vê a foto do bolsista também ao abrir os detalhes.
+            *@
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                <MudAvatar Color="Color.Primary">@bolsistaSelecionado.Nome.FirstOrDefault()</MudAvatar>
+                <UserAvatar FotoUrl="@bolsistaSelecionado.FotoUrl"
+                            Nome="@bolsistaSelecionado.Nome"
+                            Size="Size.Medium"
+                            Color="Color.Secondary" />
                 <div>
                     <MudText Typo="Typo.h6">@bolsistaSelecionado.Nome</MudText>
                     <MudText Typo="Typo.caption" Class="mud-text-secondary">
@@ -211,15 +211,13 @@ else
     <DialogContent>
         @if (bolsistaSelecionado != null)
         {
-            @* Ações disponíveis *@
             <MudText Typo="Typo.subtitle2" Class="mb-3">Ações</MudText>
             <MudGrid Class="mb-4">
+
                 @* Editar dias obrigatórios *@
                 <MudItem xs="12" sm="4">
                     <MudPaper Elevation="1" Class="pa-3 rounded-lg">
-                        <MudText Typo="Typo.body2" Class="mb-2">
-                            <b>Dias Obrigatórios</b>
-                        </MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2"><b>Dias Obrigatórios</b></MudText>
                         <MudSelect T="int" @bind-Value="novoDia1"
                                    Label="Dia 1" Variant="Variant.Outlined"
                                    Dense="true" Class="mb-2">
@@ -320,15 +318,13 @@ else
                         <MudTd>
                             @if (item.EhDiaObrigatorio)
                             {
-                                <MudChip T="string" Size="Size.Small"
-                                         Color="Color.Primary" Variant="Variant.Filled">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">
                                     Obrigatório
                                 </MudChip>
                             }
                             else
                             {
-                                <MudChip T="string" Size="Size.Small"
-                                         Color="Color.Default" Variant="Variant.Outlined">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
                                     Extra
                                 </MudChip>
                             }
@@ -350,9 +346,7 @@ else
     </DialogContent>
 
     <DialogActions>
-        <MudButton OnClick="@(() => modalAberto = false)" Color="Color.Default">
-            Fechar
-        </MudButton>
+        <MudButton OnClick="@(() => modalAberto = false)" Color="Color.Default">Fechar</MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -369,14 +363,11 @@ else
     private List<BolsistaDesempenhoDto> todos = new();
     private BolsistaDesempenhoDto? bolsistaSelecionado;
 
-    // Contadores para os cards de resumo
     private int totalAtivos => todos.Count;
     private int totalCriticos => todos.Count(b => b.IndicadorSituacao == "Crítico");
     private int totalAlerta => todos.Count(b => b.IndicadorSituacao == "Atenção");
-    private int totalSaudavel => todos.Count(b =>
-        b.IndicadorSituacao is "Excelente" or "Vamos melhorar");
+    private int totalSaudavel => todos.Count(b => b.IndicadorSituacao is "Excelente" or "Vamos melhorar");
 
-    // Filtragem aplicada em memória — sem nova chamada à API
     private IEnumerable<BolsistaDesempenhoDto> bolsistasFiltrados => todos
         .Where(b => filtroSituacao == "Todos" || b.IndicadorSituacao == filtroSituacao)
         .Where(b => filtroDia == "Todos" ||
@@ -450,7 +441,7 @@ else
 
             if (response.IsSuccessStatusCode)
             {
-                Snackbar.Add("Conversa registrada com sucesso! 📝", Severity.Success);
+                Snackbar.Add("Conversa registrada! 📝", Severity.Success);
                 textoConversa = "";
             }
             else
@@ -466,12 +457,9 @@ else
         var parametros = new DialogParameters
         {
             { "ContentText",
-                $"⚠️ ATENÇÃO\n\n" +
-                $"{bolsistaSelecionado.Nome} será convertido para Aluno comum.\n\n" +
-                "✓ Histórico de presenças: MANTIDO\n" +
-                "✓ Habilidades cadastradas: MANTIDAS\n" +
-                "✗ Dias obrigatórios: REMOVIDOS\n\n" +
-                "Esta ação é irreversível sem intervenção manual no banco." },
+                $"⚠️ ATENÇÃO\n\n{bolsistaSelecionado.Nome} será convertido para Aluno comum.\n\n" +
+                "✓ Histórico de presenças: MANTIDO\n✓ Habilidades cadastradas: MANTIDAS\n" +
+                "✗ Dias obrigatórios: REMOVIDOS\n\nEsta ação é irreversível sem intervenção manual." },
             { "ButtonText", "Desativar Bolsa" },
             { "Color", Color.Error }
         };
@@ -491,11 +479,8 @@ else
                 if (response.IsSuccessStatusCode)
                 {
                     Snackbar.Add(
-                        $"{bolsistaSelecionado.Nome} convertido para Aluno. " +
-                        "Ele precisará fazer login novamente.",
+                        $"{bolsistaSelecionado.Nome} convertido para Aluno. Ele precisará fazer login novamente.",
                         Severity.Warning);
-
-                    // Remove da lista local e fecha o modal
                     todos.RemoveAll(b => b.BolsistaIdHash == bolsistaSelecionado.BolsistaIdHash);
                     modalAberto = false;
                 }
@@ -526,8 +511,7 @@ else
 
     private Color CorBarra(string indicador) => indicador switch
     {
-        "Crítico" => Color.Error,
-        "Atenção" => Color.Error,
+        "Crítico" or "Atenção" => Color.Error,
         "Vamos melhorar" => Color.Warning,
         _ => Color.Success
     };
@@ -564,10 +548,20 @@ else
         _ => "—"
     };
 
-    // DTOs locais espelhando DesempenhoResponse do backend
+    // ──────────────────────────────────────────────────────────────
+    // DTO LOCAL — espelha DesempenhoResponse do backend.
+    //
+    // SPRINT 7: FotoUrl adicionado na posição 3 (após Nome),
+    // correspondendo à nova declaração em BolsistaDTOs.cs:
+    //   DesempenhoResponse(BolsistaIdHash, Nome, FotoUrl, DiaObrigatorio1, ...)
+    //
+    // Usamos record com `with` expression para atualizar DiaObrigatorio
+    // sem perder os demais campos — isso requer que seja record, não class.
+    // ──────────────────────────────────────────────────────────────
     public record BolsistaDesempenhoDto(
         string BolsistaIdHash,
         string Nome,
+        string FotoUrl,                         // ← NOVO Sprint 7
         int? DiaObrigatorio1,
         int? DiaObrigatorio2,
         double FrequenciaObrigatoriaPct,
