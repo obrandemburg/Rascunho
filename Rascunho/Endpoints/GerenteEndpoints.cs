@@ -71,7 +71,7 @@ public static class GerenteEndpoints
             });
 
         // 4. LISTAR TODOS COM DESEMPENHO (ordenado por prioridade)
-        group.MapGet("/desempenho-bolsistas",
+        group.MapGet("/desempenho-bolsistas-critico",
             async (BolsistaService bolsistaService, AppDbContext db) =>
             {
                 var ids = await db.Usuarios
@@ -81,7 +81,6 @@ public static class GerenteEndpoints
                     .ToListAsync();
 
                 // CORREÇÃO: Execução sequencial para evitar o erro de concorrência 
-                // "A second operation was started on this context" do AppDbContext
                 var resultados = new List<Rascunho.Shared.DTOs.DesempenhoResponse>();
                 foreach (var id in ids)
                 {

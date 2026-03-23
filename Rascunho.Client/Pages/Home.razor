@@ -448,7 +448,7 @@
         try
         {
             var bolsistas = await Http.GetFromJsonAsync<List<BolsistaResumoDto>>(
-                "api/gerente/desempenho-bolsistas");
+                "api/gerente/desempenho-bolsistas-critico");
             totalCriticos = bolsistas?.Count(b => b.IndicadorSituacao == "Crítico") ?? 0;
         }
         catch { }
