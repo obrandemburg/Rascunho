@@ -1,6 +1,5 @@
-﻿@* 
-  ARQUIVO: Rascunho.Client/Pages/Turmas/QuadroTurmas.razor
-  ROTA:    /quadro-turmas
+﻿@* ARQUIVO: Rascunho.Client/Pages/Turmas/QuadroTurmas.razor
+  ROTA:    /turmas
   ACESSO:  Anônimo
 
   CORREÇÕES SPRINT 6:
@@ -16,7 +15,7 @@
   apareciam sempre como vazio/zero nos cards.
 *@
 
-@page "/quadro-turmas"
+@page "/turmas"
 @using System.Net.Http.Json
 @using Microsoft.AspNetCore.Components.Authorization
 @inject HttpClient Http
@@ -29,15 +28,10 @@
     </MudText>
 
     @* Filtros *@
-    <MudPaper Elevation="0" Class="pa-4 mb-6 rounded-lg"
-              Style="border: 1px solid #e0e0e0;">
+    <MudPaper Elevation="0" Class="pa-4 mb-6 rounded-lg" Style="border: 1px solid #e0e0e0;">
         <MudGrid>
-            <MudItem xs="12" sm="5">
-                <MudSelect T="string"
-                           Label="Filtrar por Ritmo"
-                           @bind-Value="filtroRitmo"
-                           AnchorOrigin="Origin.BottomCenter"
-                           Variant="Variant.Outlined">
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" Label="Ritmo" @bind-Value="filtroRitmo" AnchorOrigin="Origin.BottomCenter" Variant="Variant.Outlined">
                     <MudSelectItem T="string" Value="@("Todos")">Todos</MudSelectItem>
                     @foreach (var nome in nomeRitmos)
                     {
@@ -45,28 +39,36 @@
                     }
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" sm="5">
-                <MudSelect T="string"
-                           Label="Dia da Semana"
-                           @bind-Value="filtroDia"
-                           AnchorOrigin="Origin.BottomCenter"
-                           Variant="Variant.Outlined">
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" Label="Professor(a)" @bind-Value="filtroProfessor" AnchorOrigin="Origin.BottomCenter" Variant="Variant.Outlined">
                     <MudSelectItem T="string" Value="@("Todos")">Todos</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("Segunda-feira")">Segunda-feira</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("Terça-feira")">Terça-feira</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("Quarta-feira")">Quarta-feira</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("Quinta-feira")">Quinta-feira</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("Sexta-feira")">Sexta-feira</MudSelectItem>
+                    @foreach (var prof in nomeProfessores)
+                    {
+                        <MudSelectItem T="string" Value="@prof">@prof</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="string" Label="Dia da Semana" @bind-Value="filtroDia" AnchorOrigin="Origin.BottomCenter" Variant="Variant.Outlined">
+                    <MudSelectItem T="string" Value="@("Todos")">Todos</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Segunda-feira")">Segunda</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Terça-feira")">Terça</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Quarta-feira")">Quarta</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Quinta-feira")">Quinta</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Sexta-feira")">Sexta</MudSelectItem>
                     <MudSelectItem T="string" Value="@("Sábado")">Sábado</MudSelectItem>
                 </MudSelect>
             </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="string" Label="Turno" @bind-Value="filtroTurno" AnchorOrigin="Origin.BottomCenter" Variant="Variant.Outlined">
+                    <MudSelectItem T="string" Value="@("Todos")">Todos</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Manhã")">Manhã</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Tarde")">Tarde</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Noite")">Noite</MudSelectItem>
+                </MudSelect>
+            </MudItem>
             <MudItem xs="12" sm="2" Class="d-flex align-end">
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           FullWidth="true"
-                           OnClick="Filtrar">
-                    Filtrar
-                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="Filtrar">Filtrar</MudButton>
             </MudItem>
         </MudGrid>
     </MudPaper>
@@ -185,10 +187,13 @@
     private bool estaLogado = false;
     private string filtroRitmo = "Todos";
     private string filtroDia = "Todos";
+    private string filtroProfessor = "Todos";
+    private string filtroTurno = "Todos";
 
+    private List<string> nomeRitmos = new();
+    private List<string> nomeProfessores = new();
     private List<TurmaDto> todasTurmas = new();
     private List<TurmaDto> turmasExibidas = new();
-    private List<string> nomeRitmos = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -217,25 +222,44 @@
                 .Distinct()
                 .OrderBy(n => n)
                 .ToList();
+
+            // Extrai nomes únicos de professores para o filtro
+            nomeProfessores = todasTurmas
+                .SelectMany(t => t.NomesProfessores)
+                .Distinct()
+                .OrderBy(n => n)
+                .ToList();
         }
         catch
         {
             Snackbar.Add("Erro ao buscar turmas. Verifique se a API está online.", Severity.Error);
         }
-        finally { carregando = false; }
+        finally
+        {
+            carregando = false;
+        }
     }
 
     private void Filtrar()
     {
-        //
-        // CORREÇÃO: o filtro de dia era por turma.DiaSemana (string) que estava sempre vazio.
-        // Agora convertemos turma.DiaDaSemana (int) para string com DiaDaSemanaTexto()
-        // e comparamos com o filtroSelecionado.
-        //
         turmasExibidas = todasTurmas
             .Where(t => filtroRitmo == "Todos" || t.RitmoNome == filtroRitmo)
-            .Where(t => filtroDia == "Todos" || DiaDaSemanaTexto(t.DiaDaSemana) == filtroDia)
+            .Where(t => filtroDia == "Todos" || DiaDaSemanaTexto(t.DiaDaSemana) == filtroDia || DiaDaSemanaTexto(t.DiaDaSemana).Contains(filtroDia))
+            .Where(t => filtroProfessor == "Todos" || t.NomesProfessores.Contains(filtroProfessor))
+            .Where(t => filtroTurno == "Todos" || TurnoCompativel(t.HorarioInicio, filtroTurno))
             .ToList();
+    }
+
+    private bool TurnoCompativel(string horario, string turno)
+    {
+        if (string.IsNullOrEmpty(horario) || !TimeSpan.TryParse(horario, out var tempo)) return true;
+        return turno switch
+        {
+            "Manhã" => tempo.Hours < 12,
+            "Tarde" => tempo.Hours >= 12 && tempo.Hours < 18,
+            "Noite" => tempo.Hours >= 18,
+            _ => true
+        };
     }
 
     private async Task Matricular(string turmaIdHash)
