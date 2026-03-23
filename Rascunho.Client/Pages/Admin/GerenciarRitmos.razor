@@ -1,0 +1,465 @@
+﻿@* 
+  ═══════════════════════════════════════════════════════════════
+  ARQUIVO: Rascunho.Client/Pages/Admin/GerenciarRitmos.razor
+  ROTA:    /admin/ritmos
+  ACESSO:  Recepção, Gerente
+
+  FLUXO DE DADOS:
+  ┌──────────────────────────────────────────────────────────────┐
+  │  OnInitializedAsync()                                        │
+  │    └─ GET /api/ritmos/listar → todos os ritmos               │
+  │                                                              │
+  │  SalvarRitmo()                                               │
+  │    ├─ POST /api/ritmos/criar       (novo)                    │
+  │    └─ PUT  /api/ritmos/atualizar/{idHash} (edição)           │
+  │         Validações (FluentValidation no backend):            │
+  │           - Nome obrigatório, máx 100 chars                  │
+  │           - Modalidade: "Dança de salão" ou "Dança solo"     │
+  │           - Descrição: máx 500 chars (opcional)              │
+  │                                                              │
+  │  AlterarStatus(ritmo, novoStatus)                            │
+  │    └─ PUT /api/ritmos/{idHash}/status                        │
+  │         BLOQUEIO: não pode desativar com turmas ativas       │
+  │                                                              │
+  │  ConfirmarExclusao(ritmo)                                    │
+  │    └─ DELETE /api/ritmos/excluir/{idHash}                    │
+  │         BLOQUEIO: não pode excluir com turmas (ativas/enc.)  │
+  └──────────────────────────────────────────────────────────────┘
+
+  REGRAS DE NEGÓCIO:
+  - Ritmo com turmas ATIVAS: não pode ser desativado
+  - Ritmo com QUALQUER turma (ativa ou encerrada): não pode ser excluído
+  - Modalidade é case-insensitive no backend, mas sempre armazenada
+    com capitalização correta: "Dança de salão" | "Dança solo"
+
+  LAYOUT: formulário lateral (esquerda) + tabela (direita)
+  Padrão idêntico ao GerenciarSalas.razor para consistência visual.
+*@
+
+@page "/admin/ritmos"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@using Rascunho.Client.Shared
+@attribute [Authorize(Roles = "Recepção,Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Gestão de Ritmos — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.MusicNote" Class="mr-2" />
+    Gestão de Ritmos
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Gerencie o catálogo de ritmos da escola — criação, edição e status.
+</MudText>
+
+<MudGrid>
+
+    @* ── COLUNA ESQUERDA: Formulário ─────────────────────────────── *@
+    <MudItem xs="12" md="4">
+        <MudPaper Elevation="4" Class="pa-6 rounded-xl">
+            <MudText Typo="Typo.h6" Class="mb-4">
+                @(editando != null ? "Editar Ritmo" : "Cadastrar Novo Ritmo")
+            </MudText>
+
+            <EditForm Model="@form" OnValidSubmit="SalvarRitmo">
+                <MudTextField @bind-Value="form.Nome"
+                              Label="Nome do Ritmo"
+                              Variant="Variant.Outlined"
+                              Class="mb-4"
+                              MaxLength="100"
+                              HelperText="Ex: Forró, Salsa, Samba de Gafieira"
+                              Required="true" />
+
+                @*
+                  MODALIDADE: dois valores exatos aceitos pelo backend.
+                  O validator usa ToLower() internamente, mas sempre enviamos
+                  com a capitalização correta para consistência nos filtros
+                  do QuadroTurmas e na tela pública de ritmos.
+                *@
+                <MudSelect T="string"
+                           @bind-Value="form.Modalidade"
+                           Label="Modalidade"
+                           Variant="Variant.Outlined"
+                           Class="mb-4"
+                           Required="true"
+                           AnchorOrigin="Origin.BottomCenter"
+                           HelperText="Define se é dançado em par ou solo">
+                    <MudSelectItem T="string" Value="@("Dança de salão")">
+                        💃 Dança de salão (em par)
+                    </MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Dança solo")">
+                        🕺 Dança solo (individual)
+                    </MudSelectItem>
+                </MudSelect>
+
+                <MudTextField @bind-Value="form.Descricao"
+                              Label="Descrição (opcional)"
+                              Variant="Variant.Outlined"
+                              Lines="3"
+                              Class="mb-6"
+                              MaxLength="500"
+                              HelperText="Breve descrição exibida na vitrine pública" />
+
+                <div class="d-flex gap-3">
+                    @if (editando != null)
+                    {
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   OnClick="CancelarEdicao"
+                                   Class="flex-grow-1">
+                            Cancelar
+                        </MudButton>
+                    }
+                    <MudButton ButtonType="ButtonType.Submit"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@(editando != null ? Icons.Material.Filled.Save : Icons.Material.Filled.Add)"
+                               Disabled="@salvando"
+                               Class="flex-grow-1">
+                        @(salvando ? "Salvando..." : editando != null ? "Salvar" : "Criar Ritmo")
+                    </MudButton>
+                </div>
+            </EditForm>
+        </MudPaper>
+
+        @* Aviso sobre regras de negócio *@
+        <MudPaper Elevation="1" Class="pa-4 rounded-xl mt-4"
+                  Style="border-left: 4px solid #ff9800;">
+            <MudText Typo="Typo.subtitle2" Class="mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small"
+                         Color="Color.Warning" Class="mr-1" />
+                Regras importantes
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                Um ritmo com turmas ativas <b>não pode ser desativado</b>. Um ritmo
+                com qualquer turma associada (ativa ou encerrada) <b>
+                não pode ser
+                excluído
+            </b> — encerre todas as turmas primeiro.
+        </MudText>
+    </MudPaper>
+</MudItem>
+
+@* ── COLUNA DIREITA: Listagem ─────────────────────────────────── *@
+<MudItem xs="12" md="8">
+
+    @if (carregando)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (!ritmos.Any())
+    {
+        <MudAlert Severity="Severity.Info">
+            Nenhum ritmo cadastrado. Use o formulário ao lado para criar o primeiro!
+        </MudAlert>
+    }
+    else
+    {
+        @* Filtro por status *@
+        <div class="d-flex gap-3 mb-4 align-center">
+            <MudChipSet T="string"
+                        @bind-SelectedValue="filtroStatus"
+                        SelectionMode="SelectionMode.SingleSelection">
+                <MudChip T="string" Value="@("todos")" Color="Color.Default">Todos</MudChip>
+                <MudChip T="string" Value="@("ativos")" Color="Color.Success">Ativos</MudChip>
+                <MudChip T="string" Value="@("inativos")" Color="Color.Default">Inativos</MudChip>
+            </MudChipSet>
+            <MudSpacer />
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                @ritmosFiltrados.Count() ritmos
+            </MudText>
+        </div>
+
+        <MudDataGrid T="RitmoDto"
+                     Items="@ritmosFiltrados"
+                     Hover="true"
+                     Dense="true"
+                     Elevation="3"
+                     Class="rounded-xl">
+            <Columns>
+                <PropertyColumn Property="r => r.Nome"
+                                Title="Nome"
+                                Sortable="true" />
+
+                @* Modalidade com chip colorido: verde = salão, azul = solo *@
+                <TemplateColumn Title="Modalidade">
+                    <CellTemplate Context="cell">
+                        <MudChip T="string"
+                                 Size="Size.Small"
+                                 Color="@(cell.Item.Modalidade == "Dança de salão"
+                                                                                                                ? Color.Success : Color.Info)"
+                                 Variant="Variant.Filled">
+                            @(cell.Item.Modalidade == "Dança de salão" ? "💃 Salão" : "🕺 Solo")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+
+                @* Status com switch interativo *@
+                <TemplateColumn Title="Status">
+                    <CellTemplate Context="cell">
+                        <MudSwitch T="bool"
+                                   Value="@cell.Item.Ativo"
+                                   ValueChanged="@((bool v) => AlterarStatus(cell.Item, v))"
+                                   Color="Color.Success"
+                                   Label="@(cell.Item.Ativo ? "Ativo" : "Inativo")" />
+                    </CellTemplate>
+                </TemplateColumn>
+
+                @* Ações: editar + excluir *@
+                <TemplateColumn Title="Ações" CellClass="d-flex gap-1 justify-end">
+                    <CellTemplate Context="cell">
+                        <MudTooltip Text="Editar nome, descrição ou modalidade">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           OnClick="@(() => IniciarEdicao(cell.Item))" />
+                        </MudTooltip>
+                        <MudTooltip Text="Excluir permanentemente">
+                            <MudIconButton Icon="@Icons.Material.Filled.DeleteForever"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           OnClick="@(() => ConfirmarExclusao(cell.Item))" />
+                        </MudTooltip>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    }
+</MudItem>
+
+</MudGrid>
+
+@code {
+    private bool carregando = true;
+    private bool salvando = false;
+    private string filtroStatus = "todos";
+    private RitmoDto? editando = null;
+
+    private List<RitmoDto> ritmos = new();
+    private RitmoForm form = new();
+
+    private IEnumerable<RitmoDto> ritmosFiltrados => filtroStatus switch
+    {
+        "ativos" => ritmos.Where(r => r.Ativo),
+        "inativos" => ritmos.Where(r => !r.Ativo),
+        _ => ritmos
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarRitmos();
+    }
+
+    private async Task CarregarRitmos()
+    {
+        carregando = true;
+        try
+        {
+            // GET /api/ritmos/listar — AllowAnonymous, retorna todos (ativos e inativos)
+            // Retorna: ObterRitmoResponse[] { IdHash, Nome, Descricao, Modalidade, Ativo }
+            ritmos = await Http.GetFromJsonAsync<List<RitmoDto>>("api/ritmos/listar") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar ritmos: {ex.Message}", Severity.Error);
+        }
+        finally { carregando = false; }
+    }
+
+    private void IniciarEdicao(RitmoDto ritmo)
+    {
+        editando = ritmo;
+        form.Nome = ritmo.Nome;
+        form.Descricao = ritmo.Descricao;
+        form.Modalidade = ritmo.Modalidade;
+    }
+
+    private void CancelarEdicao()
+    {
+        editando = null;
+        form = new RitmoForm();
+    }
+
+    private async Task SalvarRitmo()
+    {
+        if (string.IsNullOrWhiteSpace(form.Nome) || string.IsNullOrWhiteSpace(form.Modalidade))
+        {
+            Snackbar.Add("Nome e modalidade são obrigatórios.", Severity.Warning);
+            return;
+        }
+
+        salvando = true;
+        try
+        {
+            if (editando != null)
+            {
+                // PUT /api/ritmos/atualizar/{idHash}
+                // Body: AtualizarRitmoRequest { Nome, Descricao, Modalidade }
+                var payload = new { form.Nome, Descricao = form.Descricao ?? "", form.Modalidade };
+                var response = await Http.PutAsJsonAsync(
+                    $"api/ritmos/atualizar/{editando.IdHash}", payload);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Ritmo atualizado com sucesso!", Severity.Success);
+                    CancelarEdicao();
+                    await CarregarRitmos();
+                }
+                else if ((int)response.StatusCode == 400)
+                {
+                    // FluentValidation: modalidade inválida, nome vazio, etc.
+                    Snackbar.Add("Dados inválidos. Verifique os campos.", Severity.Warning);
+                }
+                else
+                {
+                    Snackbar.Add("Erro ao atualizar ritmo.", Severity.Error);
+                }
+            }
+            else
+            {
+                // POST /api/ritmos/criar
+                // Body: CriarRitmoRequest { Nome, Descricao, Modalidade }
+                var payload = new { form.Nome, Descricao = form.Descricao ?? "", form.Modalidade };
+                var response = await Http.PostAsJsonAsync("api/ritmos/criar", payload);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add($"Ritmo '{form.Nome}' criado com sucesso!", Severity.Success);
+                    form = new RitmoForm();
+                    await CarregarRitmos();
+                }
+                else if ((int)response.StatusCode == 400)
+                {
+                    Snackbar.Add("Dados inválidos. Verifique os campos.", Severity.Warning);
+                }
+                else
+                {
+                    Snackbar.Add("Erro ao criar ritmo.", Severity.Error);
+                }
+            }
+        }
+        finally { salvando = false; }
+    }
+
+    private async Task AlterarStatus(RitmoDto ritmo, bool novoStatus)
+    {
+        try
+        {
+            // PUT /api/ritmos/{idHash}/status
+            // BLOQUEIO (HTTP 422): não pode desativar ritmo com turmas ativas
+            var response = await Http.PutAsJsonAsync(
+                $"api/ritmos/{ritmo.IdHash}/status", novoStatus);
+
+            if (response.IsSuccessStatusCode)
+            {
+                ritmo.Ativo = novoStatus;
+                Snackbar.Add(
+                    $"Ritmo '{ritmo.Nome}' {(novoStatus ? "ativado" : "desativado")}.",
+                    Severity.Success);
+            }
+            else if ((int)response.StatusCode == 422)
+            {
+                // Mensagem do backend: "Não é possível inativar um ritmo que possui turmas ativas."
+                var corpo = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    var erro = System.Text.Json.JsonSerializer.Deserialize<ErroResponse>(
+                        corpo,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    Snackbar.Add(erro?.Erro ?? "Operação bloqueada.", Severity.Warning);
+                }
+                catch
+                {
+                    Snackbar.Add(corpo, Severity.Warning);
+                }
+                // Reverte o switch visualmente — o valor local não foi alterado
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmarExclusao(RitmoDto ritmo)
+    {
+        var parametros = new DialogParameters
+        {
+            { "ContentText",
+                $"Excluir o ritmo '{ritmo.Nome}' permanentemente?\n\n" +
+                "Esta ação é irreversível. Ritmos com turmas associadas " +
+                "(mesmo encerradas) não podem ser excluídos." },
+            { "ButtonText", "Excluir Permanentemente" },
+            { "Color", Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirmar Exclusão", parametros);
+        var result = await dialog.Result;
+
+        if (result == null || result.Canceled) return;
+
+        try
+        {
+            // DELETE /api/ritmos/excluir/{idHash}
+            // BLOQUEIO (HTTP 422): ritmo com turmas associadas não pode ser excluído
+            var response = await Http.DeleteAsync($"api/ritmos/excluir/{ritmo.IdHash}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                ritmos.Remove(ritmo);
+                Snackbar.Add($"Ritmo '{ritmo.Nome}' excluído.", Severity.Warning);
+            }
+            else if ((int)response.StatusCode == 422)
+            {
+                var corpo = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    var erro = System.Text.Json.JsonSerializer.Deserialize<ErroResponse>(
+                        corpo,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    Snackbar.Add(erro?.Erro ?? "Não foi possível excluir.", Severity.Warning);
+                }
+                catch
+                {
+                    Snackbar.Add(corpo, Severity.Warning);
+                }
+            }
+            else
+            {
+                Snackbar.Add("Erro ao excluir ritmo.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // ── DTOs e modelos ────────────────────────────────────────────
+
+    // Espelha ObterRitmoResponse do backend
+    public class RitmoDto
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string Descricao { get; set; } = "";
+        public string Modalidade { get; set; } = "";
+        public bool Ativo { get; set; }
+    }
+
+    // Model do formulário
+    public class RitmoForm
+    {
+        public string Nome { get; set; } = "";
+        public string? Descricao { get; set; }
+        public string Modalidade { get; set; } = "";
+    }
+
+    // DTO para deserializar erros HTTP 422 do GlobalExceptionHandler
+    // Formato: { "erro": "mensagem explicativa" }
+    private class ErroResponse { public string? Erro { get; set; } }
+}

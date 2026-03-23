@@ -1,4 +1,9 @@
-﻿@* ARQUIVO: Rascunho.Client/Layout/NavMenu.razor *@
+﻿@* ARQUIVO: Rascunho.Client/Layout/NavMenu.razor
+   
+   SPRINT 8:
+   - Removido link /ingressos da seção Aluno (Eventos/Ingressos fora do MVP atual)
+   - Adicionado link /admin/ritmos na seção Admin (Recepção + Gerente)
+*@
 
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
@@ -32,6 +37,7 @@
 
     @* ══════════════════════════════════════════════════════════════
        ALUNO — Acesso exclusivo às telas de aluno (RN-ACE01)
+       SPRINT 8: Removido link /ingressos (fora do MVP atual)
     ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView Roles="Aluno">
         <Authorized>
@@ -65,17 +71,12 @@
                 Aula Experimental
             </MudNavLink>
 
-            <MudNavLink Href="/ingressos"
-                        Icon="@Icons.Material.Filled.ConfirmationNumber">
-                Comprar Ingressos
-            </MudNavLink>
+            @* SPRINT 8: link /ingressos removido daqui *@
         </Authorized>
     </AuthorizeView>
 
     @* ══════════════════════════════════════════════════════════════
        PROFESSOR — Acesso exclusivo às telas de professor (RN-ACE03)
-       NOVO Sprint 2: Minhas Turmas, Fazer Chamada com rota atualizada,
-                      Aulas Particulares na rota /professor/
     ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView Roles="Professor">
         <Authorized>
@@ -84,25 +85,21 @@
                 Professor
             </MudText>
 
-            @* NOVO Sprint 2 — tela criada no arquivo 17 *@
             <MudNavLink Href="/professor/minhas-turmas"
                         Icon="@Icons.Material.Filled.School">
                 Minhas Turmas
             </MudNavLink>
 
-            @* Rota corrigida: era /fazer-chamada, agora /professor/chamada *@
             <MudNavLink Href="/professor/chamada"
                         Icon="@Icons.Material.Filled.Checklist">
                 Fazer Chamada
             </MudNavLink>
 
-            @* NOVO Sprint 2 — tela criada no arquivo 19 (3 abas) *@
             <MudNavLink Href="/professor/aulas-particulares"
                         Icon="@Icons.Material.Filled.PersonSearch">
                 Aulas Particulares
             </MudNavLink>
 
-            @* NOVO Sprint 2 — tela criada no arquivo 22 *@
             <MudNavLink Href="/quadro-avisos"
                         Icon="@Icons.Material.Filled.Campaign">
                 Quadro de Avisos
@@ -112,7 +109,6 @@
 
     @* ══════════════════════════════════════════════════════════════
        BOLSISTA — Acesso híbrido: telas de aluno + telas de equipe
-       NOVO Sprint 2: Turmas Obrigatórias e Meu Desempenho
     ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView Roles="Bolsista">
         <Authorized>
@@ -126,13 +122,11 @@
                 Minhas Aulas
             </MudNavLink>
 
-            @* NOVO Sprint 2 — tela criada no arquivo 21 *@
             <MudNavLink Href="/bolsista/turmas-obrigatorias"
                         Icon="@Icons.Material.Filled.Today">
                 Turmas Obrigatórias
             </MudNavLink>
 
-            @* NOVO Sprint 2 — tela criada no arquivo 20 *@
             <MudNavLink Href="/bolsista/desempenho"
                         Icon="@Icons.Material.Filled.Insights">
                 Meu Desempenho
@@ -158,7 +152,6 @@
                 Relatório de Horas
             </MudNavLink>
 
-            @* NOVO Sprint 2 — bolsista acessa avisos de equipe *@
             <MudNavLink Href="/quadro-avisos"
                         Icon="@Icons.Material.Filled.Campaign">
                 Quadro de Avisos
@@ -168,6 +161,7 @@
 
     @* ══════════════════════════════════════════════════════════════
        RECEPÇÃO E GERENTE — Menu administrativo (RN-ACE04/05)
+       SPRINT 8: Adicionado link /admin/ritmos
     ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView Roles="Recepção,Gerente">
         <Authorized>
@@ -190,6 +184,12 @@
                     Salas & Aluguéis
                 </MudNavLink>
 
+                @* SPRINT 8: link de gestão de ritmos *@
+                <MudNavLink Href="/admin/ritmos"
+                            Icon="@Icons.Material.Filled.MusicNote">
+                    Ritmos
+                </MudNavLink>
+
                 <MudNavLink Href="/admin/avisos"
                             Icon="@Icons.Material.Filled.Campaign">
                     Criar Avisos
@@ -200,7 +200,6 @@
                     Gerenciar Eventos
                 </MudNavLink>
 
-                @* NOVO Sprint 2 — recepção também usa o quadro *@
                 <MudNavLink Href="/quadro-avisos"
                             Icon="@Icons.Material.Filled.Announcement">
                     Quadro de Avisos
@@ -211,7 +210,6 @@
 
     @* ══════════════════════════════════════════════════════════════
        GERENTE — Gerência Estratégica (exclusivo, RN-ACE05)
-       Link para QuadroDesempenho será criado na Sprint 4
     ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView Roles="Gerente">
         <Authorized>
@@ -228,7 +226,6 @@
                     Gestão de Usuários
                 </MudNavLink>
 
-                @* Rota criada na Sprint 4 (QuadroDesempenho.razor) *@
                 <MudNavLink Href="/gerencia/bolsistas"
                             Icon="@Icons.Material.Filled.Groups">
                     Desempenho Bolsistas
