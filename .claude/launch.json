@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Backend API (Rascunho)",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "Rascunho", "--launch-profile", "https"],
+      "port": 7077
+    },
+    {
+      "name": "Frontend Blazor (Rascunho.Client)",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "Rascunho.Client", "--launch-profile", "https"],
+      "port": 7267
+    }
+  ]
+}
