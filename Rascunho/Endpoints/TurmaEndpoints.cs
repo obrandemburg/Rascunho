@@ -87,7 +87,8 @@ public static class TurmaEndpoints
             var response = await turmaService.CriarTurmaAsync(request);
             return Results.Created($"/api/turmas/{response.IdHash}", response);
         })
-        .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
+        .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"))
+        .AddEndpointFilter<ValidationFilter<CriarTurmaRequest>>();
 
         // ══════════════════════════════════════════════════════════════════
         // 3. MATRICULAR ALUNO (auto-serviço do aluno)

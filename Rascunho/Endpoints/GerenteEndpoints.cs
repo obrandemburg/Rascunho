@@ -44,50 +44,27 @@ public static class GerenteEndpoints
 
         // ── DESEMPENHO DE BOLSISTAS ───────────────────────────────
 
-        // 4. LISTAR TODOS COM DESEMPENHO (ordenado por prioridade)
+        // 4. LISTAR TODOS COM DESEMPENHO (execução sequencial — thread-safe)
         group.MapGet("/desempenho-bolsistas",
             async (BolsistaService bolsistaService, AppDbContext db) =>
             {
+                // Passo 1: busca IDs dos bolsistas ativos (uma única query)
                 var ids = await db.Usuarios
                     .OfType<Rascunho.Entities.Bolsista>()
                     .Where(b => b.Ativo)
                     .Select(b => b.Id)
                     .ToListAsync();
 
-                var tarefas = ids.Select(id => bolsistaService.MeuDesempenhoAsync(id));
-                var resultados = await Task.WhenAll(tarefas);
-
-                // Ordena por urgência: Crítico → Atenção → Vamos melhorar → Excelente
-                var ordenados = resultados.OrderBy(r => r.IndicadorSituacao switch
-                {
-                    "Crítico" => 0,
-                    "Atenção" => 1,
-                    "Vamos melhorar" => 2,
-                    "Excelente" => 3,
-                    _ => 4
-                });
-
-                return Results.Ok(ordenados);
-            });
-
-        // 4. LISTAR TODOS COM DESEMPENHO (ordenado por prioridade)
-        group.MapGet("/desempenho-bolsistas-critico",
-            async (BolsistaService bolsistaService, AppDbContext db) =>
-            {
-                var ids = await db.Usuarios
-                    .OfType<Rascunho.Entities.Bolsista>()
-                    .Where(b => b.Ativo)
-                    .Select(b => b.Id)
-                    .ToListAsync();
-
-                // CORREÇÃO: Execução sequencial para evitar o erro de concorrência 
+                // Passo 2: executa MeuDesempenhoAsync SEQUENCIALMENTE
+                // Cada chamada usa o mesmo DbContext sem concorrência.
+                // foreach + await = uma operação por vez = thread-safe.
                 var resultados = new List<Rascunho.Shared.DTOs.DesempenhoResponse>();
                 foreach (var id in ids)
                 {
                     resultados.Add(await bolsistaService.MeuDesempenhoAsync(id));
                 }
 
-                // Ordena por urgência: Crítico → Atenção → Vamos melhorar → Excelente
+                // Passo 3: ordena por urgência para o gerente ver os críticos primeiro
                 var ordenados = resultados.OrderBy(r => r.IndicadorSituacao switch
                 {
                     "Crítico" => 0,
