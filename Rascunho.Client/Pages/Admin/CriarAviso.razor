@@ -2,17 +2,6 @@
   ARQUIVO: Rascunho.Client/Pages/Admin/CriarAviso.razor
   ROTA:    /admin/avisos
   ACESSO:  Recepção, Gerente
-
-  CORREÇÃO SPRINT 6:
-  O campo do formulário se chamava 'Conteudo' mas CriarAvisoRequest (no backend)
-  espera o campo 'Mensagem'. Isso fazia com que o FluentValidation rejeitasse
-  sempre o request (Mensagem estava vazio) e os avisos nunca eram criados.
-
-  ALTERAÇÕES:
-  - CriarAvisoForm.Conteudo → CriarAvisoForm.Mensagem
-  - @bind-Value do MudTextField atualizado
-  - Payload do POST corrigido: Conteudo → Mensagem
-  - Preview corrigido para ler novoAviso.Mensagem
 *@
 
 @page "/admin/avisos"
@@ -43,11 +32,6 @@
                               HelperText="Máximo 150 caracteres"
                               Required="true" />
 
-                @*
-                  CORREÇÃO: era @bind-Value="novoAviso.Conteudo"
-                  Agora é  @bind-Value="novoAviso.Mensagem"
-                  A API valida o campo 'Mensagem' via FluentValidation (NotEmpty, MaxLength 1000).
-                *@
                 <MudTextField @bind-Value="novoAviso.Mensagem"
                               Label="Conteúdo do Aviso"
                               Variant="Variant.Outlined"
@@ -149,11 +133,8 @@
 
 @code {
     private bool publicando = false;
-    private DateTime? dataExpiracao = DateTime.Today.AddDays(30); // Padrão 30 dias
+    private DateTime? dataExpiracao = DateTime.Today.AddDays(30);
 
-    // CORREÇÃO: classe renomeada internamente para refletir o campo correto.
-    // Anteriormente tinha a propriedade 'Conteudo'; agora é 'Mensagem'
-    // para corresponder ao CriarAvisoRequest do backend.
     private CriarAvisoForm novoAviso = new();
 
     private async Task PublicarAviso()
@@ -180,13 +161,10 @@
 
         try
         {
-            // CORREÇÃO: o payload agora usa 'Mensagem' (não 'Conteudo').
-            // CriarAvisoRequest no backend: record(Titulo, Mensagem, DataExpiracao, TipoVisibilidade)
-            // O FluentValidation verifica NotEmpty em 'Mensagem' — antes estava sempre vazio.
             var payload = new
             {
                 novoAviso.Titulo,
-                Mensagem = novoAviso.Mensagem,           // ← era: Conteudo = novoAviso.Conteudo
+                Mensagem = novoAviso.Mensagem,
                 novoAviso.TipoVisibilidade,
                 DataExpiracao = dataExpiracao.Value.ToUniversalTime()
             };
@@ -201,17 +179,7 @@
                 novoAviso = new CriarAvisoForm();
                 dataExpiracao = DateTime.Today.AddDays(30);
             }
-            else if ((int)response.StatusCode == 400)
-            {
-                // FluentValidation retornou erros de campo
-                var corpo = await response.Content.ReadAsStringAsync();
-                Snackbar.Add("Dados inválidos. Verifique o título e o conteúdo.", Severity.Warning);
-            }
-            else
-            {
-                var erro = await response.Content.ReadAsStringAsync();
-                Snackbar.Add($"Erro ao publicar aviso: {erro}", Severity.Error);
-            }
+            
         }
         catch (Exception ex)
         {
@@ -223,10 +191,6 @@
         }
     }
 
-    // CORREÇÃO SPRINT 6:
-    // Propriedade renomeada de 'Conteudo' para 'Mensagem'.
-    // Isso garante que o formulário, o preview e o payload enviado à API
-    // todos usem o mesmo nome correto.
     public class CriarAvisoForm
     {
         public string Titulo { get; set; } = "";

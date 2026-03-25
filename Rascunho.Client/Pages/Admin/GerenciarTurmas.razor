@@ -244,11 +244,6 @@
                 {
                     <MudListItem T="AlunoMatriculadoDto">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                            @*
-                              SPRINT 7: UserAvatar substitui MudAvatar estático.
-                              AlunoMatriculadoDto.FotoUrl já vinha do backend (AlunoMatriculadoResponse)
-                              — só faltava renderizá-lo aqui.
-                            *@
                             <UserAvatar FotoUrl="@aluno.FotoUrl"
                                         Nome="@aluno.Nome"
                                         Size="Size.Small" />
