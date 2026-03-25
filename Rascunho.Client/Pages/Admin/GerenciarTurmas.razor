@@ -171,10 +171,10 @@
                                 @cell.Item.QuantidadeMatriculados / @cell.Item.LimiteAlunos
                             </MudText>
                             <MudProgressLinear Color="@(cell.Item.QuantidadeMatriculados >= cell.Item.LimiteAlunos
-                                                                                                                                                                                                                                                                           ? Color.Error : Color.Success)"
+                                                                                                                                                                                                                                                                                                                                                      ? Color.Error : Color.Success)"
                                                Value="@(cell.Item.LimiteAlunos > 0
-                                                                                                                                                                                                                                                            ? (double)cell.Item.QuantidadeMatriculados / cell.Item.LimiteAlunos * 100
-                                                                                                                                                                                                                                                            : 0)"
+                                                                                                                                                                                                                                                                                                                                       ? (double)cell.Item.QuantidadeMatriculados / cell.Item.LimiteAlunos * 100
+                                                                                                                                                                                                                                                                                                                                       : 0)"
                                                Style="width: 60px;" Rounded="true" />
                         </div>
                     </CellTemplate>
@@ -348,6 +348,7 @@
         criando = true;
         try
         {
+            // ── Monta o payload ──────────────────────────────────────
             var payload = new CriarTurmaRequest(
                 novaTurma.RitmoIdHash,
                 novaTurma.SalaIdHash,
@@ -361,26 +362,45 @@
                 new List<string> { novaTurma.ProfessorIdHash }
             );
 
+            // ── Envia requisição para criar turma ────────────────────
+            // ✅ HttpInterceptorHandler intercepta automaticamente:
+            //    - HTTP 422 → Snackbar vermelho com mensagem de erro
+            //    - HTTP 400 → Snackbar amarelo com validação
+            //    - HTTP 500 → Snackbar genérica + detalhes no console
             var response = await Http.PostAsJsonAsync("api/turmas/criar", payload);
 
-            // APENAS O CAMINHO FELIZ! O interceptador já faz o trabalho sujo dos erros.
+            // ── Trata apenas o SUCESSO (caminho feliz) ──────────────
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("Turma criada com sucesso! ✅", Severity.Success);
+            
+                // Limpa formulário
                 novaTurma = new TurmaRequest { LimiteAlunos = 30 };
-                horarioInicio = null; horarioFim = null; dataInicio = DateTime.Today;
-                
-                // Recarrega a lista de turmas
+                horarioInicio = null;
+                horarioFim = null;
+                dataInicio = DateTime.Today;
+
+                // ── Recarrega lista de turmas (silenciosamente) ──────
+                // ✅ Tenta recarregar, mas ignora erro propositalmente
+                //    (a turma foi criada mesmo que o recarregamento falhe)
                 try
                 {
-                    turmas = await Http.GetFromJsonAsync<List<TurmaListaDto>>("api/turmas/listar-ativas") ?? new();
+                    turmas = await Http.GetFromJsonAsync<List<TurmaListaDto>>(
+                        "api/turmas/listar-ativas") ?? new();
                 }
-                catch { /* Ignora se falhar o recarregamento */ }
+                catch
+                {
+                    // ⚠️ Recarregamento falhou, mas a turma foi criada
+                    // Usuário verá a confirmação, mas lista não atualiza
+                    // Na próxima navegação, carregará corretamente
+                }
             }
+            // ✅ Se erro (422, 500, etc), o HttpInterceptorHandler
+            //    já mostrou mensagem ao usuário — não precisa fazer nada aqui
         }
         finally
         {
-            criando = false;
+            criando = false;  // ✅ Garante que botão seja ativado novamente
         }
     }
 

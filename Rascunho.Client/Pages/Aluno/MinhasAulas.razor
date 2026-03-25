@@ -6,13 +6,6 @@
   1. GET /api/turmas/minhas-turmas → turmas do aluno via token JWT
   2. Cards com horário, sala, link WhatsApp
   3. Botão desmatricular → diálogo de confirmação → DELETE /api/turmas/{idHash}/desmatricular
-  
-  CORREÇÕES APLICADAS:
-  - MudList<TurmaMatriculadaDto> → tipo genérico explícito
-  - MudListItem<TurmaMatriculadaDto> → tipo genérico explícito  
-  - MudChip T="string" → tipo inferência explícita
-  - using adicionado para ConfirmDialog
-  - Nullable warnings resolvidos com operador ?
 *@
 
 @page "/minhas-aulas"
@@ -132,12 +125,8 @@ else
         carregando = true;
         try
         {
-            turmas = await Http.GetFromJsonAsync<List<TurmaMatriculadaDto>>(
-                "api/turmas/minhas-turmas") ?? new();
-        }
-        catch
-        {
-            Snackbar.Add("Erro ao carregar suas turmas.", Severity.Error);
+            turmas = await Http.GetFromJsonAsync<List<TurmaMatriculadaDto>>("api/turmas/minhas-turmas") ?? new();
+            // Interceptador já mostrou erro se houver
         }
         finally { carregando = false; }
     }
