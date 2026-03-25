@@ -29,11 +29,15 @@ public class TurmaService
         var salaDecoded = _hashids.Decode(request.SalaIdHash);
         var ritmoDecoded = _hashids.Decode(request.RitmoIdHash);
 
-        var hrInicio = TimeSpan.Parse(request.HorarioInicio);
-        var hrFim = TimeSpan.Parse(request.HorarioFim);
-
         if (salaDecoded.Length == 0 || ritmoDecoded.Length == 0)
             throw new RegraNegocioException("ID de Sala ou Ritmo inválido.");
+
+        // Tenta converter de forma segura no início. Se falhar, lança a exceção tratável (422)
+        if (!TimeSpan.TryParse(request.HorarioInicio, out var hrInicio))
+            throw new RegraNegocioException("Horário de início inválido. Use o formato HH:mm.");
+
+        if (!TimeSpan.TryParse(request.HorarioFim, out var hrFim))
+            throw new RegraNegocioException("Horário de término inválido. Use o formato HH:mm.");
 
         int salaIdReal = salaDecoded[0];
         int ritmoIdReal = ritmoDecoded[0];

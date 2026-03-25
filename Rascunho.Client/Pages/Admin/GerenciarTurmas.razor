@@ -410,7 +410,9 @@
             }
             else
             {
-                Snackbar.Add("Erro inesperado ao criar turma. Tente novamente.", Severity.Error);
+                var erroCorpo = await response.Content.ReadAsStringAsync();
+
+                Snackbar.Add("ERRO: " + erroCorpo, Severity.Error);
             }
         }
         finally { criando = false; }
