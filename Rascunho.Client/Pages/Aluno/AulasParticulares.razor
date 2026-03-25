@@ -3,17 +3,6 @@
   ROTA:    /aulas-particulares
   ACESSO:  Aluno, Bolsista
 
-  CORREÇÃO SPRINT 6:
-  AulaParticularDto tinha campos com nomes errados vs ObterAulaParticularResponse:
-
-  ANTES (errado)          → DEPOIS (correto)
-  ────────────────────────────────────────────────────────────────────
-  ProfessorNome (string)  → NomeProfessor (string)
-  RitmoNome     (string)  → NomeRitmo     (string)
-
-  Consequência anterior: nome do professor e ritmo sempre apareciam
-  como strings vazias nos cards, pois o JSON ignorava campos
-  cujo nome não correspondia ao objeto.
 *@
 
 @page "/aulas-particulares"
@@ -410,29 +399,13 @@
         public string RitmoIdHash { get; set; } = "";
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // CORREÇÃO SPRINT 6:
-    // Campos renomeados para corresponder ao ObterAulaParticularResponse:
-    //
-    //   record ObterAulaParticularResponse(
-    //     string IdHash,
-    //     string ProfessorIdHash,
-    //     string NomeProfessor,   ← era: ProfessorNome
-    //     string NomeAluno,
-    //     string NomeRitmo,       ← era: RitmoNome
-    //     DateTime DataHoraInicio,
-    //     DateTime DataHoraFim,
-    //     string Status,
-    //     string Observacao,
-    //     decimal ValorCobrado
-    //   )
-    // ──────────────────────────────────────────────────────────────
+
     public class AulaParticularDto
     {
         public string IdHash { get; set; } = "";
         public string ProfessorIdHash { get; set; } = "";
-        public string NomeProfessor { get; set; } = "";  // ← era: ProfessorNome
-        public string NomeRitmo { get; set; } = "";  // ← era: RitmoNome
+        public string NomeProfessor { get; set; } = "";
+        public string NomeRitmo { get; set; } = "";
         public DateTime DataHoraInicio { get; set; }
         public DateTime DataHoraFim { get; set; }
         public string Status { get; set; } = "";

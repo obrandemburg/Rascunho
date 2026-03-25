@@ -17,7 +17,8 @@ public static class GerenteEndpoints
 
         // 1. VER CONFIGURAÇÕES
         group.MapGet("/configuracoes", (ConfiguracaoService cfg) =>
-            Results.Ok(cfg.ObterConfiguracoes()));
+        Results.Ok(cfg.ObterConfiguracoes()))
+        .RequireAuthorization(policy => policy.RequireAuthenticatedUser());
 
         // 2. ATUALIZAR PREÇO DAS PARTICULARES
         group.MapPut("/configuracoes/preco-aula-particular",

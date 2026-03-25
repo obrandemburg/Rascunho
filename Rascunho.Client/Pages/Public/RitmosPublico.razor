@@ -3,35 +3,6 @@
   ARQUIVO: Rascunho.Client/Pages/Public/RitmosPublico.razor
   ROTA:    /ritmos
   ACESSO:  Anônimo (página pública)
-
-  SPRINT 9 — TAREFA S9-03:
-  ALTERAÇÕES:
-    1. MudChipSet: substituído SelectedValues + SelectedValuesChanged (one-way)
-       por @bind-SelectedValues (two-way binding automático)
-    2. REMOVIDO o método OnFiltroChanged (desnecessário com two-way binding)
-    3. ADICIONADO filtro Ativo == true no ritmosFiltrados (exibe apenas ativos)
-    4. ADICIONADO campo Ativo no RitmoDto (necessário para o filtro)
-
-  COMO RESOLVE O BUG:
-  O problema era que o MudChipSet usava binding ONE-WAY:
-    SelectedValues="modalidadesSelecionadas"           ← o componente LÊ o valor
-    SelectedValuesChanged="OnFiltroChanged"             ← callback manual para ESCREVER
-
-  O callback OnFiltroChanged até atualizava a variável e chamava StateHasChanged(),
-  mas no MudBlazor 9.x o MudChipSet precisa que o valor ESCRITO de volta no
-  SelectedValues seja a mesma referência que ele gerencia internamente.
-  Com one-way binding, o componente não sabe que o valor foi atualizado.
-
-  A solução é @bind-SelectedValues, que faz TWO-WAY binding:
-    - O MudChipSet LÊ E ESCREVE na mesma variável automaticamente
-    - O Blazor detecta a mudança e re-renderiza (recalculando ritmosFiltrados)
-    - É o mesmo padrão usado com sucesso em Turmas.razor e GerenciarRitmos.razor
-
-  RESULTADO:
-    - Clicar "Dança de Salão" → filtra instantaneamente
-    - Clicar "Dança Solo" → filtra instantaneamente  
-    - Clicar ambos → mostra ambas modalidades
-    - Nenhum clicado → mostra todos os ritmos ativos
   ═══════════════════════════════════════════════════════════════════════════
 *@
 
@@ -49,27 +20,9 @@
     Explore os ritmos que ensinamos e encontre a modalidade perfeita para você!
 </MudText>
 
-@*
-  SPRINT 9 — S9-03: CORREÇÃO DO BUG DE FILTRO
-  
-  ANTES (QUEBRADO — one-way binding):
-    <MudChipSet T="string"
-                SelectedValues="modalidadesSelecionadas"
-                SelectedValuesChanged="OnFiltroChanged"
-                MultiSelection="true">
-
-  DEPOIS (CORRIGIDO — two-way binding):
-    <MudChipSet T="string"
-                @bind-SelectedValues="modalidadesSelecionadas"
-                MultiSelection="true">
-    
-  @bind-SelectedValues faz com que o MudChipSet:
-    1. LEIA o valor inicial de modalidadesSelecionadas (Array.Empty)
-    2. ESCREVA de volta quando o usuário clica num chip
-    3. O Blazor detecta a mudança e recalcula ritmosFiltrados automaticamente
-*@
 <MudChipSet T="string"
-            @bind-SelectedValues="modalidadesSelecionadas"
+            SelectedValues="modalidadesSelecionadas"
+            SelectedValuesChanged="@OnModalidadeChange"
             MultiSelection="true"
             Class="mb-6">
     <MudChip T="string" Value="@("Dança de salão")" Color="Color.Primary" Variant="Variant.Outlined">
@@ -125,43 +78,24 @@ else
     private bool carregando = true;
     private List<RitmoDto> ritmos = new();
 
-    // Tipo IReadOnlyCollection<string> — exigido pelo MudChipSet T="string"
-    // Inicializado como Array.Empty para evitar NullReferenceException
-    private IReadOnlyCollection<string> modalidadesSelecionadas = Array.Empty<string>();
+    private IReadOnlyCollection<string> modalidadesSelecionadas = new List<string>();
 
-    /// <summary>
-    /// Propriedade computada que filtra os ritmos exibidos.
-    /// Recalcula automaticamente quando modalidadesSelecionadas muda
-    /// (graças ao two-way binding que dispara re-render do Blazor).
-    ///
-    /// SPRINT 9 — S9-03:
-    ///   - Adicionado filtro r.Ativo (exibe apenas ritmos ativos na página pública)
-    ///   - Sem essa condição, ritmos desativados pelo admin apareciam na vitrine
-    /// </summary>
     private IEnumerable<RitmoDto> ritmosFiltrados
     {
         get
         {
-            // Primeiro: filtra apenas ritmos ativos (página pública não deve exibir inativos)
             var ativos = ritmos.Where(r => r.Ativo);
-
-            // Depois: aplica filtro de modalidade se algum chip estiver selecionado
             return modalidadesSelecionadas.Any()
                 ? ativos.Where(r => modalidadesSelecionadas.Contains(r.Modalidade))
                 : ativos;
         }
     }
 
-    // SPRINT 9 — S9-03: REMOVIDO o método OnFiltroChanged
-    // Com @bind-SelectedValues, o MudChipSet atualiza modalidadesSelecionadas
-    // automaticamente. Não precisa de callback manual.
-    //
-    // ANTES (desnecessário):
-    //   private void OnFiltroChanged(IReadOnlyCollection<string> values)
-    //   {
-    //       modalidadesSelecionadas = values;
-    //       StateHasChanged();
-    //   }
+    private async Task OnModalidadeChange(IReadOnlyCollection<string> novasModalidades)
+    {
+        modalidadesSelecionadas = novasModalidades ?? new List<string>();
+        await InvokeAsync(StateHasChanged);
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -176,17 +110,12 @@ else
         finally { carregando = false; }
     }
 
-    /// <summary>
-    /// DTO local espelhando ObterRitmoResponse do backend.
-    /// SPRINT 9 — S9-03: Adicionado campo Ativo (bool) para filtrar
-    /// ritmos inativos na exibição pública.
-    /// </summary>
     public class RitmoDto
     {
         public string IdHash { get; set; } = "";
         public string Nome { get; set; } = "";
         public string? Descricao { get; set; }
         public string Modalidade { get; set; } = "";
-        public bool Ativo { get; set; }  // ← SPRINT 9: necessário para filtrar inativos
+        public bool Ativo { get; set; }
     }
 }
