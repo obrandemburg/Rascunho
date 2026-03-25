@@ -20,12 +20,12 @@ public static class EscolaMapper
             t.Sala?.Nome ?? "N/A",
             t.DataInicio,
             (int)t.DiaDaSemana,
-            t.HorarioInicio,
-            t.HorarioFim,
+            t.HorarioInicio.ToString(@"hh\:mm"),
+            t.HorarioFim.ToString(@"hh\:mm"),
             t.Nivel,
             t.LimiteAlunos,
             t.Matriculas?.Count ?? 0,
-            t.LinkWhatsApp,
+            t.LinkWhatsApp ?? "",
             t.Ativa,
             t.Professores?.Select(p => p.Professor?.Nome ?? "Desconhecido").ToList() ?? new List<string>()
         );

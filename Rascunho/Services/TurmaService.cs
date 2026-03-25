@@ -419,12 +419,6 @@ public class TurmaService
 
         await _context.SaveChangesAsync();
     }
-    // Localização: Rascunho/Services/TurmaService.cs
-    // ADICIONAR ao final da classe TurmaService, antes do último }
-
-    // Localização: Rascunho/Services/TurmaService.cs
-    // SUBSTITUIR o método EncerrarTurmaAsync
-
     // ──────────────────────────────────────────────────────────────────────
     // ENCERRAR TURMA (RN-TUR04) — SIMPLIFICADO
     //
@@ -458,9 +452,6 @@ public class TurmaService
 
         // Apenas muda o flag — nenhum dado é deletado ou cancelado
         turma.Encerrar();
-
-        // TODO Sprint 5: Enviar push notification via Firebase FCM para
-        // cada aluno em turma.Matriculas informando o encerramento (RN-TUR04)
 
         await _context.SaveChangesAsync();
 

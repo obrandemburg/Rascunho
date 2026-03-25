@@ -196,8 +196,6 @@ public static class TurmaEndpoints
             return Results.Ok(new { Mensagem = "Sala trocada com sucesso!" });
         })
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
-        // Localização: Rascunho/Endpoints/TurmaEndpoints.cs
-        // ADICIONAR após o endpoint "7. TROCAR SALA"
 
         // ══════════════════════════════════════════════════════════════════
         // 8. ENCERRAR TURMA (RN-TUR04)
