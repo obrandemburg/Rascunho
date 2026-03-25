@@ -1,30 +1,6 @@
 ﻿@* 
   ARQUIVO: Rascunho.Client/Shared/ConfirmDialog.razor
-  
-  ═══════════════════════════════════════════════════════
-  CAUSA RAIZ DO ERRO (definitiva):
-  
-  MudBlazor 9.x (que seu projeto usa — versão 9.1.0 no .csproj)
-  renomeou MudDialogInstance → IMudDialogInstance.
-  
-  MudDialogInstance (classe concreta) foi REMOVIDA.
-  IMudDialogInstance (interface) é o tipo correto desde MudBlazor v7.
-  
-  Nenhuma quantidade de @using resolve isso porque o símbolo
-  MudDialogInstance simplesmente não existe mais no assembly.
-  ═══════════════════════════════════════════════════════
-  
-  INTEGRAÇÃO COM O SISTEMA:
-  Este componente é usado em:
-  - MinhasAulas.razor       → confirmar cancelamento de matrícula
-  - GestaoUsuarios.razor    → confirmar exclusão permanente de usuário
-  
-  O fluxo é sempre:
-  1. Página chama DialogService.ShowAsync<ConfirmDialog>(...)
-  2. MudDialogProvider (no MainLayout) renderiza este componente
-  3. Usuário clica Confirmar → MudDialog.Close(Ok) → result.Canceled = false
-  4. Usuário clica Cancelar → MudDialog.Cancel()  → result.Canceled = true
-  5. Página verifica result e age de acordo
+
 *@
 
 <MudDialog>
@@ -50,15 +26,7 @@
 </MudDialog>
 
 @code {
-    @*
-      CORREÇÃO DEFINITIVA:
-      IMudDialogInstance  ← tipo correto no MudBlazor 9.x
-      MudDialogInstance   ← REMOVIDO, não existe mais
-      
-      CascadingParameter: o MudDialogProvider injeta esta instância
-      automaticamente em qualquer componente filho de um MudDialog.
-      Não é necessário @inject — o cascading resolve sozinho.
-    *@
+
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = null!;
 

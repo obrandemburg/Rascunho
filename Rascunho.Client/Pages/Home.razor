@@ -451,15 +451,6 @@
         catch { }
         finally { carregandoAvisos = false; }
 
-        // Contagem de bolsistas críticos (apenas para Gerente — 403 para outros é esperado)
-        try
-        {
-            var bolsistas = await Http.GetFromJsonAsync<List<BolsistaResumoDto>>(
-                "api/gerente/desempenho-bolsistas");
-            totalCriticos = bolsistas?.Count(b => b.IndicadorSituacao == "Crítico") ?? 0;
-        }
-        catch { }
-        finally { carregandoDesempenho = false; }
     }
 
     private class AvisoPublicoDto
@@ -469,8 +460,4 @@
         public DateTime DataPublicacao { get; set; }
     }
 
-    private class BolsistaResumoDto
-    {
-        public string IndicadorSituacao { get; set; } = "";
-    }
 }
