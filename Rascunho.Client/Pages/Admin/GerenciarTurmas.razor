@@ -313,6 +313,7 @@
 
     private async Task CriarTurma()
     {
+        // ── Validações de frontend (linha de defesa 1) ─────────────────
         if (horarioInicio == null || horarioFim == null || dataInicio == null)
         {
             Snackbar.Add("Preencha a data de início e os horários.", Severity.Warning);
@@ -321,6 +322,23 @@
         if (horarioFim <= horarioInicio)
         {
             Snackbar.Add("O horário de fim deve ser maior que o de início.", Severity.Warning);
+            return;
+        }
+
+        // CORREÇÃO Bug Real 4: DiaSemana vazio era silenciosamente convertido
+        // para 0 (Domingo) pelo DiaSemanaParaInt. Agora bloqueia antes de enviar.
+        if (string.IsNullOrEmpty(novaTurma.DiaSemana))
+        {
+            Snackbar.Add("Selecione o dia da semana.", Severity.Warning);
+            return;
+        }
+
+        // CORREÇÃO Bug Real 2 (frontend): ProfessorIdHash vazio faria o backend
+        // receber [""] na lista, passando pelo Count > 0 do validator e chegando
+        // ao TurmaService com hash inválido. Bloqueia aqui com mensagem clara.
+        if (string.IsNullOrEmpty(novaTurma.ProfessorIdHash))
+        {
+            Snackbar.Add("Selecione um professor para a turma.", Severity.Warning);
             return;
         }
 
@@ -353,12 +371,47 @@
             }
             else if ((int)response.StatusCode == 422)
             {
-                var msg = await response.Content.ReadAsStringAsync();
-                Snackbar.Add($"Conflito: {msg}", Severity.Error);
+                // RegraNegocioException do service: choque de sala, professor inválido, etc.
+                // GlobalExceptionHandler retorna: { "erro": "mensagem legível" }
+                var corpo = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    var erro = System.Text.Json.JsonSerializer.Deserialize<ErroDto>(
+                        corpo,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    Snackbar.Add(erro?.Erro ?? "Conflito ao criar turma.", Severity.Error);
+                }
+                catch
+                {
+                    Snackbar.Add("Conflito ao criar turma. Verifique os dados.", Severity.Error);
+                }
+            }
+            else if ((int)response.StatusCode == 400)
+            {
+                // CORREÇÃO Bug Real 3: antes caia no else genérico sem indicar o problema.
+                // Agora tenta extrair a primeira mensagem do ValidationProblem (FluentValidation)
+                // que tem formato: { "errors": { "Campo": ["mensagem"] } }
+                var corpo = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    var problema = System.Text.Json.JsonSerializer.Deserialize<ValidationProblemDto>(
+                        corpo,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                    var primeiraMensagem = problema?.Errors?.Values
+                        .FirstOrDefault()
+                        ?.FirstOrDefault();
+
+                    Snackbar.Add(primeiraMensagem ?? "Preencha todos os campos obrigatórios.", Severity.Warning);
+                }
+                catch
+                {
+                    Snackbar.Add("Dados inválidos. Verifique os campos obrigatórios.", Severity.Warning);
+                }
             }
             else
             {
-                Snackbar.Add("Erro ao criar turma. Verifique os dados.", Severity.Warning);
+                Snackbar.Add("Erro inesperado ao criar turma. Tente novamente.", Severity.Error);
             }
         }
         finally { criando = false; }
@@ -478,5 +531,16 @@
         public string Nome { get; set; } = "";
         public string FotoUrl { get; set; } = "";
         public string Papel { get; set; } = "";
+    }
+    // ── DTOs para deserializar respostas de erro ─────────────────────
+
+    // Formato do GlobalExceptionHandler: { "erro": "mensagem" }
+    private class ErroDto { public string? Erro { get; set; } }
+
+    // Formato do ValidationProblem (FluentValidation via ValidationFilter):
+    // { "errors": { "Campo": ["mensagem1", "mensagem2"] } }
+    private class ValidationProblemDto
+    {
+        public Dictionary<string, string[]>? Errors { get; set; }
     }
 }

@@ -71,6 +71,9 @@ public class CriarTurmaRequestValidator : AbstractValidator<CriarTurmaRequest>
             .WithMessage("A lista de professores é obrigatória.")
             .Must(lista => lista != null && lista.Count > 0)
             .WithMessage("Selecione pelo menos um professor para a turma.");
+        RuleForEach(x => x.ProfessoresIdsHash)
+            .NotEmpty()
+            .WithMessage("É necessário selecionar um professor para criar a turma.");
 
         // ── DiaDaSemana ──────────────────────────────────────────
         // DayOfWeek no .NET: 0 = Domingo, 6 = Sábado.

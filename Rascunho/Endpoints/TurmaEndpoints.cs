@@ -82,13 +82,16 @@ public static class TurmaEndpoints
         // ══════════════════════════════════════════════════════════════════
         // 2. CRIAR TURMA (Recepção e Gerente)
         // ══════════════════════════════════════════════════════════════════
-        group.MapPost("/criar", async (CriarTurmaRequest request, TurmaService turmaService) =>
+        group.MapPost("/criar", async (CriarTurmaRequest? request, TurmaService turmaService) =>
         {
+            if (request is null)
+                return Results.BadRequest(new { erro = "O corpo da requisição não pode estar vazio." });
+
             var response = await turmaService.CriarTurmaAsync(request);
             return Results.Created($"/api/turmas/{response.IdHash}", response);
         })
-        .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"))
-        .AddEndpointFilter<ValidationFilter<CriarTurmaRequest>>();
+            .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"))
+            .AddEndpointFilter<ValidationFilter<CriarTurmaRequest>>();
 
         // ══════════════════════════════════════════════════════════════════
         // 3. MATRICULAR ALUNO (auto-serviço do aluno)
