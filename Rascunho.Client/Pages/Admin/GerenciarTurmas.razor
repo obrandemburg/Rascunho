@@ -175,10 +175,10 @@
                                 @cell.Item.QuantidadeMatriculados / @cell.Item.LimiteAlunos
                             </MudText>
                             <MudProgressLinear Color="@(cell.Item.QuantidadeMatriculados >= cell.Item.LimiteAlunos
-                                                                                                                     ? Color.Error : Color.Success)"
+                                                                                                                                                                                                ? Color.Error : Color.Success)"
                                                Value="@(cell.Item.LimiteAlunos > 0
-                                                                                                      ? (double)cell.Item.QuantidadeMatriculados / cell.Item.LimiteAlunos * 100
-                                                                                                      : 0)"
+                                                                                                                                                                                 ? (double)cell.Item.QuantidadeMatriculados / cell.Item.LimiteAlunos * 100
+                                                                                                                                                                                 : 0)"
                                                Style="width: 60px;" Rounded="true" />
                         </div>
                     </CellTemplate>
@@ -345,19 +345,18 @@
         criando = true;
         try
         {
-            var payload = new
-            {
-                RitmoIdHash = novaTurma.RitmoIdHash,
-                SalaIdHash = novaTurma.SalaIdHash,
-                DataInicio = dataInicio.Value,
-                DiaDaSemana = DiaSemanaParaInt(novaTurma.DiaSemana),
-                HorarioInicio = horarioInicio.Value,
-                HorarioFim = horarioFim.Value,
-                Nivel = novaTurma.Nivel,
-                LimiteAlunos = novaTurma.LimiteAlunos,
-                LinkWhatsApp = novaTurma.LinkWhatsApp ?? "",
-                ProfessoresIdsHash = new List<string> { novaTurma.ProfessorIdHash }
-            };
+            var payload = new CriarTurmaRequest(
+                novaTurma.RitmoIdHash,
+                novaTurma.SalaIdHash,
+                dataInicio.Value,
+                DiaSemanaParaInt(novaTurma.DiaSemana),
+                horarioInicio.Value.ToString(@"hh\:mm"),
+                horarioFim.Value.ToString(@"hh\:mm"),
+                novaTurma.Nivel,
+                novaTurma.LimiteAlunos,
+                novaTurma.LinkWhatsApp ?? "",
+                new List<string> { novaTurma.ProfessorIdHash }
+            );
 
             var response = await Http.PostAsJsonAsync("api/turmas/criar", payload);
 

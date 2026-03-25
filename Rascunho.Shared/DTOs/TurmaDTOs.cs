@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Rascunho.Shared.DTOs;
 
-public record CriarTurmaRequest(string RitmoIdHash, string SalaIdHash, DateTime DataInicio, int DiaDaSemana, TimeSpan HorarioInicio, TimeSpan HorarioFim, string Nivel, int LimiteAlunos, string LinkWhatsApp, List<string> ProfessoresIdsHash);
+public record CriarTurmaRequest(string RitmoIdHash, string SalaIdHash, DateTime DataInicio, int DiaDaSemana, string HorarioInicio, string HorarioFim, string Nivel, int LimiteAlunos, string LinkWhatsApp, List<string> ProfessoresIdsHash);
 public record TrocarSalaRequest(string NovaSalaIdHash, int NovoLimiteAlunos);
 public record MatricularRequest(string Papel);
 public record MatricularAdminRequest(string AlunoIdHash, string Papel);

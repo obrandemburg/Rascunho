@@ -29,6 +29,9 @@ public class TurmaService
         var salaDecoded = _hashids.Decode(request.SalaIdHash);
         var ritmoDecoded = _hashids.Decode(request.RitmoIdHash);
 
+        var hrInicio = TimeSpan.Parse(request.HorarioInicio);
+        var hrFim = TimeSpan.Parse(request.HorarioFim);
+
         if (salaDecoded.Length == 0 || ritmoDecoded.Length == 0)
             throw new RegraNegocioException("ID de Sala ou Ritmo inválido.");
 
@@ -59,9 +62,8 @@ public class TurmaService
             t.SalaId == salaIdReal &&
             t.DiaDaSemana == diaDaSemanaEnum &&
             t.Ativa &&
-            request.HorarioInicio < t.HorarioFim &&
-            request.HorarioFim > t.HorarioInicio);
-
+            hrInicio < t.HorarioFim &&
+            hrFim > t.HorarioInicio);
         if (choqueSala)
             throw new RegraNegocioException(
                 "Já existe uma turma ativa nesta sala, neste mesmo dia e horário.");
@@ -82,8 +84,8 @@ public class TurmaService
                     tp.ProfessorId == profId &&
                     tp.Turma.DiaDaSemana == diaDaSemanaEnum &&
                     tp.Turma.Ativa &&
-                    request.HorarioInicio < tp.Turma.HorarioFim &&
-                    request.HorarioFim > tp.Turma.HorarioInicio);
+                    hrInicio < tp.Turma.HorarioFim &&
+                    hrFim > tp.Turma.HorarioInicio);
 
             if (choqueProfessor)
                 throw new RegraNegocioException(
@@ -91,9 +93,14 @@ public class TurmaService
                     "mesmo dia e horário em outra sala.");
         }
 
+        if (!TimeSpan.TryParse(request.HorarioInicio, out var horarioInicio))
+            throw new RegraNegocioException("Horário de início inválido. Use o formato HH:mm.");
+        if (!TimeSpan.TryParse(request.HorarioFim, out var horarioFim))
+            throw new RegraNegocioException("Horário de fim inválido. Use o formato HH:mm.");
+
         var turma = new Turma(
             ritmoIdReal, salaIdReal, request.DataInicio, diaDaSemanaEnum,
-            request.HorarioInicio, request.HorarioFim, request.Nivel,
+            horarioInicio, horarioFim, request.Nivel,
             request.LimiteAlunos, request.LinkWhatsApp);
 
         _context.Turmas.Add(turma);
