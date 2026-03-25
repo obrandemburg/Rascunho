@@ -2,10 +2,6 @@
   ARQUIVO: Rascunho.Client/Pages/Admin/GerenciarTurmas.razor
   ROTA:    /admin/turmas
   ACESSO:  Recepção, Gerente
-
-  SPRINT 6: TurmaListaDto corrigido (DiaSemana→DiaDaSemana, etc.)
-  SPRINT 7: Modal "Ver Alunos" usa <UserAvatar> em vez de MudAvatar com inicial.
-            AlunoMatriculadoDto.FotoUrl já existia — só precisava ser renderizado.
 *@
 
 @page "/admin/turmas"
@@ -296,19 +292,33 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var profTask = Http.GetFromJsonAsync<List<ItemSimplesDto>>("api/usuarios/tipo/Professor/ativos/lista");
-        var ritmoTask = Http.GetFromJsonAsync<List<ItemSimplesDto>>("api/ritmos/listar");
-        var salaTask = Http.GetFromJsonAsync<List<SalaDto>>("api/salas/ativas");
-        var turmasTask = Http.GetFromJsonAsync<List<TurmaListaDto>>("api/turmas/listar-ativas");
+        try
+        {
+            // Executa os GETs simultaneamente. O BuscarSeguroAsync lida com erros de rede ou 500.
+            var profTask = BuscarSeguroAsync<List<ItemSimplesDto>>("api/usuarios/tipo/Professor/ativos/lista");
+            var ritmoTask = BuscarSeguroAsync<List<ItemSimplesDto>>("api/ritmos/listar");
+            var salaTask = BuscarSeguroAsync<List<SalaDto>>("api/salas/ativas");
+            var turmasTask = BuscarSeguroAsync<List<TurmaListaDto>>("api/turmas/listar-ativas");
 
-        await Task.WhenAll(profTask, ritmoTask, salaTask, turmasTask);
+            // Espera todas terminarem
+            await Task.WhenAll(profTask, ritmoTask, salaTask, turmasTask);
 
-        professores = profTask.Result ?? new();
-        ritmos = ritmoTask.Result ?? new();
-        salas = salaTask.Result ?? new();
-        turmas = turmasTask.Result ?? new();
-        carregandoDependencias = false;
-        carregandoTurmas = false;
+            // Atribui os resultados com segurança
+            professores = profTask.Result;
+            ritmos = ritmoTask.Result;
+            salas = salaTask.Result;
+            turmas = turmasTask.Result;
+        }
+        catch
+        {
+            // O interceptador já lidou com a mensagem de erro.
+        }
+        finally
+        {
+            // Libera a tela independentemente de sucesso ou falha
+            carregandoDependencias = false;
+            carregandoTurmas = false;
+        }
     }
 
     private async Task CriarTurma()
@@ -324,18 +334,11 @@
             Snackbar.Add("O horário de fim deve ser maior que o de início.", Severity.Warning);
             return;
         }
-
-        // CORREÇÃO Bug Real 4: DiaSemana vazio era silenciosamente convertido
-        // para 0 (Domingo) pelo DiaSemanaParaInt. Agora bloqueia antes de enviar.
         if (string.IsNullOrEmpty(novaTurma.DiaSemana))
         {
             Snackbar.Add("Selecione o dia da semana.", Severity.Warning);
             return;
         }
-
-        // CORREÇÃO Bug Real 2 (frontend): ProfessorIdHash vazio faria o backend
-        // receber [""] na lista, passando pelo Count > 0 do validator e chegando
-        // ao TurmaService com hash inválido. Bloqueia aqui com mensagem clara.
         if (string.IsNullOrEmpty(novaTurma.ProfessorIdHash))
         {
             Snackbar.Add("Selecione um professor para a turma.", Severity.Warning);
@@ -360,83 +363,25 @@
 
             var response = await Http.PostAsJsonAsync("api/turmas/criar", payload);
 
+            // APENAS O CAMINHO FELIZ! O interceptador já faz o trabalho sujo dos erros.
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("Turma criada com sucesso! ✅", Severity.Success);
                 novaTurma = new TurmaRequest { LimiteAlunos = 30 };
                 horarioInicio = null; horarioFim = null; dataInicio = DateTime.Today;
-                turmas = await Http.GetFromJsonAsync<List<TurmaListaDto>>(
-                    "api/turmas/listar-ativas") ?? new();
-            }
-            else if ((int)response.StatusCode == 422)
-            {
-                // RegraNegocioException do service: choque de sala, professor inválido, etc.
-                // GlobalExceptionHandler retorna: { "erro": "mensagem legível" }
-                var corpo = await response.Content.ReadAsStringAsync();
+                
+                // Recarrega a lista de turmas
                 try
                 {
-                    var erro = System.Text.Json.JsonSerializer.Deserialize<ErroDto>(
-                        corpo,
-                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    Snackbar.Add(erro?.Erro ?? "Conflito ao criar turma.", Severity.Error);
+                    turmas = await Http.GetFromJsonAsync<List<TurmaListaDto>>("api/turmas/listar-ativas") ?? new();
                 }
-                catch
-                {
-                    Snackbar.Add("Conflito ao criar turma. Verifique os dados.", Severity.Error);
-                }
-            }
-            else if ((int)response.StatusCode == 400)
-            {
-                // CORREÇÃO Bug Real 3: antes caia no else genérico sem indicar o problema.
-                // Agora tenta extrair a primeira mensagem do ValidationProblem (FluentValidation)
-                // que tem formato: { "errors": { "Campo": ["mensagem"] } }
-                var corpo = await response.Content.ReadAsStringAsync();
-                try
-                {
-                    var problema = System.Text.Json.JsonSerializer.Deserialize<ValidationProblemDto>(
-                        corpo,
-                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-                    var primeiraMensagem = problema?.Errors?.Values
-                        .FirstOrDefault()
-                        ?.FirstOrDefault();
-
-                    Snackbar.Add(primeiraMensagem ?? "Preencha todos os campos obrigatórios.", Severity.Warning);
-                }
-                catch
-                {
-                    Snackbar.Add("Dados inválidos. Verifique os campos obrigatórios.", Severity.Warning);
-                }
-            }
-            else
-            {
-                // Lê o corpo da resposta 500
-                var corpo = await response.Content.ReadAsStringAsync();
-        
-                try
-                {
-                    // Tenta desserializar o JSON que agora tem "erro" e "detalhes"
-                    var erro500 = System.Text.Json.JsonSerializer.Deserialize<ErroDto>(
-                        corpo,
-                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-                    // Imprime no CONSOLE DO NAVEGADOR (F12)
-                    Console.WriteLine("=== ERRO CRÍTICO NO BACKEND ===");
-                    Console.WriteLine(erro500?.Detalhes ?? corpo);
-                    Console.WriteLine("===============================");
-
-                    // Exibe a mensagem amigável na UI para o usuário
-                    Snackbar.Add(erro500?.Erro ?? "Erro inesperado ao criar turma.", Severity.Error);
-                }
-                catch
-                {
-                    // Se falhar a leitura do JSON, joga tudo no console mesmo assim
-                    Console.WriteLine($"Erro bruto: {corpo}");
-                    Snackbar.Add("Erro inesperado no servidor.", Severity.Error);
-                }
+                catch { /* Ignora se falhar o recarregamento */ }
             }
         }
-        finally { criando = false; }
+        finally
+        {
+            criando = false;
+        }
     }
 
     private async Task AbrirModalAlunos(TurmaListaDto turma)
@@ -451,8 +396,14 @@
             alunosDaTurma = await Http.GetFromJsonAsync<List<AlunoMatriculadoDto>>(
                 $"api/turmas/{turma.IdHash}/alunos") ?? new();
         }
-        catch { Snackbar.Add("Erro ao carregar alunos da turma.", Severity.Error); }
-        finally { carregandoAlunos = false; }
+        catch
+        {
+            // O interceptador fará o aviso se der 500 ou 404.
+        }
+        finally
+        {
+            carregandoAlunos = false;
+        }
     }
 
     private async Task ConfirmarEncerrarTurma(TurmaListaDto turma)
@@ -474,16 +425,25 @@
         if (result != null && !result.Canceled)
         {
             var response = await Http.PutAsync($"api/turmas/{turma.IdHash}/encerrar", null);
+            
+            // APENAS O CAMINHO FELIZ AQUI TAMBÉM!
             if (response.IsSuccessStatusCode)
             {
                 turmas.RemoveAll(t => t.IdHash == turma.IdHash);
                 Snackbar.Add($"Turma '{turma.RitmoNome}' encerrada.", Severity.Info);
             }
-            else
-            {
-                var erro = await response.Content.ReadAsStringAsync();
-                Snackbar.Add($"Erro ao encerrar: {erro}", Severity.Error);
-            }
+        }
+    }
+
+    private async Task<T> BuscarSeguroAsync<T>(string url) where T : new()
+    {
+        try
+        {
+            return await Http.GetFromJsonAsync<T>(url) ?? new T();
+        }
+        catch
+        {
+            return new T();
         }
     }
 
@@ -510,6 +470,8 @@
         _ => 0
     };
 
+    // ── DTOs da Tela ──────────────────────────────────────────
+    
     public class TurmaRequest
     {
         public string RitmoIdHash { get; set; } = "";
@@ -532,7 +494,6 @@
         public int CapacidadeMaxima { get; set; }
     }
 
-    // SPRINT 6: DiaSemana(string) → DiaDaSemana(int)
     public class TurmaListaDto
     {
         public string IdHash { get; set; } = "";
@@ -553,20 +514,5 @@
         public string Nome { get; set; } = "";
         public string FotoUrl { get; set; } = "";
         public string Papel { get; set; } = "";
-    }
-    // ── DTOs para deserializar respostas de erro ─────────────────────
-
-    // Formato do GlobalExceptionHandler: { "erro": "mensagem" }
-    private class ErroDto
-    {
-        public string? Erro { get; set; }
-        public string? Detalhes { get; set; }
-    }
-
-    // Formato do ValidationProblem (FluentValidation via ValidationFilter):
-    // { "errors": { "Campo": ["mensagem1", "mensagem2"] } }
-    private class ValidationProblemDto
-    {
-        public Dictionary<string, string[]>? Errors { get; set; }
     }
 }
