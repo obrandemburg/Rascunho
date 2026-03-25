@@ -12,20 +12,21 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-// 1. Registra o Interceptador na injeção de dependência
+// 1. Registra o Interceptador
 builder.Services.AddTransient<HttpInterceptorHandler>();
 
-// 2. Cria uma fábrica de HttpClient apontando para a sua VPS e "pluga" o interceptador nele
-builder.Services.AddHttpClient("ApiBackend", client =>
-{
-    client.BaseAddress = new Uri("http://5.161.202.169:8080/");
-})
-.AddHttpMessageHandler<HttpInterceptorHandler>();
-
-// 3. Diz ao Blazor: Toda vez que alguma tela pedir um "@inject HttpClient Http", 
-// entregue esse cliente "ApiBackend" que nós acabamos de configurar acima.
+// 2. Injeta o HttpClient FORÇANDO ele a passar pelo interceptador
 builder.Services.AddScoped(sp =>
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiBackend"));
+{
+    var interceptor = sp.GetRequiredService<HttpInterceptorHandler>();
+    // Garante que o interceptador tenha um motor base para fazer a requisição na web
+    interceptor.InnerHandler = new HttpClientHandler();
+
+    return new HttpClient(interceptor)
+    {
+        BaseAddress = new Uri("http://5.161.202.169:8080/")
+    };
+});
 
 // Adicionando LocalStorage e Autorização Core
 builder.Services.AddBlazoredLocalStorage();

@@ -23,13 +23,17 @@ public class HttpInterceptorHandler : DelegatingHandler
         // Deixa a requisição ir para o backend e aguarda a resposta
         var response = await base.SendAsync(request, cancellationToken);
 
-        // Se deu sucesso (200, 201, etc), apenas devolve a resposta para a tela e não faz nada.
         if (response.IsSuccessStatusCode)
             return response;
 
         // --- SE CAIU AQUI, DEU ERRO ---
         var corpo = await response.Content.ReadAsStringAsync(cancellationToken);
-        string mensagemUsuario = "Ocorreu um erro inesperado na comunicação com o servidor.";
+
+        // FORÇA IMPRIMIR NO CONSOLE (F12) PARA VOCÊ VER NA VPS!
+        Console.WriteLine($"[INTERCEPTADOR] Falha HTTP {(int)response.StatusCode} na rota {request.RequestUri}");
+        Console.WriteLine($"[INTERCEPTADOR] Resposta: {corpo}");
+
+        string mensagemUsuario = "Ocorreu um erro inesperado.";
 
         try
         {

@@ -148,6 +148,6 @@ app.MapAulaExperimentalEndpoints();
 app.MapProfessorEndpoints();
 app.MapReposicaoEndpoints();
 app.MapGerenteEndpoints();
-app.MapUploadEndpoints(); // NOVO — upload de fotos
+app.MapUploadEndpoints();
 
 app.Run();
