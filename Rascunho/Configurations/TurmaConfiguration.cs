@@ -14,6 +14,9 @@ public class TurmaConfiguration : IEntityTypeConfiguration<Turma>
         builder.Property(t => t.Nivel).IsRequired().HasMaxLength(50);
         builder.Property(t => t.LinkWhatsApp).HasMaxLength(255);
 
+        builder.Property(t => t.DataInicio)
+               .IsRequired()
+               .HasColumnType("date");
         builder.HasOne(t => t.Ritmo).WithMany().HasForeignKey(t => t.RitmoId)
                .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(t => t.Sala).WithMany().HasForeignKey(t => t.SalaId)

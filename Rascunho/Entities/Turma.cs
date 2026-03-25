@@ -8,7 +8,7 @@ public class Turma
     public Ritmo Ritmo { get; protected set; } = null!;
     public int SalaId { get; protected set; }
     public Sala Sala { get; protected set; } = null!;
-    public DateTime DataInicio { get; protected set; }
+    public DateOnly DataInicio { get; protected set; }
     public DayOfWeek DiaDaSemana { get; protected set; }
     public TimeSpan HorarioInicio { get; protected set; }
     public TimeSpan HorarioFim { get; protected set; }
@@ -23,13 +23,13 @@ public class Turma
 
     protected Turma() { }
 
-    public Turma(int ritmoId, int salaId, DateTime dataInicio, DayOfWeek diaDaSemana,
+    public Turma(int ritmoId, int salaId, DateOnly dataInicio, DayOfWeek diaDaSemana,
         TimeSpan horarioInicio, TimeSpan horarioFim, string nivel,
         int limiteAlunos, string linkWhatsApp)
     {
         RitmoId = ritmoId;
         SalaId = salaId;
-        DataInicio = dataInicio.Date;
+        DataInicio = dataInicio;
         DiaDaSemana = diaDaSemana;
         HorarioInicio = horarioInicio;
         HorarioFim = horarioFim;

@@ -175,10 +175,10 @@
                                 @cell.Item.QuantidadeMatriculados / @cell.Item.LimiteAlunos
                             </MudText>
                             <MudProgressLinear Color="@(cell.Item.QuantidadeMatriculados >= cell.Item.LimiteAlunos
-                                                                                                                                                                                                ? Color.Error : Color.Success)"
+                                                                                                                                                                                                                                                                           ? Color.Error : Color.Success)"
                                                Value="@(cell.Item.LimiteAlunos > 0
-                                                                                                                                                                                 ? (double)cell.Item.QuantidadeMatriculados / cell.Item.LimiteAlunos * 100
-                                                                                                                                                                                 : 0)"
+                                                                                                                                                                                                                                                            ? (double)cell.Item.QuantidadeMatriculados / cell.Item.LimiteAlunos * 100
+                                                                                                                                                                                                                                                            : 0)"
                                                Style="width: 60px;" Rounded="true" />
                         </div>
                     </CellTemplate>
@@ -348,7 +348,7 @@
             var payload = new CriarTurmaRequest(
                 novaTurma.RitmoIdHash,
                 novaTurma.SalaIdHash,
-                dataInicio.Value,
+                DateOnly.FromDateTime(dataInicio.Value),
                 DiaSemanaParaInt(novaTurma.DiaSemana),
                 horarioInicio.Value.ToString(@"hh\:mm"),
                 horarioFim.Value.ToString(@"hh\:mm"),
@@ -410,9 +410,30 @@
             }
             else
             {
-                var erroCorpo = await response.Content.ReadAsStringAsync();
+                // Lê o corpo da resposta 500
+                var corpo = await response.Content.ReadAsStringAsync();
+        
+                try
+                {
+                    // Tenta desserializar o JSON que agora tem "erro" e "detalhes"
+                    var erro500 = System.Text.Json.JsonSerializer.Deserialize<ErroDto>(
+                        corpo,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-                Snackbar.Add("ERRO: " + erroCorpo, Severity.Error);
+                    // Imprime no CONSOLE DO NAVEGADOR (F12)
+                    Console.WriteLine("=== ERRO CRÍTICO NO BACKEND ===");
+                    Console.WriteLine(erro500?.Detalhes ?? corpo);
+                    Console.WriteLine("===============================");
+
+                    // Exibe a mensagem amigável na UI para o usuário
+                    Snackbar.Add(erro500?.Erro ?? "Erro inesperado ao criar turma.", Severity.Error);
+                }
+                catch
+                {
+                    // Se falhar a leitura do JSON, joga tudo no console mesmo assim
+                    Console.WriteLine($"Erro bruto: {corpo}");
+                    Snackbar.Add("Erro inesperado no servidor.", Severity.Error);
+                }
             }
         }
         finally { criando = false; }
@@ -536,7 +557,11 @@
     // ── DTOs para deserializar respostas de erro ─────────────────────
 
     // Formato do GlobalExceptionHandler: { "erro": "mensagem" }
-    private class ErroDto { public string? Erro { get; set; } }
+    private class ErroDto
+    {
+        public string? Erro { get; set; }
+        public string? Detalhes { get; set; }
+    }
 
     // Formato do ValidationProblem (FluentValidation via ValidationFilter):
     // { "errors": { "Campo": ["mensagem1", "mensagem2"] } }

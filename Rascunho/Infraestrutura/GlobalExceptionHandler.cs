@@ -7,7 +7,6 @@ public class GlobalExceptionHandler : IExceptionHandler
 {
     private readonly ILogger<GlobalExceptionHandler> _logger;
 
-    // Injetamos o Logger pelo construtor
     public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger)
     {
         _logger = logger;
@@ -20,6 +19,7 @@ public class GlobalExceptionHandler : IExceptionHandler
     {
         int statusCode = StatusCodes.Status500InternalServerError;
         string mensagem = "Ocorreu um erro interno no servidor.";
+        string? detalhes = null; // NOVA VARIÁVEL
 
         if (exception is ArgumentException)
         {
@@ -34,16 +34,18 @@ public class GlobalExceptionHandler : IExceptionHandler
         else
         {
             statusCode = StatusCodes.Status500InternalServerError;
-            // Mantém a mensagem genérica para o frontend por segurança...
-            //mensagem = "Ocorreu um erro interno. Tente novamente mais tarde.";
+            mensagem = "Ocorreu um erro interno. Tente novamente mais tarde.";
 
-            mensagem = exception.ToString();
-            // ... MAS LOGA O ERRO REAL NO CONSOLE DO BACKEND!
-            //_logger.LogError(exception, "ERRO NÃO TRATADO CAPTURADO PELO GLOBAL HANDLER");
+            // Captura o stacktrace completo para enviar ao frontend
+            detalhes = exception.ToString();
+
+            _logger.LogError(exception, "ERRO NÃO TRATADO CAPTURADO PELO GLOBAL HANDLER");
         }
 
         httpContext.Response.StatusCode = statusCode;
-        await httpContext.Response.WriteAsJsonAsync(new { erro = mensagem }, cancellationToken);
+
+        // Agora retornamos um objeto com duas propriedades
+        await httpContext.Response.WriteAsJsonAsync(new { erro = mensagem, detalhes = detalhes }, cancellationToken);
 
         return true;
     }
