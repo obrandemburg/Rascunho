@@ -5,16 +5,22 @@ namespace Rascunho.Infraestrutura;
 
 public class GlobalExceptionHandler : IExceptionHandler
 {
+    private readonly ILogger<GlobalExceptionHandler> _logger;
+
+    // Injetamos o Logger pelo construtor
+    public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger)
+    {
+        _logger = logger;
+    }
+
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
         Exception exception,
         CancellationToken cancellationToken)
     {
-        // Define o status code padrão como 500 (Erro Interno)
         int statusCode = StatusCodes.Status500InternalServerError;
         string mensagem = "Ocorreu um erro interno no servidor.";
 
-        // Aqui você mapeia qual exceção gera qual HTTP Status Code
         if (exception is ArgumentException)
         {
             statusCode = StatusCodes.Status400BadRequest;
@@ -28,15 +34,17 @@ public class GlobalExceptionHandler : IExceptionHandler
         else
         {
             statusCode = StatusCodes.Status500InternalServerError;
-            mensagem = "Ocorreu um erro interno. Tente novamente mais tarde.";
+            // Mantém a mensagem genérica para o frontend por segurança...
+            //mensagem = "Ocorreu um erro interno. Tente novamente mais tarde.";
+
+            mensagem = exception.ToString();
+            // ... MAS LOGA O ERRO REAL NO CONSOLE DO BACKEND!
+            //_logger.LogError(exception, "ERRO NÃO TRATADO CAPTURADO PELO GLOBAL HANDLER");
         }
 
-        // Configura a resposta HTTP
         httpContext.Response.StatusCode = statusCode;
-
         await httpContext.Response.WriteAsJsonAsync(new { erro = mensagem }, cancellationToken);
 
-        // Retorna true para avisar ao .NET que o erro já foi tratado e não deve derrubar a aplicação
         return true;
     }
 }
