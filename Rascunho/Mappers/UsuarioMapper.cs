@@ -8,19 +8,20 @@ namespace Rascunho.Mappers;
 public static class UsuarioMapper
 {
     public static ObterUsuarioResponse ToResponse(this Usuario u, IHashids hashids) =>
-        new ObterUsuarioResponse(
-            hashids.Encode(u.Id),
-            u.Nome,
-            u.Email,
-            u.Tipo,
-            u.NomeSocial,
-            u.Biografia,
-            u.FotoUrl,
-            u.Ativo,
-            u.Telefone,
-            u.DataNascimento,
-            FormatarCpf(u.Cpf)  // Formata no response: "12345678901" → "123.456.789-01"
-        );
+    new ObterUsuarioResponse(
+        hashids.Encode(u.Id),
+        u.Nome,
+        u.Email,
+        u.Tipo,
+        u.NomeSocial,
+        u.Biografia,
+        u.FotoUrl,
+        u.Ativo,
+        u.Telefone,
+        u.DataNascimento,
+        FormatarCpf(u.Cpf),
+        u.Genero            // NOVO
+    );
 
     /// <summary>
     /// Converte o CPF armazenado (11 dígitos sem formatação) para exibição.

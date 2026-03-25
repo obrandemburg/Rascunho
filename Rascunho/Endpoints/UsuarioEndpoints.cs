@@ -154,5 +154,15 @@ public static class UsuarioEndpoints
             await usuarioService.ExcluirUsuarioAsync(decodedIds[0]);
             return Results.NoContent();
         }).RequireAuthorization(policy => policy.RequireRole("Gerente"));
+
+        // 13. BUSCAR ALUNOS/BOLSISTAS por nome ou CPF (tela de matrícula)
+        group.MapGet("/buscar", async (
+            [FromQuery] string? q,
+            UsuarioService usuarioService) =>
+        {
+            var resultados = await usuarioService.BuscarUsuariosAsync(q);
+            return Results.Ok(resultados);
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
     }
 }

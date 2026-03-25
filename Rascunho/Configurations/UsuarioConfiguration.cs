@@ -43,6 +43,11 @@ public class UsuarioConfiguration : IEntityTypeConfiguration<Usuario>
             .HasFilter("\"Cpf\" IS NOT NULL")
             .HasDatabaseName("ix_usuarios_cpf_unique");
 
+        builder.Property(u => u.Genero)
+            .HasMaxLength(20)
+            .IsRequired()
+            .HasDefaultValue("Não informado");
+
         // TPH — discriminador de tipo na tabela Usuarios
         builder.HasDiscriminator(u => u.Tipo)
             .HasValue<Aluno>("Aluno")

@@ -72,6 +72,7 @@ public class UsuarioService
             request.DataNascimento,
             request.Telefone ?? "",
             request.Cpf);
+        usuario.DefinirGenero(request.Genero ?? "Não informado");
 
         // ── Define foto se foi enviada ────────────────────────────
         if (!string.IsNullOrEmpty(request.FotoUrl))
@@ -246,5 +247,38 @@ public class UsuarioService
             ?? throw new RegraNegocioException("Usuário não encontrado.");
         _context.Usuarios.Remove(u);
         await _context.SaveChangesAsync();
+    }
+    // ──────────────────────────────────────────────────────────────
+    // BUSCAR USUÁRIOS (Alunos e Bolsistas) por nome ou CPF
+    // Usado pela tela de matrícula administrativa
+    // ──────────────────────────────────────────────────────────────
+    public async Task<IEnumerable<BuscarUsuarioResponse>> BuscarUsuariosAsync(string? q)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
+            return Enumerable.Empty<BuscarUsuarioResponse>();
+
+        var termo = q.Trim().ToLower();
+        var cpfDigitos = new string(termo.Where(char.IsDigit).ToArray());
+
+        var resultados = await _context.Usuarios
+            .Where(u =>
+                u.Ativo &&
+                (u.Tipo == "Aluno" || u.Tipo == "Bolsista") &&
+                (
+                    u.Nome.ToLower().Contains(termo) ||
+                    (cpfDigitos.Length >= 3 && u.Cpf != null && u.Cpf.StartsWith(cpfDigitos))
+                )
+            )
+            .OrderBy(u => u.Nome)
+            .Take(10)
+            .ToListAsync();
+
+        return resultados.Select(u => new BuscarUsuarioResponse(
+            _hashids.Encode(u.Id),
+            u.Nome,
+            u.FotoUrl,
+            u.Tipo,
+            u.Genero
+        ));
     }
 }

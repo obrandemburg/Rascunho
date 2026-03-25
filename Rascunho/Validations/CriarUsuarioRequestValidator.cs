@@ -28,6 +28,11 @@ public class CriarUsuarioRequestValidator : AbstractValidator<CriarUsuarioReques
                 .Contains(tipo))
             .WithMessage("Tipo inválido. Opções: Aluno, Professor, Bolsista, Gerente, Recepção, Líder.");
 
+        RuleFor(x => x.Genero)
+            .Must(g => g == null || new[] { "Masculino", "Feminino", "Não informado" }.Contains(g))
+            .WithMessage("Gênero inválido. Opções: Masculino, Feminino, Não informado.")
+            .When(x => !string.IsNullOrEmpty(x.Genero));
+
         // DataNascimento: obrigatória para todos, deve ser data passada
         // e o usuário deve ter ao menos 5 anos (evita dados claramente errados)
         RuleFor(x => x.DataNascimento)
@@ -81,6 +86,7 @@ public class CriarUsuarioRequestValidator : AbstractValidator<CriarUsuarioReques
             .NotEqual(x => x.DiaObrigatorio1)
             .WithMessage("Os dois dias obrigatórios devem ser diferentes.")
             .When(x => x.Tipo == "Bolsista");
+
     }
 
     /// <summary>
@@ -117,4 +123,5 @@ public class CriarUsuarioRequestValidator : AbstractValidator<CriarUsuarioReques
         int digito2 = resto < 2 ? 0 : 11 - resto;
         return digito2 == int.Parse(cpf[10].ToString());
     }
+
 }

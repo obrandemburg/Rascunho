@@ -13,7 +13,6 @@ public abstract class Usuario
     public string FotoUrl { get; protected set; } = string.Empty;
     public bool Ativo { get; protected set; } = true;
 
-    // Obrigatório para todos os perfis
     public DateOnly DataNascimento { get; protected set; }
 
     // Opcional para todos os perfis
@@ -24,6 +23,7 @@ public abstract class Usuario
     // Exibição formatada é feita no frontend: "123.456.789-01"
     // Isso garante consistência nas comparações e evita duplicatas de formato.
     public string? Cpf { get; protected set; }
+    public string Genero { get; protected set; } = "Não informado";
 
     protected Usuario() { }
 
@@ -63,6 +63,7 @@ public abstract class Usuario
 
     /// <summary>Define ou atualiza a URL pública da foto de perfil.</summary>
     public void DefinirFoto(string fotoUrl) => FotoUrl = fotoUrl;
+    public void DefinirGenero(string genero) => Genero = genero;
 
     public void Ativar() => Ativo = true;
     public void Desativar() => Ativo = false;
