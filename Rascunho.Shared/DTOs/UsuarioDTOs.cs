@@ -29,13 +29,14 @@ public record CriarUsuarioRequest(
     string? Telefone,
     string? FotoUrl,
     string? Cpf,
+    string? Genero,        // NOVO: "Masculino" | "Feminino" | "Não informado"
 
     // Apenas para Professor
     List<string>? RitmosIdHash,
 
     // Apenas para Bolsista
-    string? PapelDominante,   // "Condutor" | "Conduzido" | "Ambos"
-    int? DiaObrigatorio1,  // 0=Dom ... 6=Sáb
+    string? PapelDominante,
+    int? DiaObrigatorio1,
     int? DiaObrigatorio2
 );
 
@@ -52,7 +53,15 @@ public record ObterUsuarioResponse(
     bool Ativo,
     string? Telefone,
     DateOnly DataNascimento,
-    string? Cpf            // Retornado formatado: "123.456.789-01"
+    string? Cpf,
+    string Genero          // NOVO
+);
+public record BuscarUsuarioResponse(
+    string IdHash,
+    string Nome,
+    string FotoUrl,
+    string Tipo,
+    string Genero
 );
 
 public record LoginRequest(string Email, string Senha);

@@ -440,8 +440,7 @@
         if (result != null && !result.Canceled)
         {
             var response = await Http.PutAsync($"api/turmas/{turma.IdHash}/encerrar", null);
-            
-            // APENAS O CAMINHO FELIZ AQUI TAMBÉM!
+
             if (response.IsSuccessStatusCode)
             {
                 turmas.RemoveAll(t => t.IdHash == turma.IdHash);

@@ -338,7 +338,6 @@
         </AuthorizeView>
 
         @* ── RECEPÇÃO e GERENTE
-             SPRINT 8: card "Gestão de Ritmos" adicionado (Recepção + Gerente)
         *@
         <AuthorizeView Roles="Recepção,Gerente" Context="adminCtx">
             <Authorized>
@@ -360,13 +359,21 @@
                             <a href="/admin/turmas" class="pd-card-link" style="color:#1b5e20;">Gerenciar</a>
                         </div>
                     </MudItem>
-                    @* SPRINT 8: card de Gestão de Ritmos *@
                     <MudItem xs="12" sm="6" md="3">
                         <div class="pd-card" style="border-color: #6a1b9a;">
                             <div class="pd-card-icon" style="background:#f3e5f5;">🎵</div>
                             <p class="pd-card-title">Gestão de Ritmos</p>
                             <p class="pd-card-desc">Cadastre, edite e gerencie o catálogo de ritmos da escola.</p>
                             <a href="/admin/ritmos" class="pd-card-link" style="color:#6a1b9a;">Gerenciar</a>
+                        </div>
+                    </MudItem>
+                    @* Card: Matricular Aluno *@
+                    <MudItem xs="12" sm="6" md="3">
+                        <div class="pd-card" style="border-color: #00695c;">
+                            <div class="pd-card-icon" style="background:#e0f2f1;">🎽</div>
+                            <p class="pd-card-title">Matricular Aluno</p>
+                            <p class="pd-card-desc">Adicione alunos às turmas disponíveis da escola.</p>
+                            <a href="/admin/matricular" class="pd-card-link" style="color:#00695c;">Matricular</a>
                         </div>
                     </MudItem>
                     <MudItem xs="12" sm="6" md="3">
