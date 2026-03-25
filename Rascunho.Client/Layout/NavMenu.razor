@@ -161,7 +161,6 @@
 
     @* ══════════════════════════════════════════════════════════════
        RECEPÇÃO E GERENTE — Menu administrativo (RN-ACE04/05)
-       SPRINT 8: Adicionado link /admin/ritmos
     ══════════════════════════════════════════════════════════════ *@
     <AuthorizeView Roles="Recepção,Gerente">
         <Authorized>
@@ -173,28 +172,27 @@
                             Icon="@Icons.Material.Filled.PersonAdd">
                     Criar Usuário
                 </MudNavLink>
-
                 <MudNavLink Href="/admin/turmas"
                             Icon="@Icons.Material.Filled.ManageHistory">
                     Gerir Turmas
                 </MudNavLink>
-
                 <MudNavLink Href="/admin/salas"
                             Icon="@Icons.Material.Filled.MeetingRoom">
                     Salas & Aluguéis
                 </MudNavLink>
-
-                @* SPRINT 8: link de gestão de ritmos *@
                 <MudNavLink Href="/admin/ritmos"
                             Icon="@Icons.Material.Filled.MusicNote">
                     Ritmos
                 </MudNavLink>
-
                 <MudNavLink Href="/admin/avisos"
                             Icon="@Icons.Material.Filled.Campaign">
                     Criar Avisos
                 </MudNavLink>
-
+                @* SPRINT Matrícula Admin *@
+                <MudNavLink Href="/admin/matricular"
+                            Icon="@Icons.Material.Filled.HowToReg">
+                    Matricular Aluno
+                </MudNavLink>
                 <MudNavLink Href="/quadro-avisos"
                             Icon="@Icons.Material.Filled.Announcement">
                     Quadro de Avisos

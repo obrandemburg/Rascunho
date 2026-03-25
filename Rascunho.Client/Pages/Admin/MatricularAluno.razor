@@ -2,14 +2,6 @@
   ARQUIVO: Rascunho.Client/Pages/Admin/MatricularAluno.razor
   ROTA:    /admin/matricular
   ACESSO:  Recepção, Gerente
-
-  FLUXO:
-  1. Carrega todas as turmas + ritmos (para filtro)
-  2. Agrupa turmas: Com vaga → Cheia → Inativa
-  3. Botão "Adicionar aluno" abre painel de busca inline na turma
-  4. Busca alunos via GET /api/usuarios/buscar?q= (debounce 400ms)
-  5. Clique no aluno → dialog de confirmação com papel pré-selecionado por gênero
-  6. Confirmação → POST /api/turmas/{idHash}/admin/matricular
 *@
 
 @page "/admin/matricular"
@@ -36,7 +28,7 @@
 }
 else
 {
-    @* ── FILTROS ────────────────────────────────────────────────── *@
+    @* ── FILTROS ─────────────────────────────────────────────── *@
     <MudGrid Spacing="2" Class="mb-6">
         <MudItem xs="12" sm="6" md="4">
             <MudSelect T="string"
@@ -68,9 +60,9 @@ else
         </MudItem>
     </MudGrid>
 
-    @* ══════════════════════════════════════════════════════════════
+    @* ══════════════════════════════════════════════════════════
        SEÇÃO: COM VAGA
-    ══════════════════════════════════════════════════════════════ *@
+    ══════════════════════════════════════════════════════════ *@
     <div class="mat-section-header" style="color:#2e7d32;">
         <MudIcon Icon="@Icons.Material.Filled.CheckCircleOutline" Style="vertical-align:middle;" Class="mr-1" />
         Com Vaga <span class="mat-counter">@TurmasComVaga.Count</span>
@@ -124,7 +116,7 @@ else
                     </MudButton>
                 </div>
 
-                @* ── Painel de busca inline ─────────────────────── *@
+                @* ── Painel de busca inline ──────────────────── *@
                 @if (turmaSelecionada?.IdHash == turma.IdHash)
                 {
                     <div class="mat-busca-panel pa-4">
@@ -132,13 +124,14 @@ else
                             Buscar aluno para: <strong>@turma.RitmoNome — @turma.Nivel</strong>
                         </MudText>
 
+                        @* BUG 2 CORRIGIDO: lambda explícita para OnDebounceIntervalElapsed *@
                         <MudTextField @bind-Value="termoBusca"
                                       Label="Nome ou CPF do aluno"
                                       Adornment="Adornment.Start"
                                       AdornmentIcon="@Icons.Material.Filled.Search"
                                       Variant="Variant.Outlined"
                                       DebounceInterval="400"
-                                      OnDebounceIntervalElapsed="BuscarAlunos"
+                                      OnDebounceIntervalElapsed="@(async (string _) => await BuscarAlunos())"
                                       Clearable="true"
                                       Dense="true"
                                       Class="mb-3"
@@ -156,30 +149,39 @@ else
                         }
                         else
                         {
-                            <MudList T="string" Dense="true" Class="pa-0">
+                            <div class="pa-0">
                                 @foreach (var aluno in resultadosBusca)
                                 {
-                                    <MudListItem T="string" Class="mat-aluno-item" OnClick="@(() => SelecionarAluno(aluno))">
-                                        <MudAvatar Size="Size.Small" Color="Color.Primary" Class="mr-3" Style="flex-shrink:0;">
-                                            @if (!string.IsNullOrEmpty(aluno.FotoUrl))
+                                    var alunoCapturado = aluno;
+                                    <div class="mat-aluno-item d-flex align-center pa-2"
+                                         @onclick="@(() => SelecionarAluno(alunoCapturado))"
+                                         style="cursor:pointer;">
+                                        <MudAvatar Size="Size.Small" Color="Color.Primary"
+                                                   Class="mr-3" Style="flex-shrink:0;">
+                                            @if (!string.IsNullOrEmpty(alunoCapturado.FotoUrl))
                                             {
-                                                <MudImage Src="@aluno.FotoUrl" Alt="@aluno.Nome"
+                                                <MudImage Src="@alunoCapturado.FotoUrl"
+                                                          Alt="@alunoCapturado.Nome"
                                                           Style="width:100%;height:100%;object-fit:cover;" />
                                             }
                                             else
                                             {
-                                                @(aluno.Nome.Length > 0 ? aluno.Nome[0].ToString() : "?")
+                                                @(alunoCapturado.Nome.Length > 0
+                                                    ? alunoCapturado.Nome[0].ToString()
+                                                    : "?")
                                             }
                                         </MudAvatar>
                                         <div>
-                                            <MudText Typo="Typo.body2" Class="font-weight-bold">@aluno.Nome</MudText>
+                                            <MudText Typo="Typo.body2" Class="font-weight-bold">
+                                                @alunoCapturado.Nome
+                                            </MudText>
                                             <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                                                @aluno.Tipo · @aluno.Genero
+                                                @alunoCapturado.Tipo · @alunoCapturado.Genero
                                             </MudText>
                                         </div>
-                                    </MudListItem>
+                                    </div>
                                 }
-                            </MudList>
+                            </div>
                         }
 
                         <MudButton Variant="Variant.Text"
@@ -199,9 +201,9 @@ else
         </MudPaper>
     }
 
-    @* ══════════════════════════════════════════════════════════════
+    @* ══════════════════════════════════════════════════════════
        SEÇÃO: CHEIA
-    ══════════════════════════════════════════════════════════════ *@
+    ══════════════════════════════════════════════════════════ *@
     <div class="mat-section-header" style="color:#e65100;">
         <MudIcon Icon="@Icons.Material.Filled.Block" Style="vertical-align:middle;" Class="mr-1" />
         Cheia <span class="mat-counter">@TurmasCheia.Count</span>
@@ -209,7 +211,9 @@ else
 
     @if (TurmasCheia.Count == 0)
     {
-        <MudAlert Severity="Severity.Success" Dense="true" Class="mb-5">Nenhuma turma cheia. ✅</MudAlert>
+        <MudAlert Severity="Severity.Success" Dense="true" Class="mb-5">
+            Nenhuma turma cheia. ✅
+        </MudAlert>
     }
     else
     {
@@ -248,9 +252,9 @@ else
         </MudPaper>
     }
 
-    @* ══════════════════════════════════════════════════════════════
+    @* ══════════════════════════════════════════════════════════
        SEÇÃO: INATIVA
-    ══════════════════════════════════════════════════════════════ *@
+    ══════════════════════════════════════════════════════════ *@
     @if (TurmasInativas.Count > 0)
     {
         <div class="mat-section-header" style="color:#9e9e9e;">
@@ -288,9 +292,10 @@ else
 }
 
 @* ══════════════════════════════════════════════════════════════
-   DIALOG DE CONFIRMAÇÃO DE MATRÍCULA
+   DIALOG DE CONFIRMAÇÃO — BUG 1 CORRIGIDO: @bind-Visible (não @bind-IsVisible)
 ══════════════════════════════════════════════════════════════ *@
-<MudDialog @bind-IsVisible="dialogAberto">
+<MudDialog @bind-Visible="dialogAberto"
+           Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true })">
     <TitleContent>
         <MudText Typo="Typo.h6">
             <MudIcon Icon="@Icons.Material.Filled.HowToReg" Class="mr-2" />
@@ -298,12 +303,12 @@ else
         </MudText>
     </TitleContent>
     <DialogContent>
-        @if (alunoParaConfirmar != null && turmaSelecionada != null)
+        @if (alunoParaConfirmar != null && turmaParaConfirmar != null)
         {
             <MudText Typo="Typo.body1" Class="mb-4">
                 Deseja adicionar <strong>@alunoParaConfirmar.Nome</strong> à turma
-                <strong>@turmaSelecionada.RitmoNome — @turmaSelecionada.Nivel</strong>
-                (@DiaNome(turmaSelecionada.DiaDaSemana), @turmaSelecionada.HorarioInicio)?
+                <strong>@turmaParaConfirmar.RitmoNome — @turmaParaConfirmar.Nivel</strong>
+                (@DiaNome(turmaParaConfirmar.DiaDaSemana), @turmaParaConfirmar.HorarioInicio)?
             </MudText>
 
             <MudSelect T="string"
@@ -319,7 +324,7 @@ else
         }
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="@(() => dialogAberto = false)" Disabled="@processando">
+        <MudButton OnClick="@(() => { dialogAberto = false; })" Disabled="@processando">
             Cancelar
         </MudButton>
         <MudButton Color="Color.Primary" Variant="Variant.Filled"
@@ -334,7 +339,7 @@ else
 </MudDialog>
 
 @code {
-    // ── Estado ────────────────────────────────────────────────────
+    // ── Estado ───────────────────────────────────────────────────
     private bool carregando = true;
     private List<ObterTurmaResponse> todasTurmas = new();
     private List<ObterRitmoResponse> ritmos = new();
@@ -342,7 +347,11 @@ else
     private string? filtroRitmoNome;
     private int? filtroDia;
 
+    // turmaSelecionada → painel de busca aberto
+    // turmaParaConfirmar → snapshot salvo ao abrir o dialog (evita null no dialog)
     private ObterTurmaResponse? turmaSelecionada;
+    private ObterTurmaResponse? turmaParaConfirmar;
+
     private string termoBusca = "";
     private List<BuscarUsuarioResponse> resultadosBusca = new();
     private bool buscando = false;
@@ -352,14 +361,14 @@ else
     private bool dialogAberto = false;
     private bool processando = false;
 
-    // ── Lookup de dias ────────────────────────────────────────────
+    // ── Lookup de dias ───────────────────────────────────────────
     private static readonly (string Nome, int Valor)[] DiasSemana =
     {
-        ("Domingo", 0), ("Segunda-feira", 1), ("Terça-feira", 2),
+        ("Domingo",    0), ("Segunda-feira", 1), ("Terça-feira", 2),
         ("Quarta-feira", 3), ("Quinta-feira", 4), ("Sexta-feira", 5), ("Sábado", 6)
     };
 
-    // ── Computed (filtros aplicados) ──────────────────────────────
+    // ── Computed ─────────────────────────────────────────────────
     private List<ObterTurmaResponse> TurmasFiltradas => todasTurmas
         .Where(t =>
             (string.IsNullOrEmpty(filtroRitmoNome) || t.RitmoNome == filtroRitmoNome) &&
@@ -375,7 +384,7 @@ else
     private List<ObterTurmaResponse> TurmasInativas =>
         TurmasFiltradas.Where(t => !t.Ativa).ToList();
 
-    // ── Lifecycle ─────────────────────────────────────────────────
+    // ── Lifecycle ────────────────────────────────────────────────
     protected override async Task OnInitializedAsync()
     {
         try
@@ -384,8 +393,8 @@ else
             var ritmosTask = Http.GetFromJsonAsync<List<ObterRitmoResponse>>("api/ritmos/listar");
             await Task.WhenAll(turmasTask, ritmosTask);
 
-            todasTurmas = await turmasTask ?? new();
-            ritmos = (await ritmosTask ?? new()).Where(r => r.Ativo).ToList();
+            todasTurmas = turmasTask.Result ?? new();
+            ritmos = (ritmosTask.Result ?? new()).Where(r => r.Ativo).ToList();
         }
         catch (Exception ex)
         {
@@ -397,7 +406,7 @@ else
         }
     }
 
-    // ── Busca de alunos ───────────────────────────────────────────
+    // ── Busca ────────────────────────────────────────────────────
     private void AbrirBuscaAluno(ObterTurmaResponse turma)
     {
         turmaSelecionada = turma;
@@ -414,7 +423,7 @@ else
 
     private async Task BuscarAlunos()
     {
-        if (string.IsNullOrWhiteSpace(termoBusca) || termoBusca.Length < 2)
+        if (string.IsNullOrWhiteSpace(termoBusca) || termoBusca.Trim().Length < 2)
         {
             resultadosBusca = new();
             return;
@@ -426,7 +435,7 @@ else
         try
         {
             var resultado = await Http.GetFromJsonAsync<List<BuscarUsuarioResponse>>(
-                $"api/usuarios/buscar?q={Uri.EscapeDataString(termoBusca)}");
+                $"api/usuarios/buscar?q={Uri.EscapeDataString(termoBusca.Trim())}");
             resultadosBusca = resultado ?? new();
         }
         catch
@@ -441,12 +450,14 @@ else
         }
     }
 
-    // ── Confirmação de matrícula ──────────────────────────────────
+    // ── Seleção e confirmação ────────────────────────────────────
     private void SelecionarAluno(BuscarUsuarioResponse aluno)
     {
         alunoParaConfirmar = aluno;
 
-        // Papel automático baseado no gênero (pode ser ajustado antes de confirmar)
+        // Salva snapshot da turma para o dialog (independente do painel de busca)
+        turmaParaConfirmar = turmaSelecionada;
+
         papelSelecionado = aluno.Genero switch
         {
             "Masculino" => "Condutor",
@@ -455,11 +466,12 @@ else
         };
 
         dialogAberto = true;
+        StateHasChanged(); // BUG 3 CORRIGIDO: força re-render após abrir dialog
     }
 
     private async Task ConfirmarMatricula()
     {
-        if (alunoParaConfirmar == null || turmaSelecionada == null) return;
+        if (alunoParaConfirmar == null || turmaParaConfirmar == null) return;
 
         processando = true;
         try
@@ -471,7 +483,7 @@ else
             };
 
             var response = await Http.PostAsJsonAsync(
-                $"api/turmas/{turmaSelecionada.IdHash}/admin/matricular", payload);
+                $"api/turmas/{turmaParaConfirmar.IdHash}/admin/matricular", payload);
 
             if (response.IsSuccessStatusCode)
             {
@@ -480,7 +492,7 @@ else
                     Severity.Success);
 
                 // Atualiza contagem local sem recarregar a página
-                var idx = todasTurmas.FindIndex(t => t.IdHash == turmaSelecionada.IdHash);
+                var idx = todasTurmas.FindIndex(t => t.IdHash == turmaParaConfirmar.IdHash);
                 if (idx >= 0)
                 {
                     var t = todasTurmas[idx];
@@ -499,7 +511,9 @@ else
             }
             else
             {
+                var body = await response.Content.ReadAsStringAsync();
                 Snackbar.Add("Erro ao realizar a matrícula. Tente novamente.", Severity.Error);
+                Console.WriteLine($"[MATRICULA ERROR] {(int)response.StatusCode}: {body}");
             }
         }
         catch (Exception ex)
@@ -512,11 +526,11 @@ else
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────────
     private static string DiaNome(int dia) => dia switch
     {
         0 => "Domingo", 1 => "Segunda", 2 => "Terça",
-        3 => "Quarta", 4 => "Quinta", 5 => "Sexta", 6 => "Sábado",
+        3 => "Quarta",  4 => "Quinta",  5 => "Sexta", 6 => "Sábado",
         _ => "?"
     };
 
@@ -553,7 +567,13 @@ else
     .mat-row:hover { background: rgba(0,0,0,0.025); }
     .mat-row--ativa { background: rgba(25, 118, 210, 0.06); }
     .mat-info { flex: 1; min-width: 0; }
-    .mat-vagas { min-width: 130px; text-align: center; display: flex; flex-direction: column; align-items: center; }
+    .mat-vagas {
+        min-width: 130px;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
     .mat-busca-panel {
         background: #f8f9fa;
         border-top: 2px solid rgba(25,118,210,0.15);
