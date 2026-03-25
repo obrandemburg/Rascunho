@@ -97,14 +97,9 @@ public class TurmaService
                     "mesmo dia e horário em outra sala.");
         }
 
-        if (!TimeSpan.TryParse(request.HorarioInicio, out var horarioInicio))
-            throw new RegraNegocioException("Horário de início inválido. Use o formato HH:mm.");
-        if (!TimeSpan.TryParse(request.HorarioFim, out var horarioFim))
-            throw new RegraNegocioException("Horário de fim inválido. Use o formato HH:mm.");
-
         var turma = new Turma(
             ritmoIdReal, salaIdReal, request.DataInicio, diaDaSemanaEnum,
-            horarioInicio, horarioFim, request.Nivel,
+            hrInicio, hrFim, request.Nivel,
             request.LimiteAlunos, request.LinkWhatsApp);
 
         _context.Turmas.Add(turma);
