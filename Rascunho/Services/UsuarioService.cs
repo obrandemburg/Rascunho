@@ -281,4 +281,30 @@ public class UsuarioService
             u.Genero
         ));
     }
+    public async Task AlterarSenhaAsync(int id, AlterarSenhaRequest request)
+    {
+        var u = await _context.Usuarios.FindAsync(id)
+            ?? throw new RegraNegocioException("Usuário não encontrado.");
+
+        // 1. Verifica se a senha atual está correta (exemplo usando BCrypt)
+        bool senhaCorreta = BCrypt.Net.BCrypt.Verify(request.SenhaAtual, u.SenhaHash);
+        if (!senhaCorreta)
+        {
+            throw new RegraNegocioException("A senha atual informada está incorreta.");
+        }
+
+        // 2. Opcional: Impedir que a nova senha seja igual à antiga
+        if (request.SenhaAtual == request.NovaSenha)
+        {
+            throw new RegraNegocioException("A nova senha não pode ser igual à senha atual.");
+        }
+
+        // 3. Gera o hash da nova senha
+        string novoHash = BCrypt.Net.BCrypt.HashPassword(request.NovaSenha);
+
+        // 4. Atualiza a entidade (você pode criar um método AlterarSenha na entidade Usuario)
+        u.AlterarSenha(novoHash);
+
+        await _context.SaveChangesAsync();
+    }
 }

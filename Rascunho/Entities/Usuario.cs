@@ -43,6 +43,13 @@ public abstract class Usuario
         NomeSocial = nomeSocial;
         Biografia = biografia;
     }
+    public void AlterarSenha(string novoHash)
+    {
+        if (string.IsNullOrWhiteSpace(novoHash))
+            throw new ArgumentException("Hash de senha inválido.");
+
+        SenhaHash = novoHash;
+    }
 
     /// <summary>
     /// Define os dados complementares comuns a todos os perfis.

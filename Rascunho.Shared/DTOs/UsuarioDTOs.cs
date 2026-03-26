@@ -1,23 +1,7 @@
 ﻿// Localização: Rascunho.Shared/DTOs/UsuarioDTOs.cs
-//
-// ATENÇÃO: Este arquivo pertence ao projeto Rascunho.SHARED
-// Caminho correto: Rascunho.Shared/DTOs/UsuarioDTOs.cs
-// NÃO colocar em Rascunho/DTOs/ — lá não existe e o compilador não o encontra.
 namespace Rascunho.Shared.DTOs;
 
-/// <summary>
-/// Request de criação de usuário.
-///
-/// CAMPOS OBRIGATÓRIOS PARA TODOS:
-///   Nome, Email, Senha, Tipo, DataNascimento
-///
-/// CAMPOS OPCIONAIS PARA TODOS:
-///   Telefone, FotoUrl, Cpf
-///
-/// CAMPOS OBRIGATÓRIOS POR TIPO:
-///   Professor → RitmosIdHash (pelo menos 1)
-///   Bolsista  → PapelDominante + DiaObrigatorio1 + DiaObrigatorio2
-/// </summary>
+
 public record CriarUsuarioRequest(
     string Nome,
     string Email,
@@ -29,7 +13,7 @@ public record CriarUsuarioRequest(
     string? Telefone,
     string? FotoUrl,
     string? Cpf,
-    string? Genero,        // NOVO: "Masculino" | "Feminino" | "Não informado"
+    string? Genero,
 
     // Apenas para Professor
     List<string>? RitmosIdHash,
@@ -41,6 +25,7 @@ public record CriarUsuarioRequest(
 );
 
 public record EditarPerfilRequest(string NomeSocial, string Biografia, string FotoUrl);
+public record AlterarSenhaRequest(string SenhaAtual, string NovaSenha);
 
 public record ObterUsuarioResponse(
     string IdHash,
@@ -54,7 +39,7 @@ public record ObterUsuarioResponse(
     string? Telefone,
     DateOnly DataNascimento,
     string? Cpf,
-    string Genero          // NOVO
+    string Genero
 );
 public record BuscarUsuarioResponse(
     string IdHash,

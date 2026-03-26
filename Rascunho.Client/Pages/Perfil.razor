@@ -351,15 +351,6 @@
                 Snackbar.Add("Senha alterada com sucesso! 🔒", Severity.Success);
                 formSenha = new AlterarSenhaForm(); // Limpa o formulário
             }
-            else if ((int)response.StatusCode == 400)
-            {
-                Snackbar.Add("Senha atual incorreta ou dados inválidos.", Severity.Warning);
-            }
-            else
-            {
-                var erro = await response.Content.ReadAsStringAsync();
-                Snackbar.Add($"Erro ao alterar senha: {erro}", Severity.Error);
-            }
         }
         finally
         {

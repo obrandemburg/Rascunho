@@ -1,5 +1,6 @@
 ﻿using HashidsNet;
 using Microsoft.AspNetCore.Mvc;
+using Rascunho.Exceptions;
 using Rascunho.Infraestrutura;
 using Rascunho.Services;
 using Rascunho.Shared.DTOs;
@@ -164,5 +165,28 @@ public static class UsuarioEndpoints
             return Results.Ok(resultados);
         })
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
+
+        // 14. ALTERAR SENHA
+        group.MapPut("/meu-perfil/alterar-senha", async (
+            AlterarSenhaRequest request,
+            UsuarioService usuarioService,
+            ClaimsPrincipal user) =>
+        {
+            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(idClaim) || !int.TryParse(idClaim, out int usuarioLogadoId))
+                return Results.Unauthorized();
+
+            try
+            {
+                await usuarioService.AlterarSenhaAsync(usuarioLogadoId, request);
+                return Results.NoContent();
+            }
+            catch (RegraNegocioException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
+        })
+        .AddEndpointFilter<ValidationFilter<AlterarSenhaRequest>>()
+        .RequireAuthorization();
     }
 }
