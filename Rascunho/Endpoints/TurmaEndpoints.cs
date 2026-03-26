@@ -198,6 +198,84 @@ public static class TurmaEndpoints
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
         // ══════════════════════════════════════════════════════════════════
+        // ── Feature #3: LISTA DE ESPERA ───────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════
+
+        // POST /api/turmas/{turmaIdHash}/lista-espera
+        // Aluno entra na fila de espera de uma turma lotada.
+        group.MapPost("/{turmaIdHash}/lista-espera", async (
+            string turmaIdHash,
+            ListaEsperaService listaEsperaService,
+            IHashids hashids,
+            ClaimsPrincipal user) =>
+        {
+            var decodedIds = hashids.Decode(turmaIdHash);
+            if (decodedIds.Length == 0)
+                return Results.BadRequest(new { erro = "ID da turma inválido." });
+
+            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(idClaim, out int alunoId))
+                return Results.Unauthorized();
+
+            string mensagem = await listaEsperaService.EntrarNaFilaAsync(decodedIds[0], alunoId);
+            return Results.Ok(new { Mensagem = mensagem });
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Aluno", "Bolsista", "Líder"));
+
+        // DELETE /api/turmas/{turmaIdHash}/lista-espera
+        // Aluno sai da fila de espera.
+        group.MapDelete("/{turmaIdHash}/lista-espera", async (
+            string turmaIdHash,
+            ListaEsperaService listaEsperaService,
+            IHashids hashids,
+            ClaimsPrincipal user) =>
+        {
+            var decodedIds = hashids.Decode(turmaIdHash);
+            if (decodedIds.Length == 0)
+                return Results.BadRequest(new { erro = "ID da turma inválido." });
+
+            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(idClaim, out int alunoId))
+                return Results.Unauthorized();
+
+            await listaEsperaService.SairDaFilaAsync(decodedIds[0], alunoId);
+            return Results.Ok(new { Mensagem = "Você saiu da fila de espera desta turma." });
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Aluno", "Bolsista", "Líder"));
+
+        // GET /api/turmas/{turmaIdHash}/lista-espera
+        // Recepção/Gerente visualiza a fila completa de uma turma.
+        group.MapGet("/{turmaIdHash}/lista-espera", async (
+            string turmaIdHash,
+            ListaEsperaService listaEsperaService,
+            IHashids hashids) =>
+        {
+            var decodedIds = hashids.Decode(turmaIdHash);
+            if (decodedIds.Length == 0)
+                return Results.BadRequest(new { erro = "ID da turma inválido." });
+
+            var fila = await listaEsperaService.ObterFilaAsync(decodedIds[0]);
+            return Results.Ok(fila);
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
+
+        // GET /api/turmas/minhas-esperas
+        // Aluno lista todas as turmas em que está na fila de espera.
+        // IMPORTANTE: deve ser registrado antes de /{turmaIdHash}/... para evitar ambiguidade de rota.
+        group.MapGet("/minhas-esperas", async (
+            ListaEsperaService listaEsperaService,
+            ClaimsPrincipal user) =>
+        {
+            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(idClaim, out int alunoId))
+                return Results.Unauthorized();
+
+            var esperas = await listaEsperaService.ObterMinhasEsperasAsync(alunoId);
+            return Results.Ok(esperas);
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Aluno", "Bolsista", "Líder"));
+
+        // ══════════════════════════════════════════════════════════════════
         // 8. ENCERRAR TURMA (RN-TUR04)
         //
         // PUT /api/turmas/{turmaIdHash}/encerrar

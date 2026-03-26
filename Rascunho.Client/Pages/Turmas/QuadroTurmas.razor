@@ -134,7 +134,7 @@
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Warning"
                                            FullWidth="true"
-                                           OnClick="@(() => MarcarInteresse(turma.IdHash))">
+                                           OnClick="@(() => EntrarNaListaEspera(turma.IdHash))">
                                     Entrar na Fila
                                 </MudButton>
                             }
@@ -159,7 +159,7 @@
     private Task<AuthenticationState>? AuthStateTask { get; set; }
 
     private bool carregando = true;
-    private bool ehAluno = false;
+    private bool ehAluno = false;     // Aluno, Bolsista ou Líder (pode se matricular/entrar na fila)
     private bool estaLogado = false;
     private string filtroRitmo = "Todos";
     private string filtroDia = "Todos";
@@ -177,7 +177,10 @@
         {
             var authState = await AuthStateTask;
             estaLogado = authState.User.Identity?.IsAuthenticated == true;
-            ehAluno = authState.User.IsInRole("Aluno");
+            // Aluno, Bolsista e Líder podem se matricular e entrar na fila de espera
+            ehAluno = authState.User.IsInRole("Aluno") ||
+                      authState.User.IsInRole("Bolsista") ||
+                      authState.User.IsInRole("Líder");
         }
 
         await CarregarTurmas();
@@ -256,12 +259,26 @@
         }
     }
 
-    private async Task MarcarInteresse(string turmaIdHash)
+    private async Task EntrarNaListaEspera(string turmaIdHash)
     {
-        var payload = new { Papel = "Ambos" };
-        var response = await Http.PostAsJsonAsync($"api/turmas/{turmaIdHash}/matricular", payload);
-        var msg = await response.Content.ReadAsStringAsync();
-        Snackbar.Add(msg, Severity.Info);
+        // Feature #3: usa o endpoint dedicado de lista de espera
+        var response = await Http.PostAsJsonAsync($"api/turmas/{turmaIdHash}/lista-espera", new { });
+
+        if (response.IsSuccessStatusCode)
+        {
+            var resultado = await response.Content.ReadFromJsonAsync<MensagemDto>();
+            Snackbar.Add(resultado?.Mensagem ?? "Você entrou na fila de espera!", Severity.Info);
+        }
+        else
+        {
+            var erro = await response.Content.ReadAsStringAsync();
+            Snackbar.Add($"Erro: {erro}", Severity.Warning);
+        }
+    }
+
+    public class MensagemDto
+    {
+        public string Mensagem { get; set; } = "";
     }
 
 

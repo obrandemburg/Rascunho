@@ -260,6 +260,49 @@ namespace Rascunho.Migrations
                     b.ToTable("Interesses", (string)null);
                 });
 
+            // Feature #3: ListaEspera — fila de espera estruturada com posição, status e prazo
+            modelBuilder.Entity("Rascunho.Entities.ListaEspera", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("TurmaId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("AlunoId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("DataEntrada")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Posicao")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("DataNotificacao")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DataExpiracao")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AlunoId");
+
+                    b.HasIndex("TurmaId", "AlunoId");
+
+                    b.HasIndex("TurmaId", "Status", "Posicao");
+
+                    b.ToTable("ListasEspera", (string)null);
+                });
+
             modelBuilder.Entity("Rascunho.Entities.Matricula", b =>
                 {
                     b.Property<int>("TurmaId")
@@ -736,6 +779,27 @@ namespace Rascunho.Migrations
                 });
 
             modelBuilder.Entity("Rascunho.Entities.Interesse", b =>
+                {
+                    b.HasOne("Rascunho.Entities.Usuario", "Aluno")
+                        .WithMany()
+                        .HasForeignKey("AlunoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    // Navegação de Turma.ListaDeEspera migrada para ListaEspera (Feature #3).
+                    // Tabela Interesses mantida para Feature #10 (Catálogo de Ritmos Público).
+                    b.HasOne("Rascunho.Entities.Turma", "Turma")
+                        .WithMany()
+                        .HasForeignKey("TurmaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Aluno");
+
+                    b.Navigation("Turma");
+                });
+
+            modelBuilder.Entity("Rascunho.Entities.ListaEspera", b =>
                 {
                     b.HasOne("Rascunho.Entities.Usuario", "Aluno")
                         .WithMany()

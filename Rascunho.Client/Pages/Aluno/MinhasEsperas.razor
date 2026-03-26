@@ -1,0 +1,287 @@
+@* ARQUIVO: Rascunho.Client/Pages/Aluno/MinhasEsperas.razor
+   ROTA:    /minhas-esperas
+   ACESSO:  Aluno, Bolsista, Líder
+
+   FLUXO:
+   1. GET /api/turmas/minhas-esperas → entradas ativas na fila de espera via token JWT
+   2. Cards com ritmo, horário, posição na fila e status (Aguardando / Notificado)
+   3. Status "Notificado": exibe prazo de confirmação e botão "Confirmar Vaga"
+      → POST /api/turmas/{idHash}/matricular (mesmo endpoint do Quadro de Turmas)
+   4. Status "Aguardando": botão "Sair da Fila"
+      → DELETE /api/turmas/{idHash}/lista-espera
+*@
+
+@page "/minhas-esperas"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@using Rascunho.Client.Shared
+@attribute [Authorize(Roles = "Aluno,Bolsista,Líder")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Minhas Esperas — Ponto da Dança</PageTitle>
+
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+    <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Class="mr-2" />
+    Minhas Esperas
+</MudText>
+<MudText Class="mb-6 mud-text-secondary">
+    Turmas em que você está aguardando uma vaga.
+</MudText>
+
+@if (carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!esperas.Any())
+{
+    <MudAlert Severity="Severity.Info">
+        Você não está na fila de espera de nenhuma turma.
+        <MudLink Href="/turmas" Color="Color.Primary"> Veja as turmas disponíveis!</MudLink>
+    </MudAlert>
+}
+else
+{
+    @* Alerta destacado para entradas Notificadas — o aluno precisa confirmar logo *@
+    @if (esperas.Any(e => e.Status == "Notificado"))
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4" Icon="@Icons.Material.Filled.NotificationsActive">
+            @* @(...) delimita explicitamente a expressão para o parser Razor não confundir com a lambda interna *@
+            Você tem <strong>@(esperas.Count(e => e.Status == "Notificado")) vaga(s) reservada(s)</strong>!
+            Confirme antes do prazo expirar.
+        </MudAlert>
+    }
+
+    <MudGrid>
+        @foreach (var espera in esperas.OrderBy(e => e.Status == "Notificado" ? 0 : 1).ThenBy(e => e.Posicao))
+        {
+            bool notificado   = espera.Status == "Notificado";
+            bool expirado     = notificado && espera.DataExpiracao.HasValue && espera.DataExpiracao.Value < DateTime.UtcNow;
+            // Variável pré-calculada evita aspas duplas aninhadas dentro de atributo HTML
+            string corBarra   = notificado ? "#ff6f00" : "#1565c0";
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="3" Class="rounded-lg">
+                    @*
+                      Barra de cor no topo:
+                      - Laranja: vaga reservada (Notificado) — requer atenção imediata
+                      - Azul: aguardando normalmente na fila
+                    *@
+                    <div style="@($"height: 6px; background: {corBarra}; border-radius: 8px 8px 0 0;")" />
+
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@espera.RitmoNome</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                Nível: @espera.Nivel
+                            </MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            @*
+                              StatusChip: cor reflete urgência
+                              - Notificado = Warning (laranja) → ação necessária
+                              - Aguardando = Info (azul)
+                            *@
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Color="@(notificado ? Color.Warning : Color.Info)"
+                                     Variant="Variant.Filled">
+                                @espera.Status
+                            </MudChip>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+
+                    <MudCardContent>
+                        <MudList T="string" Dense="true">
+                            <MudListItem T="string"
+                                         IconSize="Size.Small"
+                                         Icon="@Icons.Material.Filled.CalendarToday">
+                                @DiaDaSemanaTexto(espera.DiaDaSemana)
+                            </MudListItem>
+                            <MudListItem T="string"
+                                         IconSize="Size.Small"
+                                         Icon="@Icons.Material.Filled.AccessTime">
+                                @espera.HorarioInicio — @espera.HorarioFim
+                            </MudListItem>
+                            <MudListItem T="string"
+                                         IconSize="Size.Small"
+                                         Icon="@Icons.Material.Filled.MeetingRoom">
+                                Sala: @espera.SalaNome
+                            </MudListItem>
+                            <MudListItem T="string"
+                                         IconSize="Size.Small"
+                                         Icon="@Icons.Material.Filled.FormatListNumbered">
+                                Posição na fila: <strong>@espera.Posicao</strong>
+                            </MudListItem>
+
+                            @* Prazo de confirmação — apenas para status Notificado *@
+                            @if (notificado && espera.DataExpiracao.HasValue)
+                            {
+                                var prazo      = espera.DataExpiracao.Value.ToLocalTime();
+                                // Variável pré-calculada: evita aspas duplas aninhadas dentro de Class="..."
+                                string cssItem = expirado ? "mud-error-text" : "mud-warning-text";
+                                <MudListItem T="string"
+                                             IconSize="Size.Small"
+                                             Icon="@Icons.Material.Filled.Timer"
+                                             Class="@cssItem">
+                                    @if (expirado)
+                                    {
+                                        <span>Prazo expirado!</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Confirmar até: <strong>@prazo.ToString("dd/MM HH:mm")</strong></span>
+                                    }
+                                </MudListItem>
+                            }
+                        </MudList>
+                    </MudCardContent>
+
+                    <MudCardActions>
+                        @if (notificado && !expirado)
+                        {
+                            @* Vaga reservada e dentro do prazo — oferecer confirmação *@
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Success"
+                                       StartIcon="@Icons.Material.Filled.CheckCircle"
+                                       OnClick="@(() => ConfirmarVaga(espera))">
+                                Confirmar Vaga
+                            </MudButton>
+                        }
+
+                        @* Botão de sair da fila sempre visível (inclusive para Notificado expirado) *@
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Error"
+                                   StartIcon="@Icons.Material.Filled.ExitToApp"
+                                   OnClick="@(() => ConfirmarSaida(espera))">
+                            Sair da Fila
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private bool carregando = true;
+    private List<MinhaEsperaDto> esperas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarEsperas();
+    }
+
+    private async Task CarregarEsperas()
+    {
+        carregando = true;
+        try
+        {
+            esperas = await Http.GetFromJsonAsync<List<MinhaEsperaDto>>("api/turmas/minhas-esperas") ?? new();
+        }
+        finally { carregando = false; }
+    }
+
+    // ── Confirmar vaga (Notificado → Convertido via endpoint /matricular) ──────
+    private async Task ConfirmarVaga(MinhaEsperaDto espera)
+    {
+        var parametros = new DialogParameters
+        {
+            { "ContentText", $"Confirmar matrícula em {espera.RitmoNome} ({DiaDaSemanaTexto(espera.DiaDaSemana)}, {espera.HorarioInicio})?" },
+            { "ButtonText", "Confirmar Vaga" },
+            { "Color", Color.Success }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirmar Vaga", parametros);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await MatricularViaEspera(espera.TurmaIdHash);
+        }
+    }
+
+    private async Task MatricularViaEspera(string turmaIdHash)
+    {
+        // Reutiliza o mesmo endpoint de matrícula — o backend detecta status Notificado
+        // e executa o fluxo de confirmação (Notificado → Convertido) automaticamente.
+        var payload = new { Papel = "Ambos" };
+        var response = await Http.PostAsJsonAsync($"api/turmas/{turmaIdHash}/matricular", payload);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var msg = await response.Content.ReadAsStringAsync();
+            Snackbar.Add(msg, Severity.Success);
+            await CarregarEsperas();
+        }
+        else
+        {
+            var erro = await response.Content.ReadAsStringAsync();
+            Snackbar.Add($"Erro: {erro}", Severity.Warning);
+        }
+    }
+
+    // ── Sair da fila ──────────────────────────────────────────────────────────
+    private async Task ConfirmarSaida(MinhaEsperaDto espera)
+    {
+        var parametros = new DialogParameters
+        {
+            { "ContentText", $"Deseja sair da fila de espera de {espera.RitmoNome}?" },
+            { "ButtonText", "Sair da Fila" },
+            { "Color", Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirmar Saída", parametros);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await SairDaFila(espera.TurmaIdHash);
+        }
+    }
+
+    private async Task SairDaFila(string turmaIdHash)
+    {
+        var response = await Http.DeleteAsync($"api/turmas/{turmaIdHash}/lista-espera");
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Você saiu da fila de espera.", Severity.Info);
+            await CarregarEsperas();
+        }
+        else
+        {
+            var erro = await response.Content.ReadAsStringAsync();
+            Snackbar.Add($"Erro: {erro}", Severity.Error);
+        }
+    }
+
+    private string DiaDaSemanaTexto(int dia) => dia switch
+    {
+        0 => "Domingo",
+        1 => "Segunda-feira",
+        2 => "Terça-feira",
+        3 => "Quarta-feira",
+        4 => "Quinta-feira",
+        5 => "Sexta-feira",
+        6 => "Sábado",
+        _ => "—"
+    };
+
+    // DTO espelhando MinhaEsperaResponse do backend
+    public class MinhaEsperaDto
+    {
+        public string TurmaIdHash { get; set; } = "";
+        public string RitmoNome   { get; set; } = "";
+        public string SalaNome    { get; set; } = "";
+        public string Nivel       { get; set; } = "";
+        public int    DiaDaSemana { get; set; }
+        public string HorarioInicio { get; set; } = "";
+        public string HorarioFim    { get; set; } = "";
+        public int    Posicao    { get; set; }
+        public string Status     { get; set; } = "";
+        public DateTime  DataEntrada   { get; set; }
+        public DateTime? DataExpiracao { get; set; }
+    }
+}

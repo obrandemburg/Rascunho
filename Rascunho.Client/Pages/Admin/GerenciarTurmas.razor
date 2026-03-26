@@ -197,6 +197,12 @@
                                            Color="Color.Primary" Size="Size.Small"
                                            OnClick="@(() => AbrirModalAlunos(cell.Item))" />
                         </MudTooltip>
+                        @* Feature #3: acesso rápido à fila de espera da turma *@
+                        <MudTooltip Text="Ver fila de espera">
+                            <MudIconButton Icon="@Icons.Material.Filled.HourglassTop"
+                                           Color="Color.Info" Size="Size.Small"
+                                           Href="@($"/admin/turmas/{cell.Item.IdHash}/lista-espera")" />
+                        </MudTooltip>
                         @if (cell.Item.Ativa)
                         {
                             <MudTooltip Text="Encerrar turma">

@@ -61,5 +61,40 @@ public class InteresseConfiguration : IEntityTypeConfiguration<Interesse>
     {
         builder.ToTable("Interesses");
         builder.HasKey(i => new { i.TurmaId, i.AlunoId });
+        // Nota: a relação de navegação Turma.ListaDeEspera foi migrada para ListaEspera (Feature #3).
+        // A tabela Interesses permanece para uso futuro no Feature #10 (Catálogo de Ritmos Público).
+    }
+}
+
+public class ListaEsperaConfiguration : IEntityTypeConfiguration<ListaEspera>
+{
+    public void Configure(EntityTypeBuilder<ListaEspera> builder)
+    {
+        builder.ToTable("ListasEspera");
+        builder.HasKey(le => le.Id);
+
+        builder.Property(le => le.Status)
+               .HasConversion<string>()
+               .HasMaxLength(20)
+               .IsRequired();
+
+        builder.Property(le => le.DataEntrada)
+               .IsRequired();
+
+        // Índice para otimizar buscas por (turma, aluno)
+        builder.HasIndex(le => new { le.TurmaId, le.AlunoId });
+
+        // Índice para otimizar a busca do próximo na fila por posição
+        builder.HasIndex(le => new { le.TurmaId, le.Status, le.Posicao });
+
+        builder.HasOne(le => le.Turma)
+               .WithMany(t => t.ListaDeEspera)
+               .HasForeignKey(le => le.TurmaId)
+               .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(le => le.Aluno)
+               .WithMany()
+               .HasForeignKey(le => le.AlunoId)
+               .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -43,6 +43,19 @@ public static class UsuarioEndpoints
             return Results.Ok(response);
         }).RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
+        // LISTAR PAGINADO
+        group.MapGet("/listar-paginado", async (
+            [FromQuery] int page,
+            [FromQuery] int pageSize,
+            [FromQuery] string? nome,
+            [FromQuery] string? tipo,
+            [FromQuery] string? status,
+            UsuarioService usuarioService) =>
+        {
+            var response = await usuarioService.ListarUsuariosPaginadoAsync(page, pageSize, nome, tipo, status);
+            return Results.Ok(response);
+        }).RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
+
         // 4. LISTAR ATIVOS
         group.MapGet("/listar/ativos", async (UsuarioService usuarioService) =>
         {
@@ -183,7 +196,14 @@ public static class UsuarioEndpoints
             }
             catch (RegraNegocioException ex)
             {
-                return Results.BadRequest(ex.Message);
+                // Aqui está a mágica! Retornamos um JSON com a propriedade "Erro", 
+                // exatamente como o seu ErroGenericoDto espera ler lá no front.
+                return Results.UnprocessableEntity(new { Erro = ex.Message });
+            }
+            catch (Exception)
+            {
+                // Se der algum erro bizarro de sistema (banco caiu, etc), retorna erro 500 genérico
+                return Results.Problem("Erro interno no servidor ao tentar alterar a senha.");
             }
         })
         .AddEndpointFilter<ValidationFilter<AlterarSenhaRequest>>()

@@ -1,0 +1,196 @@
+@* ARQUIVO: Rascunho.Client/Pages/Admin/FilaEspera.razor
+   ROTA:    /admin/turmas/{IdHash}/lista-espera
+   ACESSO:  Recepção, Gerente
+
+   FLUXO:
+   1. Recebe {IdHash} da turma via parâmetro de rota
+   2. GET /api/turmas/{idHash}/lista-espera → lista de inscrições ativas na fila
+   3. Exibe tabela com: posição, nome do aluno, status, data de entrada, prazo de confirmação
+   4. Status colorido: Aguardando (info/azul), Notificado (warning/laranja)
+*@
+
+@page "/admin/turmas/{IdHash}/lista-espera"
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Recepção,Gerente")]
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject NavigationManager NavManager
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+
+    <MudBreadcrumbs Items="@breadcrumbs" Class="mb-4" />
+
+    <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
+        <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Class="mr-2" />
+        Fila de Espera
+    </MudText>
+    <MudText Class="mb-6 mud-text-secondary">
+        Inscrições ativas na fila de espera para esta turma.
+    </MudText>
+
+    @if (carregando)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (fila == null)
+    {
+        <MudAlert Severity="Severity.Error">
+            Não foi possível carregar a fila de espera. Verifique se a turma existe.
+        </MudAlert>
+    }
+    else if (!fila.Any())
+    {
+        <MudAlert Severity="Severity.Info">
+            Nenhum aluno na fila de espera no momento.
+        </MudAlert>
+    }
+    else
+    {
+        @* Resumo rápido *@
+        <MudPaper Elevation="0" Class="pa-4 mb-6 rounded-lg d-flex gap-4 flex-wrap"
+                  Style="border: 1px solid #e0e0e0;">
+            <div>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Total na fila</MudText>
+                <MudText Typo="Typo.h5"><strong>@fila.Count</strong></MudText>
+            </div>
+            <MudDivider Vertical="true" FlexItem="true" />
+            <div>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Aguardando</MudText>
+                <MudText Typo="Typo.h5" Color="Color.Info">
+                    <strong>@fila.Count(e => e.Status == "Aguardando")</strong>
+                </MudText>
+            </div>
+            <MudDivider Vertical="true" FlexItem="true" />
+            <div>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Notificados</MudText>
+                <MudText Typo="Typo.h5" Color="Color.Warning">
+                    <strong>@fila.Count(e => e.Status == "Notificado")</strong>
+                </MudText>
+            </div>
+        </MudPaper>
+
+        @* Tabela da fila *@
+        <MudTable Items="@fila" Dense="false" Hover="true" Striped="true"
+                  Elevation="3" Class="rounded-lg">
+            <HeaderContent>
+                <MudTh>Posição</MudTh>
+                <MudTh>Aluno</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Entrou em</MudTh>
+                <MudTh>Prazo de Confirmação</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Posição">
+                    <MudChip T="string"
+                             Size="Size.Small"
+                             Variant="Variant.Outlined"
+                             Color="Color.Default">
+                        #@context.Posicao
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Aluno">
+                    <div class="d-flex align-center gap-2">
+                        @if (!string.IsNullOrEmpty(context.FotoUrl))
+                        {
+                            <MudAvatar Size="Size.Small">
+                                <MudImage Src="@context.FotoUrl" Alt="@context.NomeAluno" />
+                            </MudAvatar>
+                        }
+                        else
+                        {
+                            <MudAvatar Size="Size.Small" Color="Color.Primary">
+                                @context.NomeAluno.FirstOrDefault()
+                            </MudAvatar>
+                        }
+                        <MudText>@context.NomeAluno</MudText>
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    @*
+                      Chip de status colorido:
+                      - Notificado (laranja): aguardando confirmação do aluno
+                      - Aguardando (azul): na fila, não foi notificado ainda
+                    *@
+                    <MudChip T="string"
+                             Size="Size.Small"
+                             Variant="Variant.Filled"
+                             Color="@(context.Status == "Notificado" ? Color.Warning : Color.Info)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Entrou em">
+                    @context.DataEntrada.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                </MudTd>
+                <MudTd DataLabel="Prazo de Confirmação">
+                    @if (context.DataExpiracao.HasValue)
+                    {
+                        var prazo = context.DataExpiracao.Value.ToLocalTime();
+                        bool expirado = prazo < DateTime.Now;
+                        <MudText Color="@(expirado ? Color.Error : Color.Default)">
+                            @prazo.ToString("dd/MM/yyyy HH:mm")
+                            @if (expirado)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Class="ml-1" />
+                            }
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Class="mud-text-secondary">—</MudText>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+</MudContainer>
+
+@code {
+    [Parameter]
+    public string IdHash { get; set; } = "";
+
+    private bool carregando = true;
+    private List<ListaEsperaAdminDto>? fila;
+
+    private List<BreadcrumbItem> breadcrumbs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        breadcrumbs = new List<BreadcrumbItem>
+        {
+            new BreadcrumbItem("Administração", href: "/admin/turmas", icon: Icons.Material.Filled.AdminPanelSettings),
+            new BreadcrumbItem("Gerir Turmas", href: "/admin/turmas"),
+            new BreadcrumbItem("Fila de Espera", href: null, disabled: true)
+        };
+
+        await CarregarFila();
+    }
+
+    private async Task CarregarFila()
+    {
+        carregando = true;
+        try
+        {
+            fila = await Http.GetFromJsonAsync<List<ListaEsperaAdminDto>>($"api/turmas/{IdHash}/lista-espera") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar a fila de espera.", Severity.Error);
+            fila = new();
+        }
+        finally { carregando = false; }
+    }
+
+    // DTO espelhando ListaEsperaAdminResponse do backend
+    public class ListaEsperaAdminDto
+    {
+        public string    AlunoIdHash    { get; set; } = "";
+        public string    NomeAluno      { get; set; } = "";
+        public string    FotoUrl        { get; set; } = "";
+        public int       Posicao        { get; set; }
+        public string    Status         { get; set; } = "";
+        public DateTime  DataEntrada    { get; set; }
+        public DateTime? DataExpiracao  { get; set; }
+    }
+}

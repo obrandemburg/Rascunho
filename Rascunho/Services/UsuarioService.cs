@@ -186,6 +186,41 @@ public class UsuarioService
         var usuarios = await _context.Usuarios.ToListAsync();
         return usuarios.Select(u => u.ToResponse(_hashids));
     }
+    public async Task<PaginacaoResponse<ObterUsuarioResponse>> ListarUsuariosPaginadoAsync(
+    int pagina,
+    int tamanhoPagina,
+    string? nome = null,
+    string? tipo = null,
+    string? status = "todos")
+    {
+        var query = _context.Usuarios.AsQueryable();
+
+        // Aplicar os filtros diretamente no banco
+        if (!string.IsNullOrWhiteSpace(nome))
+            query = query.Where(u => u.Nome.Contains(nome));
+
+        if (!string.IsNullOrWhiteSpace(tipo))
+            query = query.Where(u => u.Tipo == tipo);
+
+        if (status == "ativos")
+            query = query.Where(u => u.Ativo);
+        else if (status == "desativados")
+            query = query.Where(u => !u.Ativo);
+
+        // Contar o total de registros (necessário para o MudDataGrid saber quantas páginas existem)
+        int total = await query.CountAsync();
+
+        // Paginar com EF Core (pula X, pega Y)
+        var usuarios = await query
+            .OrderBy(u => u.Nome)
+            .Skip(pagina * tamanhoPagina)
+            .Take(tamanhoPagina)
+            .ToListAsync();
+
+        var itensResponse = usuarios.Select(u => u.ToResponse(_hashids));
+
+        return new PaginacaoResponse<ObterUsuarioResponse>(itensResponse, total);
+    }
 
     public async Task<IEnumerable<ObterUsuarioResponse>> ListarUsuariosAtivosAsync()
     {

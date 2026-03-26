@@ -61,3 +61,7 @@ public record UploadFotoResponse(
     string NomeArquivo,
     long TamanhoBytes
 );
+public record PaginacaoResponse<T>(
+    IEnumerable<T> Itens,
+    int TotalItens
+);

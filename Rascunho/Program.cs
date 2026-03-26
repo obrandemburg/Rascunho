@@ -75,6 +75,12 @@ builder.Services.AddScoped<ProfessorDisponibilidadeService>();
 builder.Services.AddScoped<ReposicaoService>();
 builder.Services.AddSingleton<ConfiguracaoService>();
 
+// ── Feature #3: Lista de Espera ───────────────────────────────────
+// INotificacaoService: stub provisório até o Feature #4 (FCM) ser implementado.
+// Para ativar FCM: trocar NotificacaoServiceStub por FirebaseNotificacaoService.
+builder.Services.AddScoped<INotificacaoService, NotificacaoServiceStub>();
+builder.Services.AddScoped<ListaEsperaService>();
+
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 

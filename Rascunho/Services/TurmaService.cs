@@ -1,4 +1,4 @@
-﻿// Localização: Rascunho/Services/TurmaService.cs
+// Localização: Rascunho/Services/TurmaService.cs
 using HashidsNet;
 using Microsoft.EntityFrameworkCore;
 using Rascunho.Data;
@@ -13,11 +13,13 @@ public class TurmaService
 {
     private readonly AppDbContext _context;
     private readonly IHashids _hashids;
+    private readonly ListaEsperaService _listaEsperaService;
 
-    public TurmaService(AppDbContext context, IHashids hashids)
+    public TurmaService(AppDbContext context, IHashids hashids, ListaEsperaService listaEsperaService)
     {
         _context = context;
         _hashids = hashids;
+        _listaEsperaService = listaEsperaService;
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -109,7 +111,7 @@ public class TurmaService
 
         await _context.SaveChangesAsync();
 
-        // CORREÇÃO: Busca a turma salva recém-criada diretamente do banco 
+        // CORREÇÃO: Busca a turma salva recém-criada diretamente do banco
         // para garantir que todas as navegações (Ritmo, Sala, Professores) existam no EF Core.
         var turmaSalva = await _context.Turmas
             .Include(t => t.Ritmo)
@@ -232,16 +234,32 @@ public class TurmaService
         turma.AtualizarSalaELimite(novaSalaId, novoLimiteAlunos);
         int vagasNovas = turma.LimiteAlunos - totalMatriculados;
 
-        if (vagasAnteriores <= 0 && vagasNovas > 0 && turma.ListaDeEspera.Any())
-        {
-            // TODO Sprint 5: Notificar via Firebase FCM os usuários na fila de espera
-        }
-
         await _context.SaveChangesAsync();
+
+        // Se a turma estava lotada e agora tem vagas, notificar o próximo da fila
+        bool temFilaAtiva = turma.ListaDeEspera.Any(le =>
+            le.Status == StatusListaEspera.Aguardando ||
+            le.Status == StatusListaEspera.Notificado);
+
+        if (vagasAnteriores <= 0 && vagasNovas > 0 && temFilaAtiva)
+        {
+            await _listaEsperaService.NotificarProximoAsync(turmaId);
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────────
     // MATRICULAR ALUNO (RN-TUR05, RN-TUR06, RN-BOL04)
+    //
+    // Fluxo completo de matrícula com suporte à confirmação de vaga da fila:
+    //   1. Turma com vaga:       → matrícula normal
+    //   2. Turma lotada + aluno Notificado + prazo válido:
+    //                            → confirma vaga (marca Convertido) + matrícula
+    //   3. Turma lotada + aluno Notificado + prazo expirado:
+    //                            → expira, notifica próximo, erro 422
+    //   4. Turma lotada + aluno Aguardando:
+    //                            → erro: já está na fila
+    //   5. Turma lotada + aluno sem entrada:
+    //                            → entra na fila (ListaEsperaService)
     // ──────────────────────────────────────────────────────────────────────
     public async Task<string> MatricularAlunoAsync(int turmaId, int alunoId, string papel)
     {
@@ -257,9 +275,6 @@ public class TurmaService
         // RN-TUR05: Aluno já matriculado nesta turma
         if (turma.Matriculas.Any(m => m.AlunoId == alunoId))
             throw new RegraNegocioException("O aluno já está matriculado nesta turma.");
-
-        if (turma.ListaDeEspera.Any(e => e.AlunoId == alunoId))
-            throw new RegraNegocioException("O aluno já está na fila de espera desta turma.");
 
         // RN-BOL04: Bolsista não pode matricular em dança SOLO no dia obrigatório
         if (aluno.Tipo == "Bolsista")
@@ -329,16 +344,55 @@ public class TurmaService
                 $"Você já possui uma turma na {diaTexto} com horário conflitante.");
         }
 
-        // Turma cheia → fila de espera
+        // ── Verificação de disponibilidade de vaga ────────────────────────
         if (turma.Matriculas.Count >= turma.LimiteAlunos)
         {
-            _context.Interesses.Add(new Interesse { TurmaId = turmaId, AlunoId = alunoId });
-            await _context.SaveChangesAsync();
-            return "A turma está cheia. Você foi adicionado à fila de espera.";
+            // Turma lotada: verificar o estado do aluno na fila
+            var entradaFila = turma.ListaDeEspera
+                .FirstOrDefault(le => le.AlunoId == alunoId &&
+                                      (le.Status == StatusListaEspera.Aguardando ||
+                                       le.Status == StatusListaEspera.Notificado));
+
+            if (entradaFila == null)
+            {
+                // Aluno não está na fila → adicionar
+                return await _listaEsperaService.EntrarNaFilaAsync(turmaId, alunoId);
+            }
+
+            if (entradaFila.Status == StatusListaEspera.Aguardando)
+            {
+                throw new RegraNegocioException(
+                    $"Você já está na fila de espera desta turma (posição {entradaFila.Posicao}).");
+            }
+
+            // Status == Notificado: aluno está confirmando a vaga reservada
+            if (entradaFila.DataExpiracao < DateTime.UtcNow)
+            {
+                // Prazo expirado: invalidar e notificar o próximo
+                entradaFila.Status = StatusListaEspera.Expirado;
+                await _context.SaveChangesAsync();
+                await _listaEsperaService.NotificarProximoAsync(turmaId);
+                throw new RegraNegocioException(
+                    "O prazo para confirmar a vaga expirou. " +
+                    "Por favor, entre na fila novamente se ainda tiver interesse.");
+            }
+
+            // Prazo válido: confirmar a vaga (marcado como Convertido junto com a Matricula)
+            entradaFila.Status = StatusListaEspera.Convertido;
+            // SaveChanges será feito junto com a inserção da Matricula abaixo
+        }
+        else
+        {
+            // Turma tem vagas — limpar qualquer entrada pendente na fila (edge case: limite aumentado)
+            var entradaPendente = turma.ListaDeEspera
+                .FirstOrDefault(le => le.AlunoId == alunoId &&
+                                      (le.Status == StatusListaEspera.Aguardando ||
+                                       le.Status == StatusListaEspera.Notificado));
+            if (entradaPendente != null)
+                _context.ListasEspera.Remove(entradaPendente);
         }
 
-        // ──────────────────────────────────────────────────────────────────────
-        // Matrícula normal — com rastreamento de desconto bolsista (RN-BOL02)
+        // ── Matrícula normal — com rastreamento de desconto bolsista (RN-BOL02) ──
         //
         // Por que salvar o ValorMensalidade aqui?
         // O sistema financeiro (fase 1.2) precisará saber se esta matrícula
@@ -348,30 +402,21 @@ public class TurmaService
         //   Aluno regular  → null (preço padrão a ser definido no financeiro)
         //   Bolsista/Solo  → valorSolo * 0.5 (50% RN-BOL02)
         //   Bolsista/Salão → 0.00m (gratuito, RN-BOL01) — sem matrícula formal
-        // ──────────────────────────────────────────────────────────────────────
 
-        // Calcula o ValorMensalidade para matrículas de bolsista em turmas solo
         decimal? valorMensalidade = null;
         string? origemDesconto = null;
 
         if (aluno.Tipo == "Bolsista")
         {
-            // Para turmas solo, o bolsista paga 50% (RN-BOL02)
-            // Buscamos o ritmo para confirmar a modalidade
-            // (pode estar em cache do EF Core se já foi consultado acima no RN-BOL04)
             var ritmoParaPreco = await _context.Ritmos.FindAsync(turma.RitmoId);
             bool eSSolo = ritmoParaPreco?.Modalidade
                 .Equals("Dança solo", StringComparison.OrdinalIgnoreCase) == true;
 
             if (eSSolo)
             {
-                // O preço padrão vem do IConfiguration — injetado no construtor
-                // Não há IConfiguration aqui, então lemos do appsettings via
-                // um valor fixo por enquanto. O módulo financeiro 1.2 substituirá isso.
-                // Por ora, usamos null para indicar "50% do valor padrão" via OrigemDesconto
                 origemDesconto = "Bolsista50%";
-                // ValorMensalidade será calculado pelo módulo financeiro com base na OrigemDesconto
-                // e no preço padrão configurado no momento da cobrança
+                // ValorMensalidade será calculado pelo módulo financeiro (Feature #6)
+                // com base na OrigemDesconto e no preço padrão do momento da cobrança
             }
         }
 
@@ -390,35 +435,32 @@ public class TurmaService
 
     // ──────────────────────────────────────────────────────────────────────
     // DESMATRICULAR ALUNO
-    // Remove da matrícula formal ou da fila de espera.
+    // Remove da matrícula formal (e notifica próximo da fila)
+    // ou remove da fila de espera diretamente.
     // ──────────────────────────────────────────────────────────────────────
     public async Task DesmatricularAlunoAsync(int turmaId, int alunoId)
     {
         var turma = await _context.Turmas
             .Include(t => t.Matriculas)
-            .Include(t => t.ListaDeEspera)
             .FirstOrDefaultAsync(t => t.Id == turmaId)
             ?? throw new RegraNegocioException("Turma não encontrada.");
 
-        // Tenta remover da matrícula formal primeiro
         var matricula = turma.Matriculas.FirstOrDefault(m => m.AlunoId == alunoId);
         if (matricula != null)
         {
             _context.Matriculas.Remove(matricula);
-        }
-        else
-        {
-            // Tenta remover da fila de espera
-            var interesse = turma.ListaDeEspera.FirstOrDefault(e => e.AlunoId == alunoId);
-            if (interesse != null)
-                _context.Interesses.Remove(interesse);
-            else
-                throw new RegraNegocioException(
-                    "O aluno não está matriculado nem na fila de espera desta turma.");
+            await _context.SaveChangesAsync();
+
+            // Uma vaga foi aberta — notificar o próximo da fila de espera (se houver)
+            await _listaEsperaService.NotificarProximoAsync(turmaId);
+            return;
         }
 
-        await _context.SaveChangesAsync();
+        // Aluno não está matriculado formalmente — tentar remover da fila de espera
+        // ListaEsperaService.SairDaFilaAsync lança RegraNegocioException se não encontrar
+        await _listaEsperaService.SairDaFilaAsync(turmaId, alunoId);
     }
+
     // ──────────────────────────────────────────────────────────────────────
     // ENCERRAR TURMA (RN-TUR04) — SIMPLIFICADO
     //
@@ -430,16 +472,10 @@ public class TurmaService
     //   ✓ Reposições        — agendamentos continuam válidos se o aluno conseguir presença
     //   ✓ Lista de espera   — preservada para consulta histórica
     //
-    // A turma some automaticamente das telas de:
-    //   - QuadroTurmas (filtra por Ativa = true)
-    //   - MinhasAulas dos alunos (filtra por Ativa = true)
-    //   - Tela do professor (filtra por Ativa = true)
-    //
     // Retorna o total de alunos afetados para log e futura notificação push.
     // ──────────────────────────────────────────────────────────────────────
     public async Task<int> EncerrarTurmaAsync(int turmaId)
     {
-        // Include(Matriculas) para contar alunos afetados
         var turma = await _context.Turmas
             .Include(t => t.Matriculas)
             .FirstOrDefaultAsync(t => t.Id == turmaId)
@@ -450,7 +486,6 @@ public class TurmaService
 
         int totalAlunos = turma.Matriculas.Count;
 
-        // Apenas muda o flag — nenhum dado é deletado ou cancelado
         turma.Encerrar();
 
         await _context.SaveChangesAsync();

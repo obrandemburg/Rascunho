@@ -1,17 +1,8 @@
-﻿@* 
-  ARQUIVO: Rascunho.Client/Pages/Gerencia/GestaoUsuarios.razor
-  ROTA:    /gerencia/usuarios
-  ACESSO:  Gerente
-
-  SPRINT 7: Adicionado campo FotoUrl ao UsuarioDto local e coluna visual
-  com UserAvatar na listagem. ObterUsuarioResponse do backend já retorna
-  FotoUrl — só faltava deserializar o campo e exibir.
-*@
-
-@page "/gerencia/usuarios"
+﻿@page "/gerencia/usuarios"
 @using Microsoft.AspNetCore.Authorization
 @using System.Net.Http.Json
 @using Rascunho.Client.Shared
+@using Rascunho.Shared.DTOs
 @attribute [Authorize(Roles = "Gerente")]
 @inject HttpClient Http
 @inject ISnackbar Snackbar
@@ -27,14 +18,34 @@
     Gerencie todos os usuários cadastrados no sistema.
 </MudText>
 
+<MudPaper Elevation="1" Class="pa-4 mb-6 rounded-lg border-solid border-2 mud-border-primary">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Busca Rápida de Alunos e Bolsistas (Matrícula)</MudText>
+    <MudAutocomplete T="BuscarUsuarioResponse"
+                     Label="Digite o nome ou CPF..."
+                     SearchFunc="@BuscarAlunosAutocomplete"
+                     ToStringFunc="@(u => u == null ? null : $"{u.Nome} ({u.Tipo})")"
+                     ResetValueOnEmptyText="true"
+                     Variant="Variant.Outlined"
+                     AdornmentIcon="@Icons.Material.Filled.Search"
+                     Clearable="true">
+        <ItemTemplate Context="aluno">
+            <MudStack Row="true" AlignItems="AlignItems.Center">
+                <MudAvatar Size="Size.Small" Image="@aluno.FotoUrl" Color="Color.Primary" />
+                <MudText>@aluno.Nome</MudText>
+                <MudChip T="string" Size="Size.Small" Color="Color.Secondary">@aluno.Tipo</MudChip>
+            </MudStack>
+        </ItemTemplate>
+    </MudAutocomplete>
+</MudPaper>
+
 <MudPaper Elevation="1" Class="pa-4 mb-4 rounded-lg">
     <MudGrid>
         <MudItem xs="12" sm="4">
             <MudTextField @bind-Value="filtroNome"
-                          Label="Buscar por nome"
+                          Label="Buscar por nome no grid"
                           Variant="Variant.Outlined"
                           Adornment="Adornment.End"
-                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          AdornmentIcon="@Icons.Material.Filled.FilterAlt"
                           Immediate="true" />
         </MudItem>
         <MudItem xs="12" sm="3">
@@ -61,7 +72,7 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="2" Class="d-flex align-end">
-            <MudButton OnClick="CarregarUsuarios"
+            <MudButton OnClick="AplicarFiltrosGrid"
                        Variant="Variant.Filled"
                        Color="Color.Primary"
                        FullWidth="true">
@@ -71,121 +82,143 @@
     </MudGrid>
 </MudPaper>
 
-@if (carregando)
-{
-    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
-}
-else
-{
-    <MudDataGrid T="UsuarioDto"
-                 Items="@usuariosFiltrados"
-                 Sortable="true"
-                 Filterable="false"
-                 Hover="true"
-                 Dense="true"
-                 Elevation="3"
-                 Class="rounded-xl">
-        <Columns>
-            @*
-              SPRINT 7: Coluna de foto adicionada no início.
-              UserAvatar mostra a foto ou a inicial — nunca quebra se a URL estiver vazia.
-            *@
-            <TemplateColumn Title="" CellClass="pa-1" HeaderStyle="width: 52px;">
-                <CellTemplate Context="cell">
-                    <UserAvatar FotoUrl="@cell.Item.FotoUrl"
-                                Nome="@cell.Item.Nome"
-                                Size="Size.Small"
-                                Color="@CorTipoAvatar(cell.Item.Tipo)" />
-                </CellTemplate>
-            </TemplateColumn>
+<MudDataGrid T="UsuarioDto"
+             ServerData="@CarregarDadosServidor"
+             @ref="grid"
+             Sortable="false"
+             Hover="true"
+             Dense="true"
+             Elevation="3"
+             Class="rounded-xl">
+    <Columns>
+        <TemplateColumn Title="" CellClass="pa-1" HeaderStyle="width: 52px;">
+            <CellTemplate Context="cell">
+                <UserAvatar FotoUrl="@cell.Item.FotoUrl"
+                            Nome="@cell.Item.Nome"
+                            Size="Size.Small"
+                            Color="@CorTipoAvatar(cell.Item.Tipo)" />
+            </CellTemplate>
+        </TemplateColumn>
 
-            <PropertyColumn Property="u => u.Nome" Title="Nome" Sortable="true" />
-            <PropertyColumn Property="u => u.Email" Title="E-mail" />
-            <TemplateColumn Title="Tipo">
-                <CellTemplate Context="cell">
-                    <MudChip T="string"
-                             Size="Size.Small"
-                             Color="@CorTipo(cell.Item.Tipo)"
-                             Variant="Variant.Filled">
-                        @cell.Item.Tipo
-                    </MudChip>
-                </CellTemplate>
-            </TemplateColumn>
-            <TemplateColumn Title="Status">
-                <CellTemplate Context="cell">
-                    <MudSwitch T="bool"
-                               Value="@cell.Item.Ativo"
-                               ValueChanged="@((bool v) => OnStatusChanged(cell.Item, v))"
-                               Color="Color.Success"
-                               Label="@(cell.Item.Ativo ? "Ativo" : "Inativo")" />
-                </CellTemplate>
-            </TemplateColumn>
-            <TemplateColumn Title="Ações" CellClass="d-flex justify-end">
-                <CellTemplate Context="cell">
-                    <MudTooltip Text="Excluir permanentemente">
-                        <MudIconButton Icon="@Icons.Material.Filled.DeleteForever"
-                                       Color="Color.Error"
-                                       Size="Size.Small"
-                                       OnClick="@(() => ConfirmarExclusao(cell.Item))" />
-                    </MudTooltip>
-                </CellTemplate>
-            </TemplateColumn>
-        </Columns>
-    </MudDataGrid>
-}
+        <PropertyColumn Property="u => u.Nome" Title="Nome" />
+        <PropertyColumn Property="u => u.Email" Title="E-mail" />
+        <TemplateColumn Title="Tipo">
+            <CellTemplate Context="cell">
+                <MudChip T="string"
+                         Size="Size.Small"
+                         Color="@CorTipo(cell.Item.Tipo)"
+                         Variant="Variant.Filled">
+                    @cell.Item.Tipo
+                </MudChip>
+            </CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn Title="Status">
+            <CellTemplate Context="cell">
+                <MudSwitch T="bool"
+                           Value="@cell.Item.Ativo"
+                           ValueChanged="@((bool v) => OnStatusChanged(cell.Item, v))"
+                           Color="Color.Success"
+                           Label="@(cell.Item.Ativo ? "Ativo" : "Inativo")" />
+            </CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn Title="Ações" CellClass="d-flex justify-end">
+            <CellTemplate Context="cell">
+                <MudTooltip Text="Excluir permanentemente">
+                    <MudIconButton Icon="@Icons.Material.Filled.DeleteForever"
+                                   Color="Color.Error"
+                                   Size="Size.Small"
+                                   OnClick="@(() => ConfirmarExclusao(cell.Item))" />
+                </MudTooltip>
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <PagerContent>
+        <MudDataGridPager T="UsuarioDto" RowsPerPageString="Itens por página:" />
+    </PagerContent>
+</MudDataGrid>
+
 
 @code {
-    private bool carregando = true;
+    private MudDataGrid<UsuarioDto>? grid;
+    
+    // Filtros do grid
     private string filtroNome = "";
     private string filtroTipo = "";
     private string filtroStatus = "todos";
-    private List<UsuarioDto> usuarios = new();
 
-    private IEnumerable<UsuarioDto> usuariosFiltrados => usuarios
-        .Where(u => string.IsNullOrEmpty(filtroNome)
-                    || u.Nome.Contains(filtroNome, StringComparison.OrdinalIgnoreCase))
-        .Where(u => string.IsNullOrEmpty(filtroTipo) || u.Tipo == filtroTipo)
-        .Where(u => filtroStatus == "todos"
-                    || (filtroStatus == "ativos" && u.Ativo)
-                    || (filtroStatus == "desativados" && !u.Ativo));
-
-    protected override async Task OnInitializedAsync()
+    // Busca no Autocomplete (Endpoint de buscar)
+    private async Task<IEnumerable<BuscarUsuarioResponse>> BuscarAlunosAutocomplete(string value, CancellationToken token)
     {
-        await CarregarUsuarios();
-    }
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return new List<BuscarUsuarioResponse>();
 
-    private async Task CarregarUsuarios()
-    {
-        carregando = true;
         try
         {
-            usuarios = await Http.GetFromJsonAsync<List<UsuarioDto>>(
-                "api/usuarios/listar") ?? new();
+            // O endpoint que já existe: group.MapGet("/buscar" ...
+            return await Http.GetFromJsonAsync<List<BuscarUsuarioResponse>>($"api/usuarios/buscar?q={value}", token) ?? new();
+        }
+        catch
+        {
+            return new List<BuscarUsuarioResponse>();
+        }
+    }
+
+    // Paginação no Servidor
+    private async Task<GridData<UsuarioDto>> CarregarDadosServidor(GridState<UsuarioDto> state, CancellationToken token)
+    {
+        try
+        {
+            var url = $"api/usuarios/listar?page={state.Page}&pageSize={state.PageSize}";
+            
+            if (!string.IsNullOrWhiteSpace(filtroNome)) url += $"&nome={Uri.EscapeDataString(filtroNome)}";
+            if (!string.IsNullOrWhiteSpace(filtroTipo)) url += $"&tipo={Uri.EscapeDataString(filtroTipo)}";
+            if (!string.IsNullOrWhiteSpace(filtroStatus)) url += $"&status={Uri.EscapeDataString(filtroStatus)}";
+
+            // Repassando o 'token' para o GetFromJsonAsync
+            var response = await Http.GetFromJsonAsync<PaginacaoResponse<UsuarioDto>>(url, token);
+
+            if (response != null)
+            {
+                return new GridData<UsuarioDto>
+                {
+                    TotalItems = response.TotalItens,
+                    Items = response.Itens.ToList()
+                };
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // Ignora o erro se a requisição foi cancelada intencionalmente pelo MudBlazor ao mudar de página rápido
         }
         catch
         {
             Snackbar.Add("Erro ao carregar usuários.", Severity.Error);
         }
-        finally { carregando = false; }
+
+        return new GridData<UsuarioDto> { TotalItems = 0, Items = new List<UsuarioDto>() };
+    }
+
+    // Recarrega o grid aplicando os filtros e voltando para a página 1
+    private async Task AplicarFiltrosGrid()
+    {
+        if (grid != null)
+        {
+            await grid.ReloadServerData();
+        }
     }
 
     private async Task OnStatusChanged(UsuarioDto usuario, bool novoStatus)
     {
-        var response = await Http.PutAsJsonAsync(
-            $"api/usuarios/status/{usuario.IdHash}", novoStatus);
+        var response = await Http.PutAsJsonAsync($"api/usuarios/status/{usuario.IdHash}", novoStatus);
 
         if (response.IsSuccessStatusCode)
         {
             usuario.Ativo = novoStatus;
-            Snackbar.Add(
-                $"{usuario.Nome} {(novoStatus ? "ativado" : "desativado")}.",
-                Severity.Success);
+            Snackbar.Add($"{usuario.Nome} {(novoStatus ? "ativado" : "desativado")}.", Severity.Success);
         }
         else
         {
-            usuario.Ativo = !novoStatus;
             Snackbar.Add("Erro ao alterar status.", Severity.Error);
-            StateHasChanged();
         }
     }
 
@@ -207,8 +240,8 @@ else
 
             if (response.IsSuccessStatusCode)
             {
-                usuarios.Remove(usuario);
                 Snackbar.Add($"{usuario.Nome} excluído permanentemente.", Severity.Warning);
+                await AplicarFiltrosGrid(); // Recarrega os dados do servidor após exclusão
             }
         }
     }
@@ -222,7 +255,6 @@ else
         _ => Color.Default
     };
 
-    // Cor do avatar quando não há foto (mesma lógica do chip de tipo)
     private Color CorTipoAvatar(string tipo) => tipo switch
     {
         "Gerente" => Color.Error,
@@ -232,8 +264,6 @@ else
         _ => Color.Primary
     };
 
-    // SPRINT 7: FotoUrl adicionado ao DTO local.
-    // ObterUsuarioResponse já retorna FotoUrl — só precisava deserializar.
     public class UsuarioDto
     {
         public string IdHash { get; set; } = "";
@@ -241,6 +271,6 @@ else
         public string Email { get; set; } = "";
         public string Tipo { get; set; } = "";
         public bool Ativo { get; set; }
-        public string FotoUrl { get; set; } = "";   // ← NOVO Sprint 7
+        public string FotoUrl { get; set; } = "";
     }
 }

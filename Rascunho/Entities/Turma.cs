@@ -19,7 +19,7 @@ public class Turma
 
     public ICollection<TurmaProfessor> Professores { get; protected set; } = new List<TurmaProfessor>();
     public ICollection<Matricula> Matriculas { get; protected set; } = new List<Matricula>();
-    public ICollection<Interesse> ListaDeEspera { get; protected set; } = new List<Interesse>();
+    public ICollection<ListaEspera> ListaDeEspera { get; protected set; } = new List<ListaEspera>();
 
     protected Turma() { }
 
