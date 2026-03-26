@@ -91,7 +91,31 @@ public static class AulaParticularEndpoints
         });
 
         // ══════════════════════════════════════════════════════════
-        // 6. REAGENDAR (NOVO Sprint 4)
+        // 6. OBTER CONFIGURAÇÕES (NOVO - Correção BUG #1)
+        //
+        // GET /api/aulas-particulares/configuracoes
+        //
+        // Retorna as configurações necessárias para o frontend:
+        // - Preço padrão de aulas particulares
+        // - Janela de reposição em dias
+        //
+        // IMPORTANTE: Este endpoint foi criado para que alunos/bolsistas
+        // possam obter as configurações sem erro 403. A rota anterior
+        // (/api/gerente/configuracoes) requer role "Gerente" e bloqueava
+        // o acesso. Este novo endpoint permite leitura para todos autenticados.
+        // ══════════════════════════════════════════════════════════
+        group.MapGet("/configuracoes", (ConfiguracaoService cfg) =>
+            Results.Ok(new
+            {
+                PrecoAulaParticular = cfg.ObterPrecoAulaParticular(),
+                JanelaReposicaoDias = cfg.ObterJanelaReposicaoDias()
+            }))
+        .WithName("ObterConfiguracoesAulasParticulares")
+        .WithOpenApi()
+        .Produces<object>(StatusCodes.Status200OK);
+
+        // ══════════════════════════════════════════════════════════
+        // 7. REAGENDAR (NOVO Sprint 4)
         //
         // PUT /api/aulas-particulares/{idHash}/reagendar
         //
