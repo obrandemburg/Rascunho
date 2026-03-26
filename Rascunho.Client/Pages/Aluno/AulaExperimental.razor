@@ -160,7 +160,7 @@ else
 @* ── Dialog inline para selecionar a data da aula experimental ── *@
 @if (turmaParaAgendar != null)
 {
-    <MudDialog @bind-IsVisible="dialogAberto"
+    <MudDialog @bind-Visible="dialogAberto"
                Options="@(new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true })">
         <TitleContent>
             <MudText Typo="Typo.h6">

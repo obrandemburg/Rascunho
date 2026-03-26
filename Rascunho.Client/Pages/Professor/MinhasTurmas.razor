@@ -79,7 +79,7 @@ else
 }
 
 @* ── MODAL: Lista de alunos ──────────────────────────────────────── *@
-<MudDialog @bind-IsVisible="modalAberto" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+<MudDialog @bind-Visible="modalAberto" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
     <TitleContent>
         <MudText Typo="Typo.h6">
             <MudIcon Icon="@Icons.Material.Filled.People" Class="mr-2" />

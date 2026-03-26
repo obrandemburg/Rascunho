@@ -184,7 +184,7 @@ else
 }
 
 @* ── MODAL DE DETALHES + AÇÕES ──────────────────────────────────── *@
-<MudDialog @bind-IsVisible="modalAberto"
+<MudDialog @bind-Visible="modalAberto"
            Options="@(new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true })">
     <TitleContent>
         @if (bolsistaSelecionado != null)
