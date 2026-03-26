@@ -63,7 +63,7 @@ public class ChamadaService
             .OrderBy(a => a.Nome)
             .ToList();
 
-        // Seção B: participantes extras já salvos para esta data
+        // Seção B — parte 1: participantes extras já salvos para esta data
         // (bolsistas/experimentais que o professor adicionou em sessões anteriores)
         var extrasResponse = presencasDict
             .Where(kv => !idsMatriculados.Contains(kv.Key))
@@ -77,6 +77,33 @@ public class ChamadaService
             ))
             .ToList();
 
+        // Seção B — parte 2: pré-popula alunos com Reposição agendada para esta turma/data.
+        // Esses alunos ainda não têm RegistroPresenca salvo (seriam incluídos na parte 1 se
+        // tivessem), por isso buscamos explicitamente para facilitar o trabalho do professor.
+        var idsJaNaSecaoB = extrasResponse.Select(e => _hashids.Decode(e.AlunoIdHash)[0]).ToHashSet();
+
+        var reposicoesDoDia = await _context.Reposicoes
+            .Include(r => r.Aluno)
+            .Where(r =>
+                r.TurmaDestinoId == turmaId &&
+                r.Status == "Agendada" &&
+                DateOnly.FromDateTime(r.DataReposicaoAgendada) == dataAula &&
+                !idsMatriculados.Contains(r.AlunoId) &&
+                !idsJaNaSecaoB.Contains(r.AlunoId))
+            .ToListAsync();
+
+        foreach (var rep in reposicoesDoDia)
+        {
+            extrasResponse.Add(new AlunoChamadaResponse(
+                _hashids.Encode(rep.AlunoId),
+                rep.Aluno.Nome,
+                rep.Aluno.FotoUrl,
+                "Reposição",
+                false,   // presença padrão = false; professor confirma na tela
+                null
+            ));
+        }
+
         return new ObterChamadaResponse(
             _hashids.Encode(turma.Id),
             dataAula,
@@ -86,13 +113,16 @@ public class ChamadaService
     }
 
     // ──────────────────────────────────────────────────────────────
-    // NOVO Sprint 2: BUSCAR PARTICIPANTES EXTRAS (Seção B)
+    // BUSCAR PARTICIPANTES EXTRAS (Seção B)
     //
     // Busca usuários que podem ser adicionados manualmente à chamada:
-    //   1. Bolsistas ativos cujo nome contenha o termo buscado
-    //   2. Alunos com AulaExperimental ativa para ESTA turma
+    //   1. Bolsistas ativos cujo nome ou CPF contenha o termo buscado
+    //   2. Alunos com AulaExperimental ativa para ESTA turma (nome ou CPF)
+    //   3. Alunos com Reposição agendada para ESTA turma (nome ou CPF)
     //
-    // Reposição será incluída na Sprint 3, quando ReposicaoService existir.
+    // BUSCA POR CPF: o termo pode vir formatado ("123.456.789-01") ou só
+    // dígitos ("12345678901"). Normalizamos para dígitos antes de comparar
+    // com o CPF armazenado no banco (que também fica só com dígitos).
     //
     // SEGURANÇA: Exclui quem já está matriculado formalmente na turma
     // (não faz sentido adicionar na Seção B quem já está na Seção A)
@@ -110,13 +140,19 @@ public class ChamadaService
         var resultados = new List<ParticipanteExtraResponse>();
         var termoLower = termoBusca.ToLower().Trim();
 
-        // 1. Bolsistas ativos que correspondem ao termo
+        // Normaliza o termo para dígitos (busca por CPF).
+        // Se o usuário digitou "123.456.789-01", buscamos "12345678901".
+        var termoCpf = new string(termoBusca.Where(char.IsDigit).ToArray());
+        bool buscaPorCpf = termoCpf.Length >= 3; // mínimo de 3 dígitos para CPF ser útil
+
+        // ── 1. Bolsistas ativos (nome ou CPF) ─────────────────────────
         var bolsistas = await _context.Usuarios
             .OfType<Bolsista>()
             .Where(b =>
                 b.Ativo &&
-                b.Nome.ToLower().Contains(termoLower) &&
-                !idsMatriculados.Contains(b.Id))
+                !idsMatriculados.Contains(b.Id) &&
+                (b.Nome.ToLower().Contains(termoLower) ||
+                 (buscaPorCpf && b.Cpf != null && b.Cpf.Contains(termoCpf))))
             .Select(b => new ParticipanteExtraResponse(
                 _hashids.Encode(b.Id),
                 b.Nome,
@@ -128,17 +164,18 @@ public class ChamadaService
 
         resultados.AddRange(bolsistas);
 
-        // 2. Alunos com AulaExperimental ativa para esta turma
+        // ── 2. Alunos com AulaExperimental ativa para esta turma ──────
         // Status Pendente ou Confirmada = aula ainda válida para ocorrer
-        var idsJaEncontrados = resultados.Select(r => r.UsuarioIdHash).ToHashSet();
+        var idsJaEncontrados = resultados.Select(r => _hashids.Decode(r.UsuarioIdHash)[0]).ToHashSet();
 
         var experimentais = await _context.AulasExperimentais
             .Include(a => a.Aluno)
             .Where(a =>
                 a.TurmaId == turmaId &&
                 (a.Status == "Pendente" || a.Status == "Confirmada") &&
-                a.Aluno.Nome.ToLower().Contains(termoLower) &&
-                !idsMatriculados.Contains(a.AlunoId))
+                !idsMatriculados.Contains(a.AlunoId) &&
+                (a.Aluno.Nome.ToLower().Contains(termoLower) ||
+                 (buscaPorCpf && a.Aluno.Cpf != null && a.Aluno.Cpf.Contains(termoCpf))))
             .Select(a => new ParticipanteExtraResponse(
                 _hashids.Encode(a.AlunoId),
                 a.Aluno.Nome,
@@ -148,12 +185,44 @@ public class ChamadaService
             .Take(10)
             .ToListAsync();
 
-        // Adiciona apenas experimentais que NÃO são bolsistas já encontrados
-        // (um usuário não pode ser Bolsista E ter AulaExperimental, mas por segurança filtramos)
         foreach (var exp in experimentais)
         {
-            if (!idsJaEncontrados.Contains(exp.UsuarioIdHash))
+            var expId = _hashids.Decode(exp.UsuarioIdHash)[0];
+            if (!idsJaEncontrados.Contains(expId))
+            {
                 resultados.Add(exp);
+                idsJaEncontrados.Add(expId);
+            }
+        }
+
+        // ── 3. Alunos com Reposição agendada para esta turma ──────────
+        // Inclui alunos de qualquer turma de origem que agendaram reposição
+        // nesta turma destino e cuja reposição ainda está pendente.
+        var reposicoes = await _context.Reposicoes
+            .Include(r => r.Aluno)
+            .Where(r =>
+                r.TurmaDestinoId == turmaId &&
+                r.Status == "Agendada" &&
+                !idsMatriculados.Contains(r.AlunoId) &&
+                (r.Aluno.Nome.ToLower().Contains(termoLower) ||
+                 (buscaPorCpf && r.Aluno.Cpf != null && r.Aluno.Cpf.Contains(termoCpf))))
+            .Select(r => new ParticipanteExtraResponse(
+                _hashids.Encode(r.AlunoId),
+                r.Aluno.Nome,
+                r.Aluno.FotoUrl,
+                "Reposição"
+            ))
+            .Take(10)
+            .ToListAsync();
+
+        foreach (var rep in reposicoes)
+        {
+            var repId = _hashids.Decode(rep.UsuarioIdHash)[0];
+            if (!idsJaEncontrados.Contains(repId))
+            {
+                resultados.Add(rep);
+                idsJaEncontrados.Add(repId);
+            }
         }
 
         return resultados.OrderBy(r => r.Nome);
@@ -213,7 +282,7 @@ public class ChamadaService
                     new RegistroPresenca(turmaId, alunoId, request.DataAula, item.Presente, item.Observacao));
         }
 
-        // ── Processa EXTRAS (Seção B: bolsistas/experimentais) ────
+        // ── Processa EXTRAS (Seção B: bolsistas/experimentais/reposições) ────
         if (request.ExtrasPresencas?.Any() == true)
         {
             // Decodifica todos os IDs de uma vez (evita N+1)
@@ -228,6 +297,10 @@ public class ChamadaService
                 .Select(u => u.Id)
                 .ToHashSetAsync();
 
+            // IDs dos extras marcados como presentes nesta chamada
+            // (necessário para auto-marcar reposições como Realizadas)
+            var extrasPresentes = new HashSet<int>();
+
             foreach (var (alunoId, item) in extraIdsMap)
             {
                 if (!usuariosExtrasValidos.Contains(alunoId)) continue;
@@ -238,6 +311,27 @@ public class ChamadaService
                 else
                     _context.RegistrosPresencas.Add(
                         new RegistroPresenca(turmaId, alunoId, request.DataAula, item.Presente, item.Observacao));
+
+                if (item.Presente)
+                    extrasPresentes.Add(alunoId);
+            }
+
+            // ── Auto-marca Reposições como Realizadas ──────────────────────────
+            // Quando um aluno extra é marcado como PRESENTE e tem uma Reposição
+            // agendada para esta turma/data, a reposição é automaticamente concluída.
+            // Isso evita que o professor precise fazer essa marcação manualmente.
+            if (extrasPresentes.Count > 0)
+            {
+                var reposicoesParaRealizar = await _context.Reposicoes
+                    .Where(r =>
+                        r.TurmaDestinoId == turmaId &&
+                        r.Status == "Agendada" &&
+                        DateOnly.FromDateTime(r.DataReposicaoAgendada) == request.DataAula &&
+                        extrasPresentes.Contains(r.AlunoId))
+                    .ToListAsync();
+
+                foreach (var rep in reposicoesParaRealizar)
+                    rep.MarcarRealizada();
             }
         }
 

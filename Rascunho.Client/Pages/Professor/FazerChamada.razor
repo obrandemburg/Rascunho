@@ -164,9 +164,9 @@ else if (alunos.Any() || extrasAdicionados.Any())
                                             Color="Color.Secondary" />
                                 <MudText>@participante.Nome</MudText>
                                 <MudChip T="string" Size="Size.Small"
-                                         Color="@(participante.TipoParticipante == "Bolsista" ? Color.Secondary : Color.Info)"
+                                         Color="@(participante.TipoParticipante == "Bolsista" ? Color.Secondary : participante.TipoParticipante == "Reposição" ? Color.Warning : Color.Info)"
                                          Variant="Variant.Filled">
-                                    @(participante.TipoParticipante == "Bolsista" ? "🎓 Bolsista" : "🆕 Experimental")
+                                    @(participante.TipoParticipante == "Bolsista" ? "🎓 Bolsista" : participante.TipoParticipante == "Reposição" ? "🔄 Reposição" : "🆕 Experimental")
                                 </MudChip>
                                 @if (jaAdicionado)
                                 {
