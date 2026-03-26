@@ -1,25 +1,6 @@
-﻿@* 
-  ARQUIVO: Rascunho.Client/Pages/Perfil.razor
+﻿@* ARQUIVO: Rascunho.Client/Pages/Perfil.razor
   ROTA:    /perfil
   ACESSO:  Qualquer usuário autenticado
-
-  SPRINT 7 — Adicionado fluxo completo de upload e troca de foto de perfil.
-
-  FLUXO DE TROCA DE FOTO:
-  1. Usuário clica "Trocar Foto"
-  2. JS (fileUpload.js já existente) aciona o <InputFile> oculto
-  3. OnChange="SelecionarFoto" gera preview em base64 localmente
-  4. Ao clicar "Salvar": POST /api/upload/foto → obtém URL pública
-  5. URL incluída no PUT /api/usuarios/meu-perfil/atualizar
-  6. localStorage "userFotoUrl" atualizado com a nova URL
-  7. fotoUrlAtual atualizado no estado → UI reflete a nova foto imediatamente
-
-  IMPORTANTE — O fileUpload.js JÁ EXISTE em wwwroot/js/fileUpload.js.
-  Ele expõe window.fileUpload.abrirSeletor(inputId) que faz .click()
-  no elemento HTML com o id informado. Não é necessário criar um novo arquivo JS.
-
-  CORREÇÃO SPRINT 6 MANTIDA:
-  FotoUrl atual é incluído no payload do PUT para não apagar a foto ao salvar.
 *@
 
 @page "/perfil"
@@ -27,6 +8,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using System.Net.Http.Json
+@using System.ComponentModel.DataAnnotations
 @using Blazored.LocalStorage
 @attribute [Authorize]
 @inject HttpClient Http
@@ -36,7 +18,7 @@
 
 <PageTitle>Meu Perfil — Ponto da Dança</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8 mb-8">
 
     <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-6 font-weight-bold">
         <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />
@@ -47,12 +29,6 @@
     <MudPaper Elevation="3" Class="pa-6 rounded-xl mb-6">
         <div class="d-flex align-center gap-4 mb-4">
 
-            @*
-              SPRINT 7: exibe foto ou inicial usando UserAvatar.
-              A foto vem do localStorage (salvo pelo AuthService no login).
-              Se o usuário trocou a foto nesta sessão, fotoUrlAtual
-              já reflete a URL nova antes mesmo de relogar.
-            *@
             <UserAvatar FotoUrl="@fotoUrlAtual" Nome="@nomeCompleto" Size="Size.Large" />
 
             <div>
@@ -74,17 +50,6 @@
 
         <div class="d-flex align-center gap-3 flex-wrap">
 
-            @*
-              SPRINT 7: InputFile OCULTO — acionado via JS.
-              Por que oculto?
-              O Blazor não permite acionar <input type="file"> programaticamente
-              pelo C#. O arquivo fileUpload.js já existente na wwwroot faz
-              document.getElementById('inputFotoPerfil').click() para nós.
-              
-              IMPORTANTE: o id "inputFotoPerfil" é diferente do "inputFoto"
-              usado em CriarUsuario.razor para evitar conflitos se ambas
-              as páginas fossem renderizadas juntas (improvável, mas seguro).
-            *@
             <InputFile id="inputFotoPerfil"
                        OnChange="SelecionarFoto"
                        accept="image/jpeg,image/jpg,image/png,image/webp"
@@ -106,7 +71,6 @@
             }
         </div>
 
-        @* Preview da nova foto selecionada (antes de salvar) *@
         @if (!string.IsNullOrEmpty(novaFotoPreviewUrl))
         {
             <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
@@ -127,7 +91,7 @@
     </MudPaper>
 
     @* ── Formulário de Nome Social e Biografia ─────────────────── *@
-    <MudPaper Elevation="3" Class="pa-6 rounded-xl">
+    <MudPaper Elevation="3" Class="pa-6 rounded-xl mb-6">
         <MudText Typo="Typo.h6" Class="mb-4">Editar Informações</MudText>
 
         <EditForm Model="@form" OnValidSubmit="SalvarPerfil">
@@ -167,6 +131,54 @@
         </EditForm>
     </MudPaper>
 
+    @* ── Formulário de Alteração de Senha ──────────────────────── *@
+    <MudPaper Elevation="3" Class="pa-6 rounded-xl">
+        <MudText Typo="Typo.h6" Class="mb-4">Segurança</MudText>
+
+        <EditForm Model="@formSenha" OnValidSubmit="AlterarSenha">
+            <DataAnnotationsValidator />
+
+            <MudTextField @bind-Value="formSenha.SenhaAtual"
+                          Label="Senha Atual"
+                          InputType="InputType.Password"
+                          Variant="Variant.Outlined"
+                          Class="mb-4"
+                          For="@(() => formSenha.SenhaAtual)" />
+
+            <MudTextField @bind-Value="formSenha.NovaSenha"
+                          Label="Nova Senha"
+                          InputType="InputType.Password"
+                          Variant="Variant.Outlined"
+                          Class="mb-4"
+                          For="@(() => formSenha.NovaSenha)" />
+
+            <MudTextField @bind-Value="formSenha.ConfirmarNovaSenha"
+                          Label="Confirmar Nova Senha"
+                          InputType="InputType.Password"
+                          Variant="Variant.Outlined"
+                          Class="mb-6"
+                          For="@(() => formSenha.ConfirmarNovaSenha)" />
+
+            <MudButton ButtonType="ButtonType.Submit"
+                       Variant="Variant.Filled"
+                       Color="Color.Error"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Disabled="@salvandoSenha"
+                       StartIcon="@Icons.Material.Filled.Lock">
+                @if (salvandoSenha)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <text>Alterando Senha...</text>
+                }
+                else
+                {
+                    <text>Alterar Senha</text>
+                }
+            </MudButton>
+        </EditForm>
+    </MudPaper>
+
 </MudContainer>
 
 @code {
@@ -176,24 +188,26 @@
     private bool salvando = false;
     private string statusSalvamento = "Salvando...";
 
+    private bool salvandoSenha = false;
+
     // Dados lidos das Claims do JWT
     private string nomeCompleto = "";
     private string email = "";
     private string role = "";
 
-    // Foto atual (do localStorage, salva no login pelo AuthService)
+    // Foto atual
     private string fotoUrlAtual = "";
 
-    // Estado da nova foto selecionada (ainda não salva)
+    // Estado da nova foto selecionada
     private string? novaFotoPreviewUrl = null;
     private string nomeFotoSelecionada = "";
     private IBrowserFile? arquivoFotoSelecionado = null;
 
     private EditarPerfilForm form = new();
+    private AlterarSenhaForm formSenha = new();
 
     protected override async Task OnInitializedAsync()
     {
-        // Lê dados do JWT (Claims injetadas pelo CustomAuthStateProvider)
         if (AuthStateTask != null)
         {
             var authState = await AuthStateTask;
@@ -203,8 +217,6 @@
             role = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
         }
 
-        // Lê a URL da foto atual do localStorage
-        // O AuthService salva "userFotoUrl" durante o login
         try
         {
             fotoUrlAtual = await LocalStorage.GetItemAsync<string>("userFotoUrl") ?? "";
@@ -212,37 +224,16 @@
         catch { fotoUrlAtual = ""; }
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // ABRE O SELETOR DE ARQUIVO DO SISTEMA OPERACIONAL
-    //
-    // Por que usamos JS aqui?
-    // O Blazor WASM não pode chamar .click() diretamente em um elemento
-    // do DOM via C#. O fileUpload.js (em wwwroot/js/fileUpload.js) expõe
-    // a função window.fileUpload.abrirSeletor(id) que faz exatamente isso.
-    //
-    // O arquivo JS já está carregado no index.html:
-    //   <script src="js/fileUpload.js"></script>
-    // ──────────────────────────────────────────────────────────────
     private async Task AbrirSeletorFoto()
     {
         await JS.InvokeVoidAsync("fileUpload.abrirSeletor", "inputFotoPerfil");
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // PROCESSA O ARQUIVO SELECIONADO
-    //
-    // Gera um preview em base64 localmente (sem enviar ao servidor).
-    // O arquivo real só é enviado ao servidor quando o usuário clicar
-    // em "Salvar Alterações".
-    //
-    // Limite de leitura para preview: 5MB (igual ao limite do endpoint).
-    // Se o arquivo for maior, o preview é ignorado (o upload ainda funciona).
-    // ──────────────────────────────────────────────────────────────
     private async Task SelecionarFoto(InputFileChangeEventArgs e)
     {
         arquivoFotoSelecionado = e.File;
         nomeFotoSelecionada = e.File.Name;
-        novaFotoPreviewUrl = null; // limpa preview anterior
+        novaFotoPreviewUrl = null;
 
         try
         {
@@ -256,29 +247,10 @@
         }
         catch
         {
-            // Se o arquivo for muito grande para o preview, mostra só o nome
             Snackbar.Add("Arquivo grande demais para preview — será enviado ao salvar.", Severity.Info);
         }
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // SALVA O PERFIL (com ou sem nova foto)
-    //
-    // FLUXO:
-    //   1. Se há nova foto selecionada:
-    //      a. POST /api/upload/foto (multipart/form-data)
-    //      b. Obtém a URL pública retornada
-    //      c. Atualiza fotoUrlAtual (UI) e localStorage "userFotoUrl"
-    //   2. PUT /api/usuarios/meu-perfil/atualizar com:
-    //      - NomeSocial (pode estar vazio)
-    //      - Biografia  (pode estar vazia)
-    //      - FotoUrl    (URL nova ou URL atual — nunca null)
-    //
-    // POR QUE INCLUIR FotoUrl NO PUT?
-    //   EditarPerfilRequest é record(NomeSocial, Biografia, FotoUrl).
-    //   Se FotoUrl for null, o backend executa: usuario.FotoUrl = null
-    //   apagando a foto do usuário. Sempre passar a URL atual evita isso.
-    // ──────────────────────────────────────────────────────────────
     private async Task SalvarPerfil()
     {
         salvando = true;
@@ -286,41 +258,31 @@
 
         try
         {
-            var fotoParaEnviar = fotoUrlAtual; // mantém a foto atual por padrão
+            var fotoParaEnviar = fotoUrlAtual;
 
-            // ── PASSO 1: Upload da nova foto (se houver) ──────────
             if (arquivoFotoSelecionado != null)
             {
                 statusSalvamento = "Enviando foto...";
                 StateHasChanged();
 
                 using var content = new MultipartFormDataContent();
-                using var stream = arquivoFotoSelecionado
-                    .OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+                using var stream = arquivoFotoSelecionado.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
                 using var streamContent = new StreamContent(stream);
-                streamContent.Headers.ContentType =
-                    new System.Net.Http.Headers.MediaTypeHeaderValue(
-                        arquivoFotoSelecionado.ContentType);
+                streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(arquivoFotoSelecionado.ContentType);
                 content.Add(streamContent, "foto", arquivoFotoSelecionado.Name);
 
                 var uploadResponse = await Http.PostAsync("api/upload/foto", content);
 
                 if (uploadResponse.IsSuccessStatusCode)
                 {
-                    var resultado = await uploadResponse.Content
-                        .ReadFromJsonAsync<UploadFotoDto>();
+                    var resultado = await uploadResponse.Content.ReadFromJsonAsync<UploadFotoDto>();
 
                     if (resultado != null && !string.IsNullOrEmpty(resultado.Url))
                     {
                         fotoParaEnviar = resultado.Url;
-
-                        // Atualiza estado local imediatamente (UI reflete antes mesmo de relogar)
                         fotoUrlAtual = fotoParaEnviar;
-
-                        // Persiste no localStorage para futuras sessões e para Perfil.razor
                         await LocalStorage.SetItemAsync("userFotoUrl", fotoParaEnviar);
 
-                        // Limpa o estado de "foto selecionada" — upload concluído
                         arquivoFotoSelecionado = null;
                         novaFotoPreviewUrl = null;
                         nomeFotoSelecionada = "";
@@ -329,11 +291,10 @@
                 else
                 {
                     Snackbar.Add("Não foi possível enviar a foto. Tente novamente.", Severity.Warning);
-                    return; // Aborta para não salvar o perfil sem a foto pretendida
+                    return;
                 }
             }
 
-            // ── PASSO 2: Atualiza perfil ──────────────────────────
             statusSalvamento = "Salvando perfil...";
             StateHasChanged();
 
@@ -341,11 +302,10 @@
             {
                 NomeSocial = form.NomeSocial ?? "",
                 Biografia = form.Biografia ?? "",
-                FotoUrl = fotoParaEnviar      // nunca null — evita apagar a foto
+                FotoUrl = fotoParaEnviar
             };
 
-            var perfilResponse = await Http.PutAsJsonAsync(
-                "api/usuarios/meu-perfil/atualizar", payload);
+            var perfilResponse = await Http.PutAsJsonAsync("api/usuarios/meu-perfil/atualizar", payload);
 
             if (perfilResponse.IsSuccessStatusCode)
             {
@@ -368,9 +328,47 @@
         }
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // ALTERAR SENHA
+    // ──────────────────────────────────────────────────────────────
+    private async Task AlterarSenha()
+    {
+        salvandoSenha = true;
+
+        try
+        {
+            var payload = new
+            {
+                SenhaAtual = formSenha.SenhaAtual,
+                NovaSenha = formSenha.NovaSenha
+            };
+
+            // Ajuste esta URL para a rota correta da sua Minimal API / Controller ASP.NET Core
+            var response = await Http.PutAsJsonAsync("api/usuarios/meu-perfil/alterar-senha", payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Senha alterada com sucesso! 🔒", Severity.Success);
+                formSenha = new AlterarSenhaForm(); // Limpa o formulário
+            }
+            else if ((int)response.StatusCode == 400)
+            {
+                Snackbar.Add("Senha atual incorreta ou dados inválidos.", Severity.Warning);
+            }
+            else
+            {
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Erro ao alterar senha: {erro}", Severity.Error);
+            }
+        }
+        finally
+        {
+            salvandoSenha = false;
+        }
+    }
+
     // ── DTOs e modelos ────────────────────────────────────────────
 
-    // Resposta do endpoint POST /api/upload/foto
     public class UploadFotoDto
     {
         public string Url { get; set; } = "";
@@ -378,10 +376,23 @@
         public long TamanhoBytes { get; set; }
     }
 
-    // Modelo do formulário (campos editáveis que não são a foto)
     public class EditarPerfilForm
     {
         public string? NomeSocial { get; set; }
         public string? Biografia { get; set; }
+    }
+
+    public class AlterarSenhaForm
+    {
+        [Required(ErrorMessage = "A senha atual é obrigatória.")]
+        public string SenhaAtual { get; set; } = "";
+
+        [Required(ErrorMessage = "A nova senha é obrigatória.")]
+        [MinLength(6, ErrorMessage = "A nova senha deve ter no mínimo 6 caracteres.")]
+        public string NovaSenha { get; set; } = "";
+
+        [Required(ErrorMessage = "A confirmação da senha é obrigatória.")]
+        [Compare(nameof(NovaSenha), ErrorMessage = "As senhas não coincidem.")]
+        public string ConfirmarNovaSenha { get; set; } = "";
     }
 }

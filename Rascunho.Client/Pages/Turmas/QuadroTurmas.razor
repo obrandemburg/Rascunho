@@ -1,18 +1,6 @@
 ﻿@* ARQUIVO: Rascunho.Client/Pages/Turmas/QuadroTurmas.razor
   ROTA:    /turmas
   ACESSO:  Anônimo
-
-  CORREÇÕES SPRINT 6:
-  O TurmaDto local não correspondia ao ObterTurmaResponse da API:
-  
-  ANTES (errado)          → DEPOIS (correto)
-  ─────────────────────────────────────────────────────
-  DiaSemana (string)      → DiaDaSemana (int)
-  ProfessorNome (string)  → NomesProfessores (List<string>)
-  AlunosMatriculados      → QuantidadeMatriculados
-  
-  Consequência: dia da semana, professor e contagem de vagas
-  apareciam sempre como vazio/zero nos cards.
 *@
 
 @page "/turmas"
@@ -88,10 +76,6 @@
         <MudGrid>
             @foreach (var turma in turmasExibidas)
             {
-                @*
-                  CORREÇÃO: era turma.AlunosMatriculados → agora turma.QuantidadeMatriculados
-                  QuantidadeMatriculados é o campo correto em ObterTurmaResponse.
-                *@
                 bool cheia = turma.QuantidadeMatriculados >= turma.LimiteAlunos;
 
                 <MudItem xs="12" sm="6" md="4">
@@ -127,18 +111,10 @@
                                 @turma.HorarioInicio — @turma.HorarioFim
                             </MudText>
 
-                            @*
-                              CORREÇÃO: era @turma.ProfessorNome (string inexistente na API)
-                              A API retorna NomesProfessores (List<string>).
-                              Exibimos o primeiro da lista ou "—" se vazio.
-                            *@
                             <MudText Typo="Typo.body2">
                                 Prof: @(turma.NomesProfessores.FirstOrDefault() ?? "—")
                             </MudText>
 
-                            @*
-                              CORREÇÃO: era turma.AlunosMatriculados → turma.QuantidadeMatriculados
-                            *@
                             <MudText Typo="Typo.caption" Class="mud-text-secondary mt-1">
                                 @turma.QuantidadeMatriculados / @turma.LimiteAlunos vagas
                             </MudText>
@@ -288,11 +264,7 @@
         Snackbar.Add(msg, Severity.Info);
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // NOVO: converte DiaDaSemana (int) para nome legível.
-    // DayOfWeek C#: 0=Domingo, 1=Segunda ... 6=Sábado
-    // Esse método é chamado no template e no filtro.
-    // ──────────────────────────────────────────────────────────────
+
     private string DiaDaSemanaTexto(int dia) => dia switch
     {
         0 => "Domingo",
@@ -305,32 +277,17 @@
         _ => "—"
     };
 
-    // ──────────────────────────────────────────────────────────────
-    // DTO LOCAL — CORRIGIDO para corresponder a ObterTurmaResponse:
-    //
-    //  ObterTurmaResponse(
-    //    IdHash, RitmoNome, SalaNome, DataInicio,
-    //    DiaDaSemana (int),             ← era DiaSemana (string)
-    //    HorarioInicio (TimeSpan → JSON "18:00:00"),
-    //    HorarioFim    (TimeSpan → JSON "19:00:00"),
-    //    Nivel,
-    //    LimiteAlunos,
-    //    QuantidadeMatriculados (int),  ← era AlunosMatriculados
-    //    LinkWhatsApp,
-    //    Ativa,
-    //    NomesProfessores (List<string>) ← era ProfessorNome (string)
-    //  )
-    // ──────────────────────────────────────────────────────────────
+
     public class TurmaDto
     {
         public string IdHash { get; set; } = "";
         public string RitmoNome { get; set; } = "";
         public string Nivel { get; set; } = "";
-        public int DiaDaSemana { get; set; }         // ← era: string DiaSemana
+        public int DiaDaSemana { get; set; }
         public string HorarioInicio { get; set; } = "";
         public string HorarioFim { get; set; } = "";
-        public List<string> NomesProfessores { get; set; } = new();// ← era: string ProfessorNome
+        public List<string> NomesProfessores { get; set; } = new();
         public int LimiteAlunos { get; set; }
-        public int QuantidadeMatriculados { get; set; }         // ← era: AlunosMatriculados
+        public int QuantidadeMatriculados { get; set; }
     }
 }

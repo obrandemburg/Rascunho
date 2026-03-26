@@ -1,0 +1,117 @@
+@* ARQUIVO: Rascunho.Client/Shared/PwaBaixarApp.razor
+
+   Componente reutilizável que exibe o botão "Baixar App" para instalar o PWA.
+
+   LÓGICA DE EXIBIÇÃO:
+   - O botão SÓ aparece quando o acesso vem do navegador de um celular.
+   - Se o app já foi instalado (rodando como PWA standalone), o botão não aparece.
+   - A verificação é feita via JS Interop após o componente ser renderizado.
+
+   COMPORTAMENTO AO CLICAR:
+   - Android/Chrome/Edge: aciona o prompt nativo de instalação do sistema.
+   - iOS/Safari: exibe instruções manuais (iOS não suporta prompt nativo).
+
+   PARÂMETRO:
+   - Modo="navmenu" → estilo integrado à barra lateral (NavMenu.razor)
+   - Modo="login"   → estilo de botão destacado (Login.razor)
+*@
+
+@using MudBlazor
+@inject IJSRuntime JS
+
+@if (_deveExibir)
+{
+    @if (Modo == "navmenu")
+    {
+        @* Estilo para a barra lateral: separador + botão compacto alinhado aos nav links *@
+        <MudDivider Class="mt-2 mb-1" />
+        <div style="padding: 4px 8px 8px 8px;">
+            <MudButton FullWidth="true"
+                       Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.GetApp"
+                       OnClick="InstalarApp"
+                       Style="color: #1b5e20; border-color: #1b5e20; text-transform: none; font-size: 0.85rem; justify-content: flex-start; padding-left: 12px;">
+                Baixar App
+            </MudButton>
+        </div>
+    }
+    else
+    {
+        @* Estilo para a tela de login: botão de largura total abaixo do formulário *@
+        <MudButton FullWidth="true"
+                   Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.GetApp"
+                   OnClick="InstalarApp"
+                   Class="mt-4"
+                   Style="color: #1b5e20; border-color: #1b5e20; text-transform: none;">
+            Baixar App
+        </MudButton>
+    }
+}
+
+@* Instruções para iOS — só visível após clicar no botão em dispositivo iOS *@
+@if (_mostrarInstrucoesIos)
+{
+    <MudAlert Severity="Severity.Info"
+              Class="mt-3"
+              ShowCloseIcon="true"
+              CloseIconClicked="@(() => _mostrarInstrucoesIos = false)">
+        Para instalar: toque em <strong>Compartilhar</strong>
+        (ícone de seta para cima, na barra do Safari) e depois em
+        <strong>"Adicionar à Tela de Início"</strong>.
+    </MudAlert>
+}
+
+@code {
+    /// <summary>
+    /// Define o estilo visual do botão:
+    /// "navmenu" → compacto, para a barra lateral.
+    /// "login"   → botão de largura total, para a tela de login.
+    /// Renomeado de "Variant" para "Modo" para evitar conflito com MudBlazor.Variant (enum).
+    /// </summary>
+    [Parameter]
+    public string Modo { get; set; } = "login";
+
+    private bool _deveExibir = false;
+    private bool _ehIos = false;
+    private bool _mostrarInstrucoesIos = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Executa apenas na primeira renderização para evitar loops
+        if (!firstRender) return;
+
+        // Chama o JavaScript para avaliar se o botão deve ser exibido.
+        // PwaInstall.shouldShowButton() verifica três condições:
+        //   1. Não está no modo standalone (app não está instalado)
+        //   2. É um dispositivo móvel (user agent ou tela <= 768px)
+        //   3. É iOS OU tem o evento 'beforeinstallprompt' capturado (Android)
+        _deveExibir = await JS.InvokeAsync<bool>("PwaInstall.shouldShowButton");
+        _ehIos = await JS.InvokeAsync<bool>("PwaInstall.isIos");
+
+        // Força re-render para exibir o botão com base nos resultados do JS
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task InstalarApp()
+    {
+        if (_ehIos)
+        {
+            // iOS/Safari não tem API de instalação programática —
+            // mostra/oculta as instruções manuais ao clicar
+            _mostrarInstrucoesIos = !_mostrarInstrucoesIos;
+            return;
+        }
+
+        // Android/Chrome/Edge: dispara o prompt nativo de instalação do sistema
+        var aceito = await JS.InvokeAsync<bool>("PwaInstall.promptInstall");
+
+        if (aceito)
+        {
+            // Usuário aceitou instalar — esconde o botão pois não é mais necessário
+            _deveExibir = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        // Se recusou, o botão permanece visível para nova tentativa futura
+    }
+}

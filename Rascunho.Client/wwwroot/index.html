@@ -6,6 +6,23 @@
     <title>Ponto da Dança</title>
     <base href="/" />
     <meta name="theme-color" content="#1b5e20" />
+
+    <!--
+        NOVO: Captura o evento 'beforeinstallprompt' o mais cedo possível,
+        antes do Blazor inicializar. Isso garante que não perdemos o evento
+        mesmo que o browser o dispare logo após o carregamento da página.
+        O módulo pwaInstall.js usa window._pwaInstallEvent para acessar este evento.
+    -->
+    <script>
+        window._pwaInstallEvent = null;
+        window.addEventListener('beforeinstallprompt', function (e) {
+            e.preventDefault(); // Bloqueia o banner automático do browser
+            window._pwaInstallEvent = e;
+        });
+        window.addEventListener('appinstalled', function () {
+            window._pwaInstallEvent = null;
+        });
+    </script>
     <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="icon-192.png" />
@@ -49,5 +66,12 @@
         O arquivo fica em wwwroot/js/fileUpload.js
     -->
     <script src="js/fileUpload.js"></script>
+
+    <!--
+        NOVO: Módulo de gerenciamento da instalação PWA.
+        Disponibiliza window.PwaInstall com as funções usadas pelo componente
+        PwaBaixarApp.razor via JS Interop.
+    -->
+    <script src="js/pwaInstall.js"></script>
 </body>
 </html>

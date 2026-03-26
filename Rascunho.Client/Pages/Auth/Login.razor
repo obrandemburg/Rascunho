@@ -3,6 +3,7 @@
 @using Rascunho.Shared.DTOs
 @using Rascunho.Client.Services
 @using System.ComponentModel.DataAnnotations
+@using Rascunho.Client.Shared
 
 @inject AuthService AuthService
 @inject NavigationManager NavigationManager
@@ -58,6 +59,14 @@
             }
         </MudButton>
     </EditForm>
+
+    @*
+        NOVO: Botão para instalar o PWA no celular.
+        Só é exibido quando o acesso vem do navegador de um dispositivo móvel
+        e o app ainda não foi instalado. Em desktop ou no próprio app instalado,
+        este componente não renderiza nada.
+    *@
+    <PwaBaixarApp Modo="login" />
 </MudPaper>
 
 @code {
