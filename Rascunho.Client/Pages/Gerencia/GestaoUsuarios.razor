@@ -168,7 +168,7 @@
     {
         try
         {
-            var url = $"api/usuarios/listar?page={state.Page}&pageSize={state.PageSize}";
+            var url = $"api/usuarios/listar-paginado?page={state.Page}&pageSize={state.PageSize}";
             
             if (!string.IsNullOrWhiteSpace(filtroNome)) url += $"&nome={Uri.EscapeDataString(filtroNome)}";
             if (!string.IsNullOrWhiteSpace(filtroTipo)) url += $"&tipo={Uri.EscapeDataString(filtroTipo)}";
