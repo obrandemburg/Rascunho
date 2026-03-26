@@ -37,6 +37,20 @@ public class ListaEsperaService
     // ──────────────────────────────────────────────────────────────────────
     public async Task<string> EntrarNaFilaAsync(int turmaId, int alunoId)
     {
+        // VALIDAÇÃO: Verificar se aluno já está na fila com status ativo
+        var entradaExistente = await _context.ListasEspera
+            .FirstOrDefaultAsync(le =>
+                le.TurmaId == turmaId &&
+                le.AlunoId == alunoId &&
+                (le.Status == StatusListaEspera.Aguardando ||
+                 le.Status == StatusListaEspera.Notificado));
+
+        if (entradaExistente != null)
+        {
+            // Aluno já está na fila — retornar posição atual sem criar duplicata
+            return $"Você já está na fila de espera desta turma na posição {entradaExistente.Posicao}.";
+        }
+
         // Conta apenas entradas ativas para determinar a próxima posição
         int proximaPosicao = await _context.ListasEspera
             .CountAsync(le => le.TurmaId == turmaId &&
@@ -47,7 +61,7 @@ public class ListaEsperaService
         {
             TurmaId = turmaId,
             AlunoId = alunoId,
-            DataEntrada = DateTime.UtcNow,
+            DataEntrada = DateTimeOffset.UtcNow,
             Posicao = proximaPosicao,
             Status = StatusListaEspera.Aguardando
         };
@@ -113,9 +127,9 @@ public class ListaEsperaService
         if (proximo == null) return; // Fila vazia
 
         // 5. Reservar a vaga: marcar como Notificado com prazo de confirmação
-        DateTime dataExpiracao = DateTime.UtcNow.AddHours(_prazoConfirmacaoHoras);
+        DateTimeOffset dataExpiracao = DateTimeOffset.UtcNow.AddHours(_prazoConfirmacaoHoras);
         proximo.Status = StatusListaEspera.Notificado;
-        proximo.DataNotificacao = DateTime.UtcNow;
+        proximo.DataNotificacao = DateTimeOffset.UtcNow;
         proximo.DataExpiracao = dataExpiracao;
 
         await _context.SaveChangesAsync();
@@ -181,7 +195,7 @@ public class ListaEsperaService
             .Where(le =>
                 le.AlunoId == alunoId &&
                 le.Status == StatusListaEspera.Notificado &&
-                le.DataExpiracao < DateTime.UtcNow)
+                le.DataExpiracao < DateTimeOffset.UtcNow)
             .ToListAsync();
 
         if (notificadasExpiradas.Any())
@@ -224,7 +238,7 @@ public class ListaEsperaService
             .Where(le =>
                 le.TurmaId == turmaId &&
                 le.Status == StatusListaEspera.Notificado &&
-                le.DataExpiracao < DateTime.UtcNow)
+                le.DataExpiracao < DateTimeOffset.UtcNow)
             .ToListAsync();
 
         if (!expiradas.Any()) return;

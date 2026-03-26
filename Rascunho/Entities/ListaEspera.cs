@@ -34,17 +34,17 @@ public class ListaEspera
     public int AlunoId { get; set; }
     public Usuario Aluno { get; set; } = null!;
 
-    /// <summary>Data e hora em que o aluno entrou na fila (UTC).</summary>
-    public DateTime DataEntrada { get; set; } = DateTime.UtcNow;
+    /// <summary>Data e hora em que o aluno entrou na fila (com timezone).</summary>
+    public DateTimeOffset DataEntrada { get; set; } = DateTimeOffset.UtcNow;
 
     /// <summary>Posição sequencial na fila (1 = primeiro).</summary>
     public int Posicao { get; set; }
 
     public StatusListaEspera Status { get; set; } = StatusListaEspera.Aguardando;
 
-    /// <summary>Data em que o aluno foi notificado sobre a vaga disponível (UTC).</summary>
-    public DateTime? DataNotificacao { get; set; }
+    /// <summary>Data em que o aluno foi notificado sobre a vaga disponível (com timezone).</summary>
+    public DateTimeOffset? DataNotificacao { get; set; }
 
-    /// <summary>Prazo máximo para o aluno confirmar a vaga (UTC).</summary>
-    public DateTime? DataExpiracao { get; set; }
+    /// <summary>Prazo máximo para o aluno confirmar a vaga (com timezone).</summary>
+    public DateTimeOffset? DataExpiracao { get; set; }
 }

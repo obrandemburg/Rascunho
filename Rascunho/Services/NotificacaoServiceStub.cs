@@ -20,7 +20,7 @@ public class NotificacaoServiceStub : INotificacaoService
         _logger = logger;
     }
 
-    public Task NotificarVagaDisponivelAsync(int alunoId, string ritmoNome, DateTime dataExpiracao)
+    public Task NotificarVagaDisponivelAsync(int alunoId, string ritmoNome, DateTimeOffset dataExpiracao)
     {
         // TODO [Feature #4 — FCM]: Substituir este stub por chamada à Firebase Cloud Messaging API v1.
         // O aluno deve receber push notification com:
@@ -29,9 +29,9 @@ public class NotificacaoServiceStub : INotificacaoService
         //            Confirme até {dataExpiracao:dd/MM HH:mm}."
         _logger.LogInformation(
             "[ListaEspera] Notificação pendente — Aluno {AlunoId} | Turma: {RitmoNome} | " +
-            "Prazo: {DataExpiracao:dd/MM/yyyy HH:mm} UTC. " +
+            "Prazo: {DataExpiracao:dd/MM/yyyy HH:mm} {Timezone}. " +
             "Push notification aguarda Feature #4 (FCM).",
-            alunoId, ritmoNome, dataExpiracao);
+            alunoId, ritmoNome, dataExpiracao, dataExpiracao.Offset);
 
         return Task.CompletedTask;
     }
