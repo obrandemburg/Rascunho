@@ -264,7 +264,9 @@
         var profTask = Http.GetFromJsonAsync<List<ProfessorSimples>>("api/usuarios/tipo/Professor/ativos/lista");
         var ritmoTask = Http.GetFromJsonAsync<List<RitmoSimples>>("api/ritmos/listar");
         var aulasTask = Http.GetFromJsonAsync<List<AulaParticularDto>>("api/aulas-particulares/minhas");
-        var configTask = Http.GetFromJsonAsync<ConfigDto>("api/gerente/configuracoes");
+        // ✅ CORREÇÃO BUG #1: Mudada rota de /api/gerente/configuracoes para /api/aulas-particulares/configuracoes
+        // A rota anterior retornava 403 porque requer role "Gerente"
+        var configTask = Http.GetFromJsonAsync<ConfigDto>("api/aulas-particulares/configuracoes");
 
         await Task.WhenAll(profTask, ritmoTask, aulasTask);
 
