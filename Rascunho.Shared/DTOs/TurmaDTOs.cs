@@ -26,8 +26,8 @@ public record ListaEsperaAdminResponse(
     string FotoUrl,
     int Posicao,
     string Status,           // "Aguardando" | "Notificado"
-    DateTime DataEntrada,
-    DateTime? DataExpiracao  // Preenchida apenas quando Status = "Notificado"
+    DateTimeOffset DataEntrada,
+    DateTimeOffset? DataExpiracao  // Preenchida apenas quando Status = "Notificado"
 );
 
 /// <summary>Entrada na fila de espera — visão do aluno logado (GET /api/turmas/minhas-esperas).</summary>
@@ -41,6 +41,6 @@ public record MinhaEsperaResponse(
     string HorarioFim,
     int Posicao,
     string Status,           // "Aguardando" | "Notificado"
-    DateTime DataEntrada,
-    DateTime? DataExpiracao  // Prazo para confirmar quando Status = "Notificado"
+    DateTimeOffset DataEntrada,
+    DateTimeOffset? DataExpiracao  // Prazo para confirmar quando Status = "Notificado"
 );

@@ -203,6 +203,7 @@ public static class TurmaEndpoints
 
         // POST /api/turmas/{turmaIdHash}/lista-espera
         // Aluno entra na fila de espera de uma turma lotada.
+        // Validação: Evita duplicação quando aluno tenta entrar na fila múltiplas vezes.
         group.MapPost("/{turmaIdHash}/lista-espera", async (
             string turmaIdHash,
             ListaEsperaService listaEsperaService,
@@ -218,6 +219,10 @@ public static class TurmaEndpoints
                 return Results.Unauthorized();
 
             string mensagem = await listaEsperaService.EntrarNaFilaAsync(decodedIds[0], alunoId);
+            // Se a mensagem indica que já está na fila, retornar 409 Conflict
+            if (mensagem.Contains("já está na fila"))
+                return Results.Conflict(new { Mensagem = mensagem });
+
             return Results.Ok(new { Mensagem = mensagem });
         })
         .RequireAuthorization(policy => policy.RequireRole("Aluno", "Bolsista", "Líder"));

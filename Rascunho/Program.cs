@@ -92,12 +92,39 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 
 var app = builder.Build();
 
-// ── Migrations automáticas na inicialização ───────────────────────
+// ── Migrations automáticas na inicialização com Retry Policy ────────
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    try { await db.Database.MigrateAsync(); }
-    catch (Exception ex) { Console.WriteLine($"[MIGRATION ERROR] {ex.Message}"); }
+    var maxRetries = 5;
+    var currentRetry = 0;
+    var delay = TimeSpan.FromSeconds(3);
+
+    while (currentRetry < maxRetries)
+    {
+        try
+        {
+            Console.WriteLine($"[MIGRATION] Tentando aplicar migrations (Tentativa {currentRetry + 1}/{maxRetries})...");
+            await db.Database.MigrateAsync();
+            Console.WriteLine("[MIGRATION] Migrations aplicadas com sucesso!");
+            break; // Sai do loop se der certo
+        }
+        catch (Exception ex)
+        {
+            currentRetry++;
+            Console.WriteLine($"[MIGRATION ERROR] Falha ao conectar/migrar: {ex.Message}");
+
+            if (currentRetry >= maxRetries)
+            {
+                Console.WriteLine("[MIGRATION FATAL] Limite de tentativas atingido. A aplicação pode ficar instável.");
+                // Opcional: throw; se você preferir que a API não suba de jeito nenhum sem o banco
+            }
+            else
+            {
+                await Task.Delay(delay); // Aguarda antes da próxima tentativa
+            }
+        }
+    }
 }
 
 // ── Garante que a pasta de uploads existe ─────────────────────────

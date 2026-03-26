@@ -12,6 +12,6 @@ public interface INotificacaoService
     /// </summary>
     /// <param name="alunoId">ID interno do aluno a ser notificado.</param>
     /// <param name="ritmoNome">Nome do ritmo da turma (ex: "Forró", "Tango").</param>
-    /// <param name="dataExpiracao">Prazo máximo em UTC para o aluno confirmar a vaga.</param>
-    Task NotificarVagaDisponivelAsync(int alunoId, string ritmoNome, DateTime dataExpiracao);
+    /// <param name="dataExpiracao">Prazo máximo com timezone para o aluno confirmar a vaga.</param>
+    Task NotificarVagaDisponivelAsync(int alunoId, string ritmoNome, DateTimeOffset dataExpiracao);
 }
