@@ -55,16 +55,9 @@ public class MatriculaConfiguration : IEntityTypeConfiguration<Matricula>
     }
 }
 
-public class InteresseConfiguration : IEntityTypeConfiguration<Interesse>
-{
-    public void Configure(EntityTypeBuilder<Interesse> builder)
-    {
-        builder.ToTable("Interesses");
-        builder.HasKey(i => new { i.TurmaId, i.AlunoId });
-        // Nota: a relação de navegação Turma.ListaDeEspera foi migrada para ListaEspera (Feature #3).
-        // A tabela Interesses permanece para uso futuro no Feature #10 (Catálogo de Ritmos Público).
-    }
-}
+// InteresseConfiguration removida — BUG-010 (28/03/2026)
+// A entidade Interesse foi substituída funcionalmente pela ListaEspera (Feature #3).
+// A migration RemoveInteresseObsoleto remove a tabela Interesses do banco.
 
 public class ListaEsperaConfiguration : IEntityTypeConfiguration<ListaEspera>
 {

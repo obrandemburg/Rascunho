@@ -1,6 +1,6 @@
 # Ponto da Dança — Camada 3: Estado Atual
 
-> Última atualização: 28/03/2026 (BUG-001 a BUG-008 corrigidos)
+> Última atualização: 28/03/2026 (BUG-001 a BUG-015 corrigidos; MinhasHabilidades CRUD implementado; contexto atualizado)
 
 ---
 
@@ -35,6 +35,7 @@ As migrations revelam a ordem em que os módulos foram construídos:
 | 25/03/2026 | `AddGeneroToUsuario` | Campo gênero adicionado ao usuário |
 | 26/03/2026 | `AddListaEspera` | Sistema de lista de espera com posição e status |
 | 26/03/2026 | `CorrigirListaEsperaDataTypes` | Correção de tipos de data na lista de espera |
+| 28/03/2026 | `RemoveInteresseObsoleto` | BUG-010: remoção da tabela `Interesses` (substituída por `ListaEspera`) |
 
 ---
 
@@ -69,7 +70,7 @@ O frontend tem as páginas criadas, mas o grau de completude varia. Páginas exi
 |---|---|---|
 | Auth | `Login.razor` | ✅ Funcional |
 | Aluno | `PainelAluno` (BUG-008 ✅), `MinhasAulas`, `AulasParticulares`, `Reagendar`, `MinhasEsperas`, `AulaExperimental`, `Ingressos` | 🔄 Parcial |
-| Bolsista | `TurmasRecomendadas` (BUG-007 ✅ — "Turmas do Dia"), `Desempenho` (BUG-006 ✅), `RelatorioHoras`, `MinhasHabilidades` | 🔄 Parcial |
+| Bolsista | `TurmasRecomendadas` (BUG-007 ✅ — "Turmas do Dia"), `Desempenho` (BUG-006 ✅), `RelatorioHoras`, `MinhasHabilidades` (✅ CRUD completo 28/03) | 🔄 Parcial |
 | Professor | `MinhasTurmas`, `FazerChamada`, `AulasParticulares` | 🔄 Parcial |
 | Admin (Recepção) | `GerenciarTurmas` (BUG-001 ✅ modal de alunos), `GerenciarSalas`, `GerenciarRitmos`, `CriarUsuario`, `MatricularAluno`, `CriarAviso`, `FilaEspera` | 🔄 Parcial |
 | Gerência | `Dashboard`, `GestaoUsuarios`, `QuadroDesempenho` | 🔄 Parcial |
@@ -86,13 +87,11 @@ O frontend tem as páginas criadas, mas o grau de completude varia. Páginas exi
 - **Notificações Push não funcionam** — `NotificacaoServiceStub` não envia nada
   - Bloqueia: confirmação de presença de bolsistas, notificação de vaga na lista de espera, alertas de aulas particulares
   - Solução: implementar `FirebaseNotificacaoService` (Feature #4)
-- **Migrations sem Designer gerado** para as 2 últimas (`AddListaEspera` e `CorrigirListaEsperaDataTypes`)
+- **Migrations sem Designer gerado** para as últimas (`AddListaEspera`, `CorrigirListaEsperaDataTypes`, `RemoveInteresseObsoleto`)
   - Não é bloqueante para o funcionamento, mas pode causar problemas se precisar reverter
 
 ### Médio
-- **Entidade `Interesse`** ainda existe no banco mas foi substituída funcionalmente pela `ListaEspera`
-  - Precisa de avaliação para remoção ou repurposing
-- **CORS configurado como `AllowAnyOrigin`** — aceitável para desenvolvimento, deve ser restrito em produção
+- **CORS configurado como `AllowAnyOrigin`** — aceitável para desenvolvimento, deve ser restrito em produção (BUG-011 pendente)
 - **`appsettings.Development.json`** com dados sensíveis gerenciados via `UserSecrets` — confirmar que secrets estão configurados na VPS
 
 ### Baixo
@@ -110,10 +109,10 @@ O frontend tem as páginas criadas, mas o grau de completude varia. Páginas exi
 
 ### Completar UX do Frontend
 - Terminar telas do Aluno: fluxo completo de matrícula, lista de espera, reagendamento
-- Terminar telas do Professor: chamada com participantes extras, disponibilidade
-- Terminar telas do Bolsista: desempenho completo (filtros já implementados — BUG-006 ✅)
-- Terminar telas da Recepção: fluxo completo de usuários e bolsistas
-- Terminar Gerência: quadro de desempenho de bolsistas com filtros
+- Terminar telas do Professor: chamada com participantes extras, disponibilidade, aba Minha Disponibilidade em AulasParticulares
+- Terminar telas do Bolsista: desempenho completo (filtros ✅), MinhasHabilidades (CRUD ✅ 28/03)
+- Terminar telas da Recepção: fluxo completo de usuários, bolsistas, tela InicioAdmin e SistemaBolsistas (ausentes)
+- Terminar Gerência: quadro de desempenho de bolsistas — ações por bolsista (editar dias, desativar bolsa, registrar conversa)
 
 ### Correções de Configuração
 - Mover IP da API para configuração de ambiente no frontend

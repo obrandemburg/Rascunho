@@ -68,6 +68,17 @@ public static class BolsistaEndpoints
         })
         .RequireAuthorization(policy => policy.RequireRole("Bolsista"));
 
+        // GET /api/bolsistas/minhas-habilidades
+        // Implementação da tarefa faltante: listar habilidades cadastradas pelo bolsista.
+        group.MapGet("/minhas-habilidades", async (BolsistaService bolsistaService, ClaimsPrincipal user) =>
+        {
+            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(idClaim, out int bolsistaId)) return Results.Unauthorized();
+            var habilidades = await bolsistaService.ListarMinhasHabilidadesAsync(bolsistaId);
+            return Results.Ok(habilidades);
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Bolsista"));
+
         // POST /api/bolsistas/minhas-habilidades
         group.MapPost("/minhas-habilidades", async (AdicionarHabilidadeRequest request, BolsistaService bolsistaService, ClaimsPrincipal user) =>
         {
@@ -78,6 +89,16 @@ public static class BolsistaEndpoints
         })
         .RequireAuthorization(policy => policy.RequireRole("Bolsista"))
         .AddEndpointFilter<ValidationFilter<AdicionarHabilidadeRequest>>();
+
+        // DELETE /api/bolsistas/minhas-habilidades/{ritmoIdHash}
+        group.MapDelete("/minhas-habilidades/{ritmoIdHash}", async (string ritmoIdHash, BolsistaService bolsistaService, ClaimsPrincipal user) =>
+        {
+            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(idClaim, out int bolsistaId)) return Results.Unauthorized();
+            await bolsistaService.RemoverHabilidadeAsync(bolsistaId, ritmoIdHash);
+            return Results.Ok(new { Mensagem = "Habilidade removida com sucesso!" });
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Bolsista"));
 
         // GET /api/bolsistas/{idHash}/relatorio-horas
         group.MapGet("/{bolsistaIdHash}/relatorio-horas", async (string bolsistaIdHash, BolsistaService bolsistaService, IHashids hashids, ClaimsPrincipal user) =>

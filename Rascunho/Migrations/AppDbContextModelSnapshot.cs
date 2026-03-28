@@ -242,23 +242,7 @@ namespace Rascunho.Migrations
                     b.ToTable("Ingressos", (string)null);
                 });
 
-            modelBuilder.Entity("Rascunho.Entities.Interesse", b =>
-                {
-                    b.Property<int>("TurmaId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("AlunoId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("DataRegistro")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("TurmaId", "AlunoId");
-
-                    b.HasIndex("AlunoId");
-
-                    b.ToTable("Interesses", (string)null);
-                });
+            // BUG-010 (28/03/2026): Interesse removida — tabela Interesses dropada via migration RemoveInteresseObsoleto
 
             // Feature #3: ListaEspera — fila de espera estruturada com posição, status e prazo
             modelBuilder.Entity("Rascunho.Entities.ListaEspera", b =>
@@ -776,27 +760,6 @@ namespace Rascunho.Migrations
                     b.Navigation("Evento");
 
                     b.Navigation("Usuario");
-                });
-
-            modelBuilder.Entity("Rascunho.Entities.Interesse", b =>
-                {
-                    b.HasOne("Rascunho.Entities.Usuario", "Aluno")
-                        .WithMany()
-                        .HasForeignKey("AlunoId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    // Navegação de Turma.ListaDeEspera migrada para ListaEspera (Feature #3).
-                    // Tabela Interesses mantida para Feature #10 (Catálogo de Ritmos Público).
-                    b.HasOne("Rascunho.Entities.Turma", "Turma")
-                        .WithMany()
-                        .HasForeignKey("TurmaId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Aluno");
-
-                    b.Navigation("Turma");
                 });
 
             modelBuilder.Entity("Rascunho.Entities.ListaEspera", b =>

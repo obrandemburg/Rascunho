@@ -391,9 +391,9 @@
                 }
                 catch
                 {
-                    // ⚠️ Recarregamento falhou, mas a turma foi criada
-                    // Usuário verá a confirmação, mas lista não atualiza
-                    // Na próxima navegação, carregará corretamente
+                    // BUG-009 (28/03/2026): avisa o usuário que a lista não pôde ser atualizada.
+                    // A turma foi criada com sucesso mesmo assim.
+                    Snackbar.Add("Lista de turmas não pôde ser atualizada. Recarregue a página para ver a nova turma.", Severity.Info);
                 }
             }
             // ✅ Se erro (422, 500, etc), o HttpInterceptorHandler
@@ -417,9 +417,10 @@
             alunosDaTurma = await Http.GetFromJsonAsync<List<AlunoMatriculadoDto>>(
                 $"api/turmas/{turma.IdHash}/alunos") ?? new();
         }
-        catch
+        catch (Exception ex)
         {
-            // O interceptador fará o aviso se der 500 ou 404.
+            // FIX (28/03/2026): exibe erro explícito em vez de mostrar lista vazia silenciosamente
+            Snackbar.Add($"Erro ao carregar alunos: {ex.Message}", Severity.Error);
         }
         finally
         {

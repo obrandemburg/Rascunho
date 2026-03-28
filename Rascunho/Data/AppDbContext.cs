@@ -19,7 +19,6 @@ namespace Rascunho.Data
         public DbSet<Turma> Turmas { get; set; }
         public DbSet<TurmaProfessor> TurmaProfessores { get; set; }
         public DbSet<Matricula> Matriculas { get; set; }
-        public DbSet<Interesse> Interesses { get; set; }
         public DbSet<ListaEspera> ListasEspera { get; set; }
         public DbSet<Aviso> Avisos { get; set; }
         public DbSet<RegistroPresenca> RegistrosPresencas { get; set; }

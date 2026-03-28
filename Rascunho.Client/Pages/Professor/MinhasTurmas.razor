@@ -35,7 +35,7 @@ else
                         <CardHeaderContent>
                             <MudText Typo="Typo.h6">@turma.RitmoNome</MudText>
                             <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                                @DiaDaSemana(turma.DiaDaSemana) · @turma.HorarioInicio.ToString(@"hh\:mm")–@turma.HorarioFim.ToString(@"hh\:mm")
+                                @DiaDaSemana(turma.DiaDaSemana) · @turma.HorarioInicio–@turma.HorarioFim
                             </MudText>
                         </CardHeaderContent>
                         <CardHeaderActions>
@@ -182,8 +182,10 @@ else
         public string SalaNome { get; set; } = "";
         public string Nivel { get; set; } = "";
         public int DiaDaSemana { get; set; }
-        public TimeSpan HorarioInicio { get; set; }
-        public TimeSpan HorarioFim { get; set; }
+        // FIX (28/03/2026): string em vez de TimeSpan — a API retorna "HH:mm" como string.
+        // TimeSpan causava falha silenciosa na desserialização, deixando a lista de turmas vazia.
+        public string HorarioInicio { get; set; } = "";
+        public string HorarioFim { get; set; } = "";
         public int LimiteAlunos { get; set; }
         public int QuantidadeMatriculados { get; set; }
     }

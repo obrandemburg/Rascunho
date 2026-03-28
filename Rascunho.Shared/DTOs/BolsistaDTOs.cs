@@ -17,6 +17,17 @@ public record DefinirDiasObrigatoriosRequest(int Dia1, int Dia2);
 public record AdicionarHabilidadeRequest(string RitmoIdHash, string PapelDominante, string Nivel);
 
 /// <summary>
+/// Representa uma habilidade (ritmo) cadastrada pelo bolsista.
+/// Retornada por GET /api/bolsistas/minhas-habilidades.
+/// </summary>
+public record HabilidadeResponse(
+    string RitmoIdHash,
+    string RitmoNome,
+    string PapelDominante,
+    string Nivel
+);
+
+/// <summary>
 /// Resposta do endpoint de análise de balanceamento de turmas.
 /// Usada nas telas TurmasObrigatorias (Bolsista) e TurmasRecomendadas (Bolsista).
 ///
