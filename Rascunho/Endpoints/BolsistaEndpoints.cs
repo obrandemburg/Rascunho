@@ -1,4 +1,5 @@
 ﻿using HashidsNet;
+using Microsoft.AspNetCore.Mvc;
 using Rascunho.Shared.DTOs;
 using Rascunho.Infraestrutura;
 using Rascunho.Services;
@@ -12,12 +13,25 @@ public static class BolsistaEndpoints
     {
         var group = app.MapGroup("/api/bolsistas").RequireAuthorization();
 
-        // GET /api/bolsistas/turmas-recomendadas (Sprint 1)
-        group.MapGet("/turmas-recomendadas", async (BolsistaService bolsistaService, ClaimsPrincipal user) =>
+        // GET /api/bolsistas/turmas-recomendadas
+        //
+        // BUG-007: Aceita query parameter ?diaDaSemana=N (0=Dom .. 6=Sáb).
+        // Padrão: dia da semana atual (sem parâmetro = hoje).
+        // Retorna as turmas mais desbalanceadas do dia filtrado,
+        // ordenadas do maior desequilíbrio ao menor.
+        group.MapGet("/turmas-recomendadas", async (
+            [FromQuery] int? diaDaSemana,
+            BolsistaService bolsistaService,
+            ClaimsPrincipal user) =>
         {
             var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(idClaim, out int bolsistaId)) return Results.Unauthorized();
-            var response = await bolsistaService.TurmasRecomendadasParaBolsistaAsync(bolsistaId);
+
+            DayOfWeek? dia = diaDaSemana.HasValue && diaDaSemana.Value >= 0 && diaDaSemana.Value <= 6
+                ? (DayOfWeek)diaDaSemana.Value
+                : null;
+
+            var response = await bolsistaService.TurmasRecomendadasParaBolsistaAsync(bolsistaId, dia);
             return Results.Ok(response);
         })
         .RequireAuthorization(policy => policy.RequireRole("Bolsista"));
@@ -25,21 +39,31 @@ public static class BolsistaEndpoints
         // ══════════════════════════════════════════════════════════
         // NOVO Sprint 2: GET /api/bolsistas/meu-desempenho
         //
-        // Retorna a análise completa de frequência do bolsista logado:
-        // - Percentual nos dias obrigatórios (indicador principal)
-        // - Percentual nos dias extras (informativo)
-        // - Indicador de situação ("Excelente" | "Vamos melhorar" | "Atenção" | "Crítico")
-        // - Histórico aula-a-aula com data, turma, professor e presença
+        // BUG-006: Adicionado query parameter "periodo":
+        //   - "30dias" (padrão) — últimos 30 dias
+        //   - "mes"             — mês corrente
+        //   - "tudo"            — todo o histórico
         //
-        // O bolsista vê próprio desempenho. Gerente vê de qualquer bolsista
-        // via GET /api/bolsistas/{idHash}/relatorio-horas (método existente).
+        // Retorna a análise completa de frequência do bolsista logado.
         // ══════════════════════════════════════════════════════════
-        group.MapGet("/meu-desempenho", async (BolsistaService bolsistaService, ClaimsPrincipal user) =>
+        group.MapGet("/meu-desempenho", async (
+            [FromQuery] string periodo = "30dias",
+            BolsistaService? bolsistaService = null,
+            ClaimsPrincipal? user = null) =>
         {
+            if (bolsistaService is null || user is null) return Results.BadRequest();
             var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(idClaim, out int bolsistaId)) return Results.Unauthorized();
 
-            var response = await bolsistaService.MeuDesempenhoAsync(bolsistaId);
+            // Normaliza para valores aceitos (evita injeção de strings inesperadas)
+            var periodoNormalizado = periodo switch
+            {
+                "mes"  => "mes",
+                "tudo" => "tudo",
+                _      => "30dias"  // padrão seguro
+            };
+
+            var response = await bolsistaService.MeuDesempenhoAsync(bolsistaId, periodoNormalizado);
             return Results.Ok(response);
         })
         .RequireAuthorization(policy => policy.RequireRole("Bolsista"));

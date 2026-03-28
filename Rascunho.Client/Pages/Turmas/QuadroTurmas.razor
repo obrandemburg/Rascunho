@@ -119,8 +119,16 @@
                                 @turma.QuantidadeMatriculados / @turma.LimiteAlunos vagas
                             </MudText>
                         </MudCardContent>
+                        @{
+                            // BUG-002: Bolsistas não podem se matricular em dança solo/salão nos dias obrigatórios
+                            bool ehDancaRestrita = turma.Modalidade.Contains("solo", StringComparison.OrdinalIgnoreCase)
+                                               || turma.Modalidade.Contains("salão", StringComparison.OrdinalIgnoreCase);
+                            bool bloqueadoPorBOL04 = ehBolsista
+                                && diasObrigatorios.Contains(turma.DiaDaSemana)
+                                && ehDancaRestrita;
+                        }
                         <MudCardActions>
-                            @if (ehAluno && !cheia)
+                            @if (ehAluno && !cheia && !bloqueadoPorBOL04)
                             {
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Primary"
@@ -128,6 +136,17 @@
                                            OnClick="@(() => Matricular(turma.IdHash))">
                                     Matricular
                                 </MudButton>
+                            }
+                            else if (ehAluno && !cheia && bloqueadoPorBOL04)
+                            {
+                                <MudTooltip Text="Bolsistas não podem se matricular nesta modalidade no dia obrigatório [BOL04]">
+                                    <MudButton Variant="Variant.Filled"
+                                               Color="Color.Default"
+                                               Size="Size.Small"
+                                               Disabled="true">
+                                        Matricular
+                                    </MudButton>
+                                </MudTooltip>
                             }
                             else if (ehAluno && cheia)
                             {
@@ -160,7 +179,9 @@
 
     private bool carregando = true;
     private bool ehAluno = false;     // Aluno, Bolsista ou Líder (pode se matricular/entrar na fila)
+    private bool ehBolsista = false;  // BUG-002: controla desabilitar botão Matricular nos dias obrigatórios
     private bool estaLogado = false;
+    private HashSet<int> diasObrigatorios = new(); // BUG-002: dias obrigatórios do bolsista (0=Dom..6=Sáb)
     private string filtroRitmo = "Todos";
     private string filtroDia = "Todos";
     private string filtroProfessor = "Todos";
@@ -181,9 +202,29 @@
             ehAluno = authState.User.IsInRole("Aluno") ||
                       authState.User.IsInRole("Bolsista") ||
                       authState.User.IsInRole("Líder");
+            ehBolsista = authState.User.IsInRole("Bolsista");
         }
 
         await CarregarTurmas();
+
+        // BUG-002: Carrega os dias obrigatórios do bolsista para desabilitar o botão Matricular
+        // quando a turma cai num dia obrigatório E a modalidade é dança solo/salão.
+        if (ehBolsista)
+        {
+            try
+            {
+                var desempenho = await Http.GetFromJsonAsync<BolsistaDesempenhoMinimo>(
+                    "api/bolsistas/meu-desempenho");
+                if (desempenho?.DiaObrigatorio1.HasValue == true)
+                    diasObrigatorios.Add(desempenho.DiaObrigatorio1.Value);
+                if (desempenho?.DiaObrigatorio2.HasValue == true)
+                    diasObrigatorios.Add(desempenho.DiaObrigatorio2.Value);
+            }
+            catch
+            {
+                // Silencioso: se falhar, o backend ainda bloqueia via BOL04
+            }
+        }
     }
 
     private async Task CarregarTurmas()
@@ -306,5 +347,14 @@
         public List<string> NomesProfessores { get; set; } = new();
         public int LimiteAlunos { get; set; }
         public int QuantidadeMatriculados { get; set; }
+        // BUG-002: campo adicionado para controle de BOL04 no frontend
+        public string Modalidade { get; set; } = "";
+    }
+
+    // BUG-002: DTO mínimo para carregar os dias obrigatórios do bolsista
+    public class BolsistaDesempenhoMinimo
+    {
+        public int? DiaObrigatorio1 { get; set; }
+        public int? DiaObrigatorio2 { get; set; }
     }
 }

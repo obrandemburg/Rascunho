@@ -1,4 +1,4 @@
-﻿@* 
+﻿@*
   ARQUIVO: Rascunho.Client/Pages/Bolsista/TurmasRecomendadas.razor
   ROTA:    /bolsista/turmas-recomendadas
   ACESSO:  Bolsista
@@ -6,6 +6,11 @@
   CORREÇÃO SPRINT 6:
   Igual à TurmasObrigatorias.razor: os cards exibiam o hash criptografado
   como título da turma. Agora exibem RitmoNome, DiaDaSemana e horário.
+
+  BUG-007:
+  - TurmasObrigatorias.razor removida (duplicava este endpoint).
+  - Adicionado filtro de dia da semana (padrão = dia atual).
+  - API chamada com ?diaDaSemana=N conforme dia selecionado.
 *@
 
 @page "/bolsista/turmas-recomendadas"
@@ -15,15 +20,33 @@
 @inject HttpClient Http
 @inject ISnackbar Snackbar
 
-<PageTitle>Turmas Recomendadas — Ponto da Dança</PageTitle>
+<PageTitle>Turmas do Dia — Ponto da Dança</PageTitle>
 
 <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
     <MudIcon Icon="@Icons.Material.Filled.Recommend" Class="mr-2" />
-    Turmas que Precisam de Você
+    Turmas do Dia
 </MudText>
-<MudText Class="mb-6 mud-text-secondary">
+<MudText Class="mb-4 mud-text-secondary">
     Turmas analisadas pelo sistema com base no equilíbrio de condutores e conduzidos.
 </MudText>
+
+@* BUG-007: Filtro de dia da semana *@
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-6">
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">Dia:</MudText>
+    <MudSelect T="int" @bind-Value="diaSelecionado"
+               Variant="Variant.Outlined" Dense="true"
+               Style="min-width: 180px;"
+               Label="">
+        @foreach (var kv in diasDaSemana)
+        {
+            <MudSelectItem T="int" Value="@kv.Key">@kv.Value</MudSelectItem>
+        }
+    </MudSelect>
+    <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary"
+               OnClick="CarregarAnalises" Disabled="@carregando">
+        Atualizar
+    </MudButton>
+</MudStack>
 
 @if (carregando)
 {
@@ -32,7 +55,7 @@
 else if (!analises.Any())
 {
     <MudAlert Severity="Severity.Success">
-        Todas as turmas de hoje estão balanceadas! 🎉
+        Todas as turmas de @diasDaSemana[diaSelecionado] estão balanceadas! 🎉
     </MudAlert>
 }
 else
@@ -126,31 +149,43 @@ else
     private bool carregando = true;
     private List<SugestaoBalanceamentoDto> analises = new();
 
+    // BUG-007: padrão = dia da semana atual
+    private int diaSelecionado = (int)DateTime.Now.DayOfWeek;
+
+    private readonly Dictionary<int, string> diasDaSemana = new()
+    {
+        { 0, "Domingo" },
+        { 1, "Segunda-feira" },
+        { 2, "Terça-feira" },
+        { 3, "Quarta-feira" },
+        { 4, "Quinta-feira" },
+        { 5, "Sexta-feira" },
+        { 6, "Sábado" }
+    };
+
     protected override async Task OnInitializedAsync()
     {
+        await CarregarAnalises();
+    }
+
+    // BUG-007: método separado para permitir recarregar ao mudar o filtro de dia
+    private async Task CarregarAnalises()
+    {
+        carregando = true;
         try
         {
             analises = await Http.GetFromJsonAsync<List<SugestaoBalanceamentoDto>>(
-                "api/bolsistas/turmas-recomendadas") ?? new();
+                $"api/bolsistas/turmas-recomendadas?diaDaSemana={diaSelecionado}") ?? new();
         }
         catch
         {
-            Snackbar.Add("Erro ao carregar turmas recomendadas.", Severity.Error);
+            Snackbar.Add("Erro ao carregar turmas do dia.", Severity.Error);
         }
         finally { carregando = false; }
     }
 
-    private string DiaDaSemanaTexto(int dia) => dia switch
-    {
-        0 => "Domingo",
-        1 => "Segunda-feira",
-        2 => "Terça-feira",
-        3 => "Quarta-feira",
-        4 => "Quinta-feira",
-        5 => "Sexta-feira",
-        6 => "Sábado",
-        _ => "—"
-    };
+    private string DiaDaSemanaTexto(int dia) =>
+        diasDaSemana.TryGetValue(dia, out var nome) ? nome : "—";
 
     private string CorStatus(string status) => status switch
     {

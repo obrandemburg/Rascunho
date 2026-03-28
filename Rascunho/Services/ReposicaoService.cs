@@ -1,7 +1,11 @@
 ﻿// Localização: Rascunho/Services/ReposicaoService.cs
+//
+// BUG-005: ReposicaoService agora injeta ConfiguracaoService em vez de IConfiguration
+// diretamente. Isso garante que ambos os services leem do mesmo lugar —
+// se o Gerente alterar a janela via ConfiguracaoService, o ReposicaoService
+// usará o novo valor imediatamente e de forma consistente.
 using HashidsNet;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Rascunho.Data;
 using Rascunho.Entities;
 using Rascunho.Exceptions;
@@ -14,20 +18,19 @@ public class ReposicaoService
 {
     private readonly AppDbContext _context;
     private readonly IHashids _hashids;
-    private readonly IConfiguration _configuration;
+    private readonly ConfiguracaoService _configuracaoService;
 
-    public ReposicaoService(AppDbContext context, IHashids hashids, IConfiguration configuration)
+    public ReposicaoService(AppDbContext context, IHashids hashids, ConfiguracaoService configuracaoService)
     {
         _context = context;
         _hashids = hashids;
-        _configuration = configuration;
+        _configuracaoService = configuracaoService;
     }
 
-    // Propriedade auxiliar que sempre lê o valor atual do appsettings.
-    // Isso é importante porque, quando o Gerente atualizar a configuração
-    // em tempo de execução (futuro), o service pegará o novo valor.
+    // BUG-005: Lê via ConfiguracaoService (fonte única) em vez de IConfiguration diretamente.
+    // Garante consistência: se o Gerente altera via endpoint, esse service também reflete.
     private int JanelaElegibilidadeDias =>
-        _configuration.GetValue<int>("Reposicao:JanelaElegibilidadeDias", 30);
+        _configuracaoService.ObterJanelaReposicaoDias();
 
     // ──────────────────────────────────────────────────────────────────────
     // OBTER FALTAS ELEGÍVEIS

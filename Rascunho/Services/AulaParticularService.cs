@@ -37,7 +37,9 @@ public class AulaParticularService
         if (professor == null || professor.Tipo != "Professor")
             throw new RegraNegocioException("Professor não encontrado ou inválido.");
 
-        // RN-BOL05: Bolsista não pode agendar dança solo no dia obrigatório
+        // RN-BOL05 (CORRIGIDO BUG-002): Bolsista não pode agendar aulas particulares
+        // de NENHUMA modalidade de dança (solo OU salão) nos seus dias obrigatórios.
+        // Antes só bloqueava "Dança solo" — agora bloqueia qualquer modalidade.
         var bolsista = await _context.Usuarios
             .OfType<Bolsista>()
             .FirstOrDefaultAsync(b => b.Id == alunoId);
@@ -46,23 +48,21 @@ public class AulaParticularService
 
         if (ehBolsista)
         {
-            var ritmo = await _context.Ritmos.FindAsync(ritmoDecoded[0])
+            // Verifica dia obrigatório ANTES de checar a modalidade —
+            // qualquer aula particular no dia obrigatório é proibida.
+            var diaDaAula = request.DataHoraInicio.DayOfWeek;
+            bool eDiaObrigatorio =
+                (bolsista!.DiaObrigatorio1.HasValue && bolsista.DiaObrigatorio1.Value == diaDaAula) ||
+                (bolsista.DiaObrigatorio2.HasValue && bolsista.DiaObrigatorio2.Value == diaDaAula);
+
+            if (eDiaObrigatorio)
+                throw new RegraNegocioException(
+                    "Bolsistas não podem agendar aulas particulares nos seus dias obrigatórios " +
+                    "(nem dança solo, nem dança de salão). [RN-BOL05]");
+
+            // Valida que o ritmo existe (necessário para cálculo de preço abaixo)
+            _ = await _context.Ritmos.FindAsync(ritmoDecoded[0])
                 ?? throw new RegraNegocioException("Ritmo não encontrado.");
-
-            bool ehSolo = ritmo.Modalidade.Equals("Dança solo", StringComparison.OrdinalIgnoreCase);
-
-            if (ehSolo)
-            {
-                var diaDaAula = request.DataHoraInicio.DayOfWeek;
-                bool eDiaObrigatorio =
-                    (bolsista!.DiaObrigatorio1.HasValue && bolsista.DiaObrigatorio1.Value == diaDaAula) ||
-                    (bolsista.DiaObrigatorio2.HasValue && bolsista.DiaObrigatorio2.Value == diaDaAula);
-
-                if (eDiaObrigatorio)
-                    throw new RegraNegocioException(
-                        "Bolsistas não podem agendar aulas particulares de dança solo " +
-                        "nos seus dias obrigatórios. [RN-BOL05]");
-            }
         }
 
         // RN-AP06: Aluno já tem outra particular aceita no mesmo horário?
