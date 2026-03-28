@@ -74,7 +74,9 @@ public class ListaEsperaService
 
     // ──────────────────────────────────────────────────────────────────────
     // SAIR DA FILA
-    // Remove o aluno de entradas ativas (Aguardando ou Notificado).
+    // Remove o aluno e reordena as posições dos demais para evitar buracos.
+    // BUG-003: Antes apenas removia sem reordenar — fila ficava com posições
+    //          não sequenciais (ex: 1, 3, 4 em vez de 1, 2, 3).
     // ──────────────────────────────────────────────────────────────────────
     public async Task SairDaFilaAsync(int turmaId, int alunoId)
     {
@@ -87,6 +89,20 @@ public class ListaEsperaService
             ?? throw new RegraNegocioException("Você não está na fila de espera desta turma.");
 
         _context.ListasEspera.Remove(entrada);
+        await _context.SaveChangesAsync();
+
+        // BUG-003: Reordena posições dos demais para eliminar buracos
+        // Exemplo: posições [1, 3, 4] → passam a ser [1, 2, 3]
+        var restantes = await _context.ListasEspera
+            .Where(le => le.TurmaId == turmaId &&
+                         (le.Status == StatusListaEspera.Aguardando ||
+                          le.Status == StatusListaEspera.Notificado))
+            .OrderBy(le => le.Posicao)
+            .ToListAsync();
+
+        for (int i = 0; i < restantes.Count; i++)
+            restantes[i].Posicao = i + 1;
+
         await _context.SaveChangesAsync();
     }
 

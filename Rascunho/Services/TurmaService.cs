@@ -276,14 +276,16 @@ public class TurmaService
         if (turma.Matriculas.Any(m => m.AlunoId == alunoId))
             throw new RegraNegocioException("O aluno já está matriculado nesta turma.");
 
-        // RN-BOL04: Bolsista não pode matricular em dança SOLO no dia obrigatório
+        // RN-BOL04 (CORRIGIDO BUG-002): Bolsista não pode se matricular em turmas de
+        // dança SOLO ou dança de SALÃO nos seus dias obrigatórios.
         if (aluno.Tipo == "Bolsista")
         {
             var ritmo = await _context.Ritmos.FindAsync(turma.RitmoId);
-            bool ehSolo = ritmo?.Modalidade
-                .Equals("Dança solo", StringComparison.OrdinalIgnoreCase) == true;
+            bool ehDancaRestrita =
+                ritmo?.Modalidade.Equals("Dança solo", StringComparison.OrdinalIgnoreCase) == true ||
+                ritmo?.Modalidade.Equals("Dança de salão", StringComparison.OrdinalIgnoreCase) == true;
 
-            if (ehSolo)
+            if (ehDancaRestrita)
             {
                 var bolsista = await _context.Usuarios
                     .OfType<Bolsista>()
@@ -310,8 +312,8 @@ public class TurmaService
                             _ => "domingo"
                         };
                         throw new RegraNegocioException(
-                            $"Bolsistas não podem se matricular em dança solo nos seus dias " +
-                            $"obrigatórios. A {nomeDia} é um dos seus dias obrigatórios. " +
+                            $"Bolsistas não podem se matricular em dança solo ou dança de salão " +
+                            $"nos seus dias obrigatórios. A {nomeDia} é um dos seus dias obrigatórios. " +
                             "Escolha outro dia. [RN-BOL04]");
                     }
                 }
@@ -459,6 +461,30 @@ public class TurmaService
         // Aluno não está matriculado formalmente — tentar remover da fila de espera
         // ListaEsperaService.SairDaFilaAsync lança RegraNegocioException se não encontrar
         await _listaEsperaService.SairDaFilaAsync(turmaId, alunoId);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // LISTAR ALUNOS DE UMA TURMA (BUG-001)
+    //
+    // Retorna os alunos formalmente matriculados em uma turma.
+    // Usado por:
+    //   - Professor (MinhasTurmas.razor) — ver lista da sua própria turma
+    //   - Recepção/Gerente (GerenciarTurmas.razor) — ver alunos de qualquer turma
+    // ──────────────────────────────────────────────────────────────────────
+    public async Task<IEnumerable<AlunoMatriculadoResponse>> ListarAlunosDaTurmaAsync(int turmaId)
+    {
+        var matriculas = await _context.Matriculas
+            .Include(m => m.Aluno)
+            .Where(m => m.TurmaId == turmaId)
+            .OrderBy(m => m.Aluno.Nome)
+            .ToListAsync();
+
+        return matriculas.Select(m => new AlunoMatriculadoResponse(
+            _hashids.Encode(m.AlunoId),
+            m.Aluno?.Nome ?? "Desconhecido",
+            m.Aluno?.FotoUrl ?? "",
+            m.Papel
+        ));
     }
 
     // ──────────────────────────────────────────────────────────────────────

@@ -18,10 +18,30 @@
 
 <PageTitle>Meu Desempenho — Ponto da Dança</PageTitle>
 
-<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-6 font-weight-bold">
+<MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-2 font-weight-bold">
     <MudIcon Icon="@Icons.Material.Filled.Insights" Class="mr-2" />
     Meu Desempenho
 </MudText>
+
+@* BUG-006: Seletor de período para o cálculo de frequência *@
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-6">
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">Período:</MudText>
+    <MudChipSet T="string" @bind-SelectedValue="periodoSelecionado" Mandatory="true" SelectionMode="SelectionMode.SingleSelection">
+        <MudChip T="string" Value="@("30dias")" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">
+            Últimos 30 dias
+        </MudChip>
+        <MudChip T="string" Value="@("mes")" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">
+            Mês atual
+        </MudChip>
+        <MudChip T="string" Value="@("tudo")" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">
+            Todo período
+        </MudChip>
+    </MudChipSet>
+    <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary"
+               OnClick="CarregarDesempenho" Disabled="@carregando">
+        Atualizar
+    </MudButton>
+</MudStack>
 
 @if (carregando)
 {
@@ -162,7 +182,14 @@ else
     </MudPaper>
 
     @* ── Histórico aula-a-aula ──────────────────────────────────── *@
-    <MudText Typo="Typo.h6" Class="mb-3">Histórico Completo</MudText>
+    @* BUG-006: título indica o período selecionado *@
+    <MudText Typo="Typo.h6" Class="mb-3">
+        Histórico — @(periodoSelecionado switch {
+            "mes"  => "Mês Atual",
+            "tudo" => "Todo o Período",
+            _      => "Últimos 30 Dias"
+        })
+    </MudText>
     <MudTable T="HistoricoItemDto"
               Items="@desempenho.Historico"
               Hover="true" Dense="true"
@@ -209,12 +236,22 @@ else
 @code {
     private bool carregando = true;
     private DesempenhoDto? desempenho;
+    // BUG-006: padrão de 30 dias para evitar indicadores enganosos baseados em histórico antigo
+    private string periodoSelecionado = "30dias";
 
     protected override async Task OnInitializedAsync()
     {
+        await CarregarDesempenho();
+    }
+
+    // BUG-006: método separado para permitir recarregar ao mudar o período
+    private async Task CarregarDesempenho()
+    {
+        carregando = true;
         try
         {
-            desempenho = await Http.GetFromJsonAsync<DesempenhoDto>("api/bolsistas/meu-desempenho");
+            desempenho = await Http.GetFromJsonAsync<DesempenhoDto>(
+                $"api/bolsistas/meu-desempenho?periodo={periodoSelecionado}");
         }
         catch
         {

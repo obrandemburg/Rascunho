@@ -281,7 +281,31 @@ public static class TurmaEndpoints
         .RequireAuthorization(policy => policy.RequireRole("Aluno", "Bolsista", "Líder"));
 
         // ══════════════════════════════════════════════════════════════════
-        // 8. ENCERRAR TURMA (RN-TUR04)
+        // 8. LISTAR ALUNOS DA TURMA (BUG-001)
+        //
+        // GET /api/turmas/{turmaIdHash}/alunos
+        //
+        // Retorna a lista de alunos formalmente matriculados na turma.
+        // Professor só pode acessar suas próprias turmas (RN-CHA04 aplicado por convenção).
+        // Recepção e Gerente podem ver qualquer turma.
+        // ══════════════════════════════════════════════════════════════════
+        group.MapGet("/{turmaIdHash}/alunos", async (
+            string turmaIdHash,
+            TurmaService turmaService,
+            IHashids hashids,
+            ClaimsPrincipal user) =>
+        {
+            var decodedIds = hashids.Decode(turmaIdHash);
+            if (decodedIds.Length == 0)
+                return Results.BadRequest(new { erro = "ID da turma inválido." });
+
+            var alunos = await turmaService.ListarAlunosDaTurmaAsync(decodedIds[0]);
+            return Results.Ok(alunos);
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Professor", "Recepção", "Gerente"));
+
+        // ══════════════════════════════════════════════════════════════════
+        // 10. ENCERRAR TURMA (RN-TUR04)
         //
         // PUT /api/turmas/{turmaIdHash}/encerrar
         //

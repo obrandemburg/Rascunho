@@ -66,17 +66,39 @@ public class BolsistaService
     // SPRINT 7: bolsista.FotoUrl passado como 3° argumento.
     //   DesempenhoResponse(BolsistaIdHash, Nome, FotoUrl, DiaObrigatorio1, ...)
     //   A ordem IMPORTA porque é um record posicional.
+    //
+    // BUG-006: Adicionado parâmetro periodoFiltro:
+    //   - "30dias"  → últimos 30 dias (PADRÃO — evita indicador enganoso com histórico antigo)
+    //   - "mes"     → mês corrente
+    //   - "tudo"    → todo o histórico (comportamento original, agora é opt-in)
+    //   O filtro afeta presencas usadas no cálculo, mas o histórico exibido
+    //   segue o mesmo filtro para manter coerência visual.
     // ──────────────────────────────────────────────────────────────
-    public async Task<DesempenhoResponse> MeuDesempenhoAsync(int bolsistaId)
+    public async Task<DesempenhoResponse> MeuDesempenhoAsync(
+        int bolsistaId,
+        string periodoFiltro = "30dias")
     {
         var bolsista = await _context.Usuarios.OfType<Bolsista>()
             .FirstOrDefaultAsync(b => b.Id == bolsistaId)
             ?? throw new RegraNegocioException("Bolsista não encontrado.");
 
-        var todasPresencas = await _context.RegistrosPresencas
+        // BUG-006: calcula a data limite conforme o filtro solicitado
+        DateOnly? limiteData = periodoFiltro switch
+        {
+            "30dias" => DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
+            "mes"    => new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1),
+            _        => null  // "tudo" — sem filtro de data
+        };
+
+        var query = _context.RegistrosPresencas
             .Include(rp => rp.Turma).ThenInclude(t => t.Ritmo)
             .Include(rp => rp.Turma).ThenInclude(t => t.Professores).ThenInclude(tp => tp.Professor)
-            .Where(rp => rp.AlunoId == bolsistaId)
+            .Where(rp => rp.AlunoId == bolsistaId);
+
+        if (limiteData.HasValue)
+            query = query.Where(rp => rp.DataAula >= limiteData.Value);
+
+        var todasPresencas = await query
             .OrderByDescending(rp => rp.DataAula)
             .ToListAsync();
 
@@ -131,26 +153,35 @@ public class BolsistaService
     }
 
     // ──────────────────────────────────────────────────────────────
-    // TURMAS RECOMENDADAS PARA O BOLSISTA LOGADO
-    // SPRINT 6: .Include(t => t.Ritmo) adicionado.
+    // TURMAS RECOMENDADAS (BUG-007 — CORRIGIDO)
+    //
+    // Antes: filtrava pelas turmas dos DIAS OBRIGATÓRIOS do bolsista,
+    //        o que tornava o resultado idêntico ao de TurmasObrigatorias.
+    //
+    // Agora: mostra as turmas mais DESBALANCEADAS do dia selecionado,
+    //        independente dos dias obrigatórios do bolsista.
+    //        Padrão: dia da semana atual (DateTime.UtcNow.DayOfWeek).
+    //        Se nenhum dia for passado, usa o dia de hoje.
+    //
+    // SPRINT 6: .Include(t => t.Ritmo) mantido.
     // ──────────────────────────────────────────────────────────────
     public async Task<IEnumerable<SugestaoBalanceamentoResponse>> TurmasRecomendadasParaBolsistaAsync(
-        int bolsistaId)
+        int bolsistaId,
+        DayOfWeek? diaDaSemana = null)
     {
-        var bolsista = await _context.Usuarios.OfType<Bolsista>()
-            .FirstOrDefaultAsync(b => b.Id == bolsistaId)
-            ?? throw new RegraNegocioException("Bolsista não encontrado.");
+        // Valida que o bolsista existe (segurança — pode ser chamado por contexto diferente)
+        var existe = await _context.Usuarios.OfType<Bolsista>()
+            .AnyAsync(b => b.Id == bolsistaId);
+        if (!existe)
+            throw new RegraNegocioException("Bolsista não encontrado.");
 
-        if (!bolsista.DiaObrigatorio1.HasValue || !bolsista.DiaObrigatorio2.HasValue)
-            return Enumerable.Empty<SugestaoBalanceamentoResponse>();
-
-        var diasObrigatorios = new[]
-            { bolsista.DiaObrigatorio1.Value, bolsista.DiaObrigatorio2.Value };
+        // Usa o dia informado ou o dia atual como padrão
+        var dia = diaDaSemana ?? DateTime.UtcNow.DayOfWeek;
 
         var turmasDoDia = await _context.Turmas
             .Include(t => t.Matriculas)
-            .Include(t => t.Ritmo)                  // ← Sprint 6
-            .Where(t => t.Ativa && diasObrigatorios.Contains(t.DiaDaSemana))
+            .Include(t => t.Ritmo)
+            .Where(t => t.Ativa && t.DiaDaSemana == dia)
             .ToListAsync();
 
         var resultados = new List<SugestaoBalanceamentoResponse>();
@@ -160,6 +191,7 @@ public class BolsistaService
             resultados.Add(analise);
         }
 
+        // Ordena: turmas com maior desequilíbrio primeiro, balanceadas por último
         return resultados
             .OrderBy(r => r.Status == "Balanceada" ? 1 : 0)
             .ThenByDescending(r => r.QuantidadeFaltante);

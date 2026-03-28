@@ -128,11 +128,6 @@
                 Minhas Aulas
             </MudNavLink>
 
-            <MudNavLink Href="/bolsista/turmas-obrigatorias"
-                        Icon="@Icons.Material.Filled.Today">
-                Turmas Obrigatórias
-            </MudNavLink>
-
             <MudNavLink Href="/bolsista/desempenho"
                         Icon="@Icons.Material.Filled.Insights">
                 Meu Desempenho
@@ -143,9 +138,11 @@
                 Aulas Particulares
             </MudNavLink>
 
+            @* BUG-007: TurmasObrigatorias removida (duplicava TurmasRecomendadas).
+               TurmasRecomendadas agora exibe turmas desbalanceadas do dia filtrado. *@
             <MudNavLink Href="/bolsista/turmas-recomendadas"
                         Icon="@Icons.Material.Filled.Recommend">
-                Turmas Recomendadas
+                Turmas do Dia
             </MudNavLink>
 
             <MudNavLink Href="/bolsista/minhas-habilidades"

@@ -7,7 +7,9 @@ public record CriarTurmaRequest(string RitmoIdHash, string SalaIdHash, DateOnly 
 public record TrocarSalaRequest(string NovaSalaIdHash, int NovoLimiteAlunos);
 public record MatricularRequest(string Papel);
 public record MatricularAdminRequest(string AlunoIdHash, string Papel);
-public record ObterTurmaResponse(string IdHash, string RitmoNome, string SalaNome, DateOnly DataInicio, int DiaDaSemana, string HorarioInicio, string HorarioFim, string Nivel, int LimiteAlunos, int QuantidadeMatriculados, string LinkWhatsApp, bool Ativa, List<string> NomesProfessores);
+// BUG-002: Modalidade adicionada para que o frontend (QuadroTurmas) possa
+// desabilitar o botão "Matricular" para bolsistas nos dias obrigatórios.
+public record ObterTurmaResponse(string IdHash, string RitmoNome, string SalaNome, DateOnly DataInicio, int DiaDaSemana, string HorarioInicio, string HorarioFim, string Nivel, int LimiteAlunos, int QuantidadeMatriculados, string LinkWhatsApp, bool Ativa, List<string> NomesProfessores, string Modalidade = "");
 
 // NOVO Sprint 2: aluno matriculado simplificado (para o modal "Ver Alunos")
 public record AlunoMatriculadoResponse(

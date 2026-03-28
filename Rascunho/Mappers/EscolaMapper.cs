@@ -27,7 +27,9 @@ public static class EscolaMapper
             t.Matriculas?.Count ?? 0,
             t.LinkWhatsApp ?? "",
             t.Ativa,
-            t.Professores?.Select(p => p.Professor?.Nome ?? "Desconhecido").ToList() ?? new List<string>()
+            t.Professores?.Select(p => p.Professor?.Nome ?? "Desconhecido").ToList() ?? new List<string>(),
+            // BUG-002: Modalidade incluída para controle de acesso no frontend (BOL04)
+            t.Ritmo?.Modalidade ?? ""
         );
 
     public static ObterEventoResponse ToResponse(this Evento e, IHashids hashids) =>
