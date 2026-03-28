@@ -1,7 +1,7 @@
 # Bugs e Erros Lógicos — Ponto da Dança
 
 > Gerado em: 27/03/2026 | Atualizado em: 28/03/2026
-> BUG-001 a BUG-008 corrigidos em 28/03/2026
+> BUG-001 a BUG-012, BUG-014 corrigidos em 28/03/2026
 
 ---
 
@@ -141,20 +141,29 @@ catch
 
 Se o recarregamento falhar, o usuário vê "Turma criada com sucesso!" mas a lista não inclui a nova turma, sem qualquer aviso. Próxima navegação mostraria corretamente, mas é confuso.
 
-**Correção:** Adicionar `Snackbar.Add("Lista atualizada na próxima navegação.", Severity.Info)` no `catch` para avisar o usuário.
+**Correção:** Snackbar de aviso adicionado no `catch` do recarregamento em `GerenciarTurmas.razor`.
 
 ---
 
-## BUG-010 — Entidade `Interesse` obsoleta ainda presente no banco
+## ~~BUG-009~~ — ✅ CORRIGIDO — `GerenciarTurmas.razor` sem tratamento de erro ao recarregar lista após criar turma
 
-**Severidade:** 🟢 Baixo
+**Severidade:** 🟢 Baixo → ✅ Resolvido em 28/03/2026
+**Correção aplicada:**
+- `GerenciarTurmas.razor`: `Snackbar.Add(...)` adicionado no catch do recarregamento, informando o usuário que a lista pode não estar atualizada.
+
+---
+
+## ~~BUG-010~~ — ✅ CORRIGIDO — Entidade `Interesse` obsoleta ainda presente no banco
+
+**Severidade:** 🟢 Baixo → ✅ Resolvido em 28/03/2026
 **Tipo:** Dívida técnica / entidade legada
-**Arquivo:** `Rascunho/Data/AppDbContext.cs` + migrations
 
-**Descrição:**
-A entidade `Interesse` (interesse de aluno em turma lotada) foi substituída funcionalmente pela `ListaEspera`. O DbContext ainda referencia `Interesse` e a tabela existe no banco. Não há endpoints que a usem, mas ocupa espaço e causa confusão ao ler o código.
-
-**Correção:** Migration de remoção da tabela `Interesses` e remoção do `DbSet<Interesse>` do `AppDbContext`.
+**Correção aplicada:**
+- `AppDbContext.cs`: `DbSet<Interesse>` removido
+- `TurmaConfiguration.cs`: `InteresseConfiguration` removida
+- `Entities/Interesse.cs`: arquivo deletado
+- Migration `20260328000001_RemoveInteresseObsoleto.cs` criada — executa `DROP TABLE "Interesses"`
+- `AppDbContextModelSnapshot.cs` atualizado (blocos da entidade `Interesse` removidos)
 
 ---
 
@@ -183,22 +192,13 @@ builder.Services.AddCors(options =>
 
 ---
 
-## BUG-012 — NavMenu do Bolsista não tem link para "Reagendar Aula"
+## ~~BUG-012~~ — ✅ CORRIGIDO — NavMenu do Bolsista não tem link para "Reagendar Aula"
 
-**Severidade:** 🟡 Médio
+**Severidade:** 🟡 Médio → ✅ Resolvido em 28/03/2026
 **Tipo:** Funcionalidade inacessível via navegação
-**Arquivo:** `Rascunho.Client/Layout/NavMenu.razor`
 
-**Descrição:**
-A rota `/reagendar` existe e tem `[Authorize(Roles = "Aluno,Bolsista")]`, mas o bloco do Bolsista no NavMenu não inclui esse link. O bolsista pode ter faltas elegíveis mas não consegue encontrar a tela pelo menu.
-
-**Correção:**
-Adicionar ao bloco `<AuthorizeView Roles="Bolsista">` no `NavMenu.razor`:
-```razor
-<MudNavLink Href="/reagendar" Icon="@Icons.Material.Filled.EventRepeat">
-    Reagendar Aula
-</MudNavLink>
-```
+**Correção aplicada:**
+- `NavMenu.razor`: `<MudNavLink Href="/reagendar" Icon="@Icons.Material.Filled.EventRepeat">Reagendar Aula</MudNavLink>` adicionado ao bloco `<AuthorizeView Roles="Bolsista">`
 
 ---
 
@@ -222,16 +222,33 @@ O IP está hardcoded no código-fonte. Impactos:
 
 ---
 
-## BUG-014 — `AulaExperimental.razor` acessível pelo Aluno mas UX indefinida
+## ~~BUG-014~~ — ✅ CORRIGIDO — `AulaExperimental.razor` acessível pelo Aluno mas UX indefinida
 
-**Severidade:** 🟡 Médio
+**Severidade:** 🟡 Médio → ✅ Resolvido em 28/03/2026
 **Tipo:** Tela incompleta exposta na navegação
-**Arquivos:** `Aluno/AulaExperimental.razor` + `NavMenu.razor`
+
+**Correção aplicada:**
+- `NavMenu.razor`: link `/aula-experimental` removido do bloco Aluno (comentado com nota de fase 1.2)
+- `AulaExperimental.razor`: banner `MudAlert` com "Funcionalidade em desenvolvimento" adicionado no topo da página — se o aluno acessar diretamente via URL, verá o aviso
+
+---
+
+## BUG-015 — Endpoint duplicado `GET /api/turmas/{idHash}/alunos` causava lista de alunos vazia
+
+**Severidade:** 🔴 Crítico → ✅ Resolvido em 28/03/2026
+**Tipo:** Conflito de rota / retorno vazio silencioso
 
 **Descrição:**
-O NavMenu do Aluno tem link para `/aula-experimental`. A página existe mas a especificação classifica essa funcionalidade como "UX completa a definir" (fase 1.2). O aluno pode acessar uma tela incompleta ou com dados inconsistentes.
+O endpoint `GET /api/turmas/{turmaIdHash}/alunos` estava registrado em dois lugares:
+1. `TurmaEndpoints.cs` (via group `/api/turmas`) — implementação correta usando `TurmaService`
+2. `ProfessorEndpoints.cs` (via `app.MapGet(...)` absoluto) — implementação duplicada sem null checks
 
-**Correção:** Remover temporariamente o link do NavMenu e adicionar um aviso "Em breve" na página, ou completar a UX como parte do sprint de fase 1.2.
+O registro duplicado causava comportamento imprevisível de roteamento no ASP.NET Core Minimal API. Além disso, `GerenciarTurmas.razor` capturava o erro silenciosamente (catch vazio), exibindo "Nenhum aluno matriculado" mesmo quando havia alunos. `MinhasTurmas.razor` tinha `TimeSpan HorarioInicio` no DTO local, mas a API retorna string — causando falha na desserialização de turmas.
+
+**Correção aplicada:**
+- `ProfessorEndpoints.cs`: endpoint duplicado removido — rota canônica permanece em `TurmaEndpoints.cs`
+- `GerenciarTurmas.razor`: catch da requisição `/alunos` agora exibe `Snackbar` de erro em vez de silenciar a falha
+- `MinhasTurmas.razor`: `TurmaDto.HorarioInicio` e `HorarioFim` corrigidos de `TimeSpan` para `string` (espelhando `ObterTurmaResponse`)
 
 ---
 
@@ -241,6 +258,7 @@ O NavMenu do Aluno tem link para `/aula-experimental`. A página existe mas a es
 |---|---|---|---|
 | BUG-001 | Endpoint `GET /api/turmas/{idHash}/alunos` ausente | 🔴 Crítico | ✅ Corrigido |
 | BUG-013 | IP da VPS hardcoded no frontend | 🔴 Crítico | ⏳ Pendente |
+| BUG-015 | Endpoint duplicado causava lista de alunos vazia | 🔴 Crítico | ✅ Corrigido |
 | BUG-002 | RN-BOL05 bloqueia só "solo", não "salão" | 🟠 Alto | ✅ Corrigido |
 | BUG-003 | Fila de espera com buracos de posição | 🟠 Alto | ✅ Corrigido |
 | BUG-004 | ConfiguracaoService perde dados no restart | 🟠 Alto | ⏳ Pendente |
@@ -249,7 +267,7 @@ O NavMenu do Aluno tem link para `/aula-experimental`. A página existe mas a es
 | BUG-006 | Frequência calculada sobre todo o histórico | 🟡 Médio | ✅ Corrigido |
 | BUG-007 | TurmasObrigatorias e TurmasRecomendadas duplicadas | 🟡 Médio | ✅ Corrigido |
 | BUG-008 | PainelAluno com DTO local incompatível | 🟡 Médio | ✅ Corrigido |
-| BUG-012 | Bolsista sem link para Reagendar no NavMenu | 🟡 Médio | ⏳ Pendente |
-| BUG-014 | AulaExperimental exposta mas incompleta | 🟡 Médio | ⏳ Pendente |
-| BUG-009 | GerenciarTurmas sem aviso no erro de recarregamento | 🟢 Baixo | ⏳ Pendente |
-| BUG-010 | Entidade `Interesse` obsoleta no banco | 🟢 Baixo | ⏳ Pendente |
+| BUG-012 | Bolsista sem link para Reagendar no NavMenu | 🟡 Médio | ✅ Corrigido |
+| BUG-014 | AulaExperimental exposta mas incompleta | 🟡 Médio | ✅ Corrigido |
+| BUG-009 | GerenciarTurmas sem aviso no erro de recarregamento | 🟢 Baixo | ✅ Corrigido |
+| BUG-010 | Entidade `Interesse` obsoleta no banco | 🟢 Baixo | ✅ Corrigido |

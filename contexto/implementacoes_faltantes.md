@@ -183,11 +183,9 @@ Cada item indica **o que falta**, **onde falta** (backend/frontend/ambos) e **qu
 
 ---
 
-#### 🟡 NavMenu: Bolsista sem link para "Reagendar Aula"
+#### ✅ NavMenu: Bolsista sem link para "Reagendar Aula" — RESOLVIDO (BUG-012)
 
-**Status:** A rota `/reagendar` existe e aceita `Authorize(Roles = "Aluno,Bolsista")`, mas o NavMenu do Bolsista não tem esse link. O bolsista pode ter faltas elegíveis para reposição mas não encontra a tela.
-
-**O que falta:** Adicionar `<MudNavLink Href="/reagendar">Reagendar Aula</MudNavLink>` ao bloco Bolsista no `NavMenu.razor`.
+**Status:** Corrigido em 28/03/2026. Link adicionado ao bloco Bolsista no `NavMenu.razor`.
 
 ---
 
@@ -200,11 +198,13 @@ Cada item indica **o que falta**, **onde falta** (backend/frontend/ambos) e **qu
 
 ---
 
-#### 🟡 MinhasHabilidades — Listagem das habilidades cadastradas
+#### ✅ MinhasHabilidades — Listagem das habilidades cadastradas — RESOLVIDO (28/03/2026)
 
-**Status:** `MinhasHabilidades.razor` tem formulário para adicionar habilidade mas não exibe as habilidades já cadastradas do bolsista.
-
-**O que falta:** Endpoint `GET /api/bolsistas/minhas-habilidades` (retorna habilidades do bolsista logado) e listagem no frontend. Backend também precisaria de endpoint para remover habilidade.
+**Status:** Corrigido em 28/03/2026.
+- `BolsistaService.cs`: métodos `ListarMinhasHabilidadesAsync` e `RemoverHabilidadeAsync` adicionados
+- `BolsistaEndpoints.cs`: `GET /api/bolsistas/minhas-habilidades` e `DELETE /api/bolsistas/minhas-habilidades/{ritmoIdHash}` adicionados
+- `BolsistaDTOs.cs`: record `HabilidadeResponse` criado no projeto Shared
+- `MinhasHabilidades.razor`: carrega habilidades do servidor ao inicializar (em paralelo com ritmos); botão de exclusão por card; `HabilidadeExibicao` espelha `HabilidadeResponse` com `RitmoIdHash`
 
 ---
 

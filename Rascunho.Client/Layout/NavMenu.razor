@@ -66,10 +66,8 @@
                 Reagendar Aula
             </MudNavLink>
 
-            <MudNavLink Href="/aula-experimental"
-                        Icon="@Icons.Material.Filled.Science">
-                Aula Experimental
-            </MudNavLink>
+            @* BUG-014 (28/03/2026): link /aula-experimental removido temporariamente.
+               UX completa a definir na Fase 1.2. A página ainda existe mas não está no menu. *@
 
             @* Feature #3: Lista de Espera *@
             <MudNavLink Href="/minhas-esperas"
@@ -136,6 +134,12 @@
             <MudNavLink Href="/aulas-particulares"
                         Icon="@Icons.Material.Filled.PersonSearch">
                 Aulas Particulares
+            </MudNavLink>
+
+            @* BUG-012 (28/03/2026): link Reagendar adicionado ao bloco Bolsista *@
+            <MudNavLink Href="/reagendar"
+                        Icon="@Icons.Material.Filled.EventRepeat">
+                Reagendar Aula
             </MudNavLink>
 
             @* BUG-007: TurmasObrigatorias removida (duplicava TurmasRecomendadas).

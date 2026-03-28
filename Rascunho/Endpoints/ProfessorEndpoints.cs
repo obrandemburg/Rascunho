@@ -63,34 +63,9 @@ public static class ProfessorEndpoints
             return Results.Ok(response);
         });
 
-        // ══════════════════════════════════════════════════════════
-        // 4. GET /api/turmas/{idHash}/alunos
-        //    Lista os alunos matriculados em uma turma (para o modal "Ver Alunos")
-        //    Implementado aqui por conveniência, mas logicamente pertence à turma
-        // ══════════════════════════════════════════════════════════
-        app.MapGet("/api/turmas/{turmaIdHash}/alunos", async (
-            string turmaIdHash,
-            Rascunho.Data.AppDbContext db,
-            IHashids hashids) =>
-        {
-            var decoded = hashids.Decode(turmaIdHash);
-            if (decoded.Length == 0)
-                return Results.BadRequest(new { erro = "ID da turma inválido." });
-
-            var matriculas = await db.Matriculas
-                .Include(m => m.Aluno)
-                .Where(m => m.TurmaId == decoded[0])
-                .OrderBy(m => m.Aluno.Nome)
-                .Select(m => new AlunoMatriculadoResponse(
-                    hashids.Encode(m.AlunoId),
-                    m.Aluno.Nome,
-                    m.Aluno.FotoUrl,
-                    m.Papel
-                ))
-                .ToListAsync();
-
-            return Results.Ok(matriculas);
-        })
-        .RequireAuthorization(policy => policy.RequireRole("Professor", "Recepção", "Gerente"));
+        // FIX (28/03/2026): endpoint GET /api/turmas/{turmaIdHash}/alunos removido daqui.
+        // Existia duplicado em TurmaEndpoints.cs (registrado antes, linha 174 do Program.cs),
+        // causando conflito de rota e retorno vazio ao tentar listar alunos da turma.
+        // A implementação correta permanece em TurmaEndpoints.cs via TurmaService.ListarAlunosDaTurmaAsync.
     }
 }

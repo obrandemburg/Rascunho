@@ -61,6 +61,46 @@ public class BolsistaService
     }
 
     // ──────────────────────────────────────────────────────────────
+    // LISTAR MINHAS HABILIDADES
+    //
+    // Retorna todas as habilidades (ritmos) cadastradas pelo bolsista.
+    // Implementação da tarefa faltante do contexto (implementacoes_faltantes.md).
+    // ──────────────────────────────────────────────────────────────
+    public async Task<IEnumerable<HabilidadeResponse>> ListarMinhasHabilidadesAsync(int bolsistaId)
+    {
+        var habilidades = await _context.Set<HabilidadeUsuario>()
+            .Include(h => h.Ritmo)
+            .Where(h => h.UsuarioId == bolsistaId)
+            .OrderBy(h => h.Ritmo.Nome)
+            .ToListAsync();
+
+        return habilidades.Select(h => new HabilidadeResponse(
+            _hashids.Encode(h.RitmoId),
+            h.Ritmo?.Nome ?? "Desconhecido",
+            h.PapelDominante,
+            h.Nivel
+        ));
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // REMOVER HABILIDADE
+    // ──────────────────────────────────────────────────────────────
+    public async Task RemoverHabilidadeAsync(int bolsistaId, string ritmoIdHash)
+    {
+        var ritmoDecoded = _hashids.Decode(ritmoIdHash);
+        if (ritmoDecoded.Length == 0) throw new RegraNegocioException("Ritmo inválido.");
+
+        var habilidade = await _context.Set<HabilidadeUsuario>()
+            .FirstOrDefaultAsync(h => h.UsuarioId == bolsistaId && h.RitmoId == ritmoDecoded[0]);
+
+        if (habilidade is null)
+            throw new RegraNegocioException("Habilidade não encontrada.");
+
+        _context.Set<HabilidadeUsuario>().Remove(habilidade);
+        await _context.SaveChangesAsync();
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // MEU DESEMPENHO
     //
     // SPRINT 7: bolsista.FotoUrl passado como 3° argumento.

@@ -170,7 +170,11 @@
     <MudItem xs="12" md="7">
         <MudText Typo="Typo.h6" Class="mb-4">Habilidades Cadastradas</MudText>
 
-        @if (habilidades.Any())
+        @if (carregandoHabilidades)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else if (habilidades.Any())
         {
             <MudGrid>
                 @foreach (var hab in habilidades)
@@ -193,19 +197,26 @@
                                 </CardHeaderActions>
                             </MudCardHeader>
                             <MudCardContent Class="pt-0">
-                                <MudChip T="string"
-                                         Size="Size.Small"
-                                         Color="Color.Default"
-                                         Variant="Variant.Outlined">
-                                    @hab.Nivel
-                                </MudChip>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                    <MudChip T="string"
+                                             Size="Size.Small"
+                                             Color="Color.Default"
+                                             Variant="Variant.Outlined">
+                                        @hab.Nivel
+                                    </MudChip>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                   Color="Color.Error"
+                                                   Size="Size.Small"
+                                                   OnClick="@(() => RemoverHabilidade(hab.RitmoIdHash))"
+                                                   Disabled="@salvando" />
+                                </MudStack>
                             </MudCardContent>
                         </MudCard>
                     </MudItem>
                 }
             </MudGrid>
         }
-        else if (!carregandoRitmos)
+        else
         {
             <MudPaper Elevation="0" Class="pa-8 text-center rounded-xl"
                       Style="border: 2px dashed var(--mud-palette-lines-default);">
@@ -217,37 +228,31 @@
                 </MudText>
             </MudPaper>
         }
-
-        @* NOTA: A API não possui endpoint GET para listar habilidades do bolsista.
-           Como workaround, exibimos apenas as habilidades adicionadas na sessão atual.
-           Em produção, recomenda-se criar:
-           GET /api/bolsistas/minhas-habilidades
-           que retorna List<HabilidadeUsuario> do bolsista logado. *@
     </MudItem>
 </MudGrid>
 
 @code {
     private bool carregandoRitmos = true;
+    private bool carregandoHabilidades = true;
     private bool salvando = false;
 
     private List<RitmoDto> ritmos = new();
-
-    // Lista em memória das habilidades adicionadas nesta sessão
-    // (Workaround por ausência de endpoint GET /minhas-habilidades)
     private List<HabilidadeExibicao> habilidades = new();
-
     private HabilidadeForm form = new();
 
     protected override async Task OnInitializedAsync()
     {
+        // Carrega ritmos e habilidades em paralelo
+        var ritmosTask = CarregarRitmos();
+        var habilidadesTask = CarregarHabilidades();
+        await Task.WhenAll(ritmosTask, habilidadesTask);
+    }
+
+    private async Task CarregarRitmos()
+    {
         try
         {
-            // GET /api/ritmos/listar — AllowAnonymous, mas exige login na UI
-            // Retorna: ObterRitmoResponse[] com IdHash, Nome, Descricao, Modalidade, Ativo
-            ritmos = await Http.GetFromJsonAsync<List<RitmoDto>>(
-                "api/ritmos/listar") ?? new();
-
-            // Filtra apenas ritmos ativos para o bolsista não escolher um ritmo inativo
+            ritmos = await Http.GetFromJsonAsync<List<RitmoDto>>("api/ritmos/listar") ?? new();
             ritmos = ritmos.Where(r => r.Ativo).ToList();
         }
         catch (Exception ex)
@@ -255,6 +260,22 @@
             Snackbar.Add($"Erro ao carregar ritmos: {ex.Message}", Severity.Error);
         }
         finally { carregandoRitmos = false; }
+    }
+
+    private async Task CarregarHabilidades()
+    {
+        try
+        {
+            // GET /api/bolsistas/minhas-habilidades
+            var data = await Http.GetFromJsonAsync<List<HabilidadeExibicao>>(
+                "api/bolsistas/minhas-habilidades") ?? new();
+            habilidades = data;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro ao carregar habilidades: {ex.Message}", Severity.Error);
+        }
+        finally { carregandoHabilidades = false; }
     }
 
     private async Task AdicionarHabilidade()
@@ -274,19 +295,10 @@
 
             if (response.IsSuccessStatusCode)
             {
-                Snackbar.Add("Habilidade adicionada com sucesso! ✨", Severity.Success);
-
-                // Adiciona na lista local para feedback imediato
-                var nomeRitmo = ritmos.FirstOrDefault(r => r.IdHash == form.RitmoIdHash)?.Nome ?? "";
-                habilidades.Add(new HabilidadeExibicao
-                {
-                    NomeRitmo = nomeRitmo,
-                    PapelDominante = form.PapelDominante,
-                    Nivel = form.Nivel
-                });
-
-                // Reseta o formulário
+                Snackbar.Add("Habilidade adicionada com sucesso!", Severity.Success);
                 form = new HabilidadeForm();
+                // Recarrega lista do servidor para refletir estado atual
+                await CarregarHabilidades();
             }
             else if ((int)response.StatusCode == 422)
             {
@@ -298,6 +310,25 @@
             {
                 // FluentValidation: papel ou nível inválido
                 Snackbar.Add("Verifique os dados e tente novamente.", Severity.Error);
+            }
+        }
+        finally { salvando = false; }
+    }
+
+    private async Task RemoverHabilidade(string ritmoIdHash)
+    {
+        salvando = true;
+        try
+        {
+            var response = await Http.DeleteAsync($"api/bolsistas/minhas-habilidades/{ritmoIdHash}");
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Habilidade removida.", Severity.Success);
+                await CarregarHabilidades();
+            }
+            else
+            {
+                Snackbar.Add("Não foi possível remover a habilidade.", Severity.Error);
             }
         }
         finally { salvando = false; }
@@ -331,11 +362,15 @@
         public string Nivel { get; set; } = "";
     }
 
-    // DTO de exibição local (sessão)
+    // Espelha HabilidadeResponse do backend (BolsistaDTOs.cs)
     public class HabilidadeExibicao
     {
-        public string NomeRitmo { get; set; } = "";
+        public string RitmoIdHash { get; set; } = "";
+        public string RitmoNome { get; set; } = "";
         public string PapelDominante { get; set; } = "";
         public string Nivel { get; set; } = "";
+
+        // Alias para compatibilidade com o template
+        public string NomeRitmo => RitmoNome;
     }
 }
