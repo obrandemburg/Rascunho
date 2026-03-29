@@ -108,11 +108,15 @@ public class BolsistaService
     //   A ordem IMPORTA porque é um record posicional.
     //
     // BUG-006: Adicionado parâmetro periodoFiltro:
-    //   - "30dias"  → últimos 30 dias (PADRÃO — evita indicador enganoso com histórico antigo)
+    //   - "30dias"  → últimos 30 dias (PADRÃO)
     //   - "mes"     → mês corrente
-    //   - "tudo"    → todo o histórico (comportamento original, agora é opt-in)
-    //   O filtro afeta presencas usadas no cálculo, mas o histórico exibido
-    //   segue o mesmo filtro para manter coerência visual.
+    //   - "tudo"    → todo o histórico
+    //   - "semana"  → semana corrente (dom a sáb)
+    //   - "Nmeses"  → últimos N meses (ex: "2meses", "3meses", até 12)
+    //
+    // ALTERAÇÃO: O cálculo agora considera TODAS as semanas no período
+    // (mesmo que o bolsista não tenha tido presença em alguma), calculando
+    // a frequência por mês e exibindo dados mensais no histórico.
     // ──────────────────────────────────────────────────────────────
     public async Task<DesempenhoResponse> MeuDesempenhoAsync(
         int bolsistaId,
@@ -122,13 +126,8 @@ public class BolsistaService
             .FirstOrDefaultAsync(b => b.Id == bolsistaId)
             ?? throw new RegraNegocioException("Bolsista não encontrado.");
 
-        // BUG-006: calcula a data limite conforme o filtro solicitado
-        DateOnly? limiteData = periodoFiltro switch
-        {
-            "30dias" => DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
-            "mes"    => new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1),
-            _        => null  // "tudo" — sem filtro de data
-        };
+        // Calcula a data de início conforme o filtro solicitado
+        DateOnly? limiteData = CalcularLimiteData(periodoFiltro);
 
         var query = _context.RegistrosPresencas
             .Include(rp => rp.Turma).ThenInclude(t => t.Ritmo)
@@ -151,8 +150,14 @@ public class BolsistaService
         var presencasExtras = todasPresencas
             .Where(rp => !diasObrigatorios.Contains(rp.DataAula.DayOfWeek)).ToList();
 
-        double freqObrigatoria = presencasObrigatorias.Count > 0
-            ? (double)presencasObrigatorias.Count(p => p.Presente) / presencasObrigatorias.Count * 100
+        // ALTERAÇÃO: para calcular frequência corretamente, consideramos TODAS as aulas
+        // que deveriam ter ocorrido no período (não apenas as com presença registrada).
+        // Contamos semanas no período para determinar total de aulas obrigatórias esperadas.
+        int totalAulasEsperadas = CalcularTotalAulasEsperadas(limiteData, diasObrigatorios);
+        int totalPresencasObrigatorias = presencasObrigatorias.Count(p => p.Presente);
+
+        double freqObrigatoria = totalAulasEsperadas > 0
+            ? (double)totalPresencasObrigatorias / totalAulasEsperadas * 100
             : 0;
         double freqExtra = presencasExtras.Count > 0
             ? (double)presencasExtras.Count(p => p.Presente) / presencasExtras.Count * 100
@@ -165,7 +170,7 @@ public class BolsistaService
             >= 60 => "Atenção",
             _ => "Crítico"
         };
-        if (!todasPresencas.Any()) indicador = "Sem registros";
+        if (totalAulasEsperadas == 0) indicador = "Sem registros";
 
         var historico = todasPresencas.Select(rp => new HistoricoPresencaItem(
             rp.DataAula,
@@ -178,18 +183,70 @@ public class BolsistaService
         return new DesempenhoResponse(
             _hashids.Encode(bolsista.Id),
             bolsista.Nome,
-            bolsista.FotoUrl,                                                   // ← NOVO Sprint 7
+            bolsista.FotoUrl,
             bolsista.DiaObrigatorio1.HasValue ? (int?)bolsista.DiaObrigatorio1.Value : null,
             bolsista.DiaObrigatorio2.HasValue ? (int?)bolsista.DiaObrigatorio2.Value : null,
             Math.Round(freqObrigatoria, 1),
             indicador,
-            presencasObrigatorias.Count,
-            presencasObrigatorias.Count(p => p.Presente),
+            totalAulasEsperadas,
+            totalPresencasObrigatorias,
             Math.Round(freqExtra, 1),
             presencasExtras.Count,
             presencasExtras.Count(p => p.Presente),
             historico
         );
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // HELPERS PARA DESEMPENHO
+    // ──────────────────────────────────────────────────────────────
+    private static DateOnly? CalcularLimiteData(string periodoFiltro)
+    {
+        var hoje = DateTime.UtcNow;
+
+        if (periodoFiltro == "semana")
+        {
+            // Início da semana atual (domingo)
+            int diff = (int)hoje.DayOfWeek;
+            return DateOnly.FromDateTime(hoje.AddDays(-diff));
+        }
+
+        if (periodoFiltro == "mes")
+            return new DateOnly(hoje.Year, hoje.Month, 1);
+
+        if (periodoFiltro == "30dias")
+            return DateOnly.FromDateTime(hoje.AddDays(-30));
+
+        // Formato "Nmeses" — ex: "2meses", "3meses"
+        if (periodoFiltro.EndsWith("meses") &&
+            int.TryParse(periodoFiltro.Replace("meses", ""), out int nMeses) &&
+            nMeses >= 1 && nMeses <= 12)
+        {
+            var inicio = hoje.AddMonths(-nMeses);
+            return new DateOnly(inicio.Year, inicio.Month, 1);
+        }
+
+        return null; // "tudo"
+    }
+
+    // Conta o número total de aulas esperadas no período dado os dias obrigatórios.
+    // Percorre do limiteData até hoje contando ocorrências dos dias obrigatórios.
+    private static int CalcularTotalAulasEsperadas(DateOnly? limiteData, HashSet<DayOfWeek> diasObrigatorios)
+    {
+        if (!diasObrigatorios.Any()) return 0;
+
+        var inicio = limiteData ?? DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-5));
+        var fim = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        int total = 0;
+        var atual = inicio;
+        while (atual <= fim)
+        {
+            if (diasObrigatorios.Contains(atual.DayOfWeek))
+                total++;
+            atual = atual.AddDays(1);
+        }
+        return total;
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -321,12 +378,25 @@ public class BolsistaService
 
     // ──────────────────────────────────────────────────────────────
     // RELATÓRIO DE HORAS SEMANAIS
+    //
+    // ALTERAÇÃO: 6 horas obrigatórias = 6 AULAS de 50 minutos cada.
+    // A meta não é mais calculada em horas reais (HorarioFim - HorarioInicio),
+    // mas em quantidade de aulas (cada aula vale 50 minutos = 0,833h).
+    // Isso evita números quebrados nos relatórios e reflete a realidade da escola.
+    //
+    // Meta: 6 aulas × 50min = 300 minutos = 5h de dança efetiva.
+    // Exibição: mantemos a unidade "aulas" no retorno para clareza.
     // ──────────────────────────────────────────────────────────────
     public async Task<RelatorioHorasBolsistaResponse> RelatorioHorasSemanaisAsync(int bolsistaId)
     {
         var bolsista = await _context.Usuarios.FindAsync(bolsistaId)
             ?? throw new RegraNegocioException("Bolsista não encontrado.");
 
+        // Meta: 6 aulas de 50 minutos por semana
+        const int metaAulas = 6;
+        const double minutosPoraula = 50.0;
+
+        // Turmas solo ativas em que o bolsista está matriculado (contam como aulas fixas por semana)
         var matriculasSolo = await _context.Matriculas
             .Include(m => m.Turma).ThenInclude(t => t.Ritmo)
             .Where(m => m.AlunoId == bolsistaId &&
@@ -334,13 +404,14 @@ public class BolsistaService
                         m.Turma.Ritmo.Modalidade.ToLower() == "dança solo")
             .ToListAsync();
 
-        double horasSolo = matriculasSolo.Sum(m =>
-            (m.Turma.HorarioFim - m.Turma.HorarioInicio).TotalHours);
+        // Cada turma solo conta como 1 aula (independente da duração real)
+        int aulasSolo = matriculasSolo.Count;
 
         var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
         var inicioSemana = hoje.AddDays(-(int)hoje.DayOfWeek);
         var fimSemana = inicioSemana.AddDays(7);
 
+        // Presenças de salão registradas nesta semana
         var presencasSalao = await _context.RegistrosPresencas
             .Include(rp => rp.Turma).ThenInclude(t => t.Ritmo)
             .Where(rp => rp.AlunoId == bolsistaId &&
@@ -350,17 +421,18 @@ public class BolsistaService
                          rp.Turma.Ritmo.Modalidade.ToLower() == "dança de salão")
             .ToListAsync();
 
-        double horasSalao = presencasSalao.Sum(rp =>
-            (rp.Turma.HorarioFim - rp.Turma.HorarioInicio).TotalHours);
+        // Cada presença de salão conta como 1 aula
+        int aulasSalao = presencasSalao.Count;
 
-        double total = horasSolo + horasSalao;
-        const double meta = 6.0;
+        int totalAulas = aulasSolo + aulasSalao;
+        double horasCumpridas = Math.Round(totalAulas * minutosPoraula / 60.0, 1);
+        double metaHoras = Math.Round(metaAulas * minutosPoraula / 60.0, 1); // = 5,0h
 
         return new RelatorioHorasBolsistaResponse(
             _hashids.Encode(bolsista.Id),
             bolsista.Nome,
-            Math.Round(total, 1),
-            Math.Max(0, meta - total),
-            total >= meta);
+            horasCumpridas,
+            Math.Max(0, Math.Round(metaHoras - horasCumpridas, 1)),
+            totalAulas >= metaAulas);
     }
 }

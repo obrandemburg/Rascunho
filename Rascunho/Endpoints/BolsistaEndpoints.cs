@@ -37,14 +37,16 @@ public static class BolsistaEndpoints
         .RequireAuthorization(policy => policy.RequireRole("Bolsista"));
 
         // ══════════════════════════════════════════════════════════
-        // NOVO Sprint 2: GET /api/bolsistas/meu-desempenho
+        // GET /api/bolsistas/meu-desempenho
         //
-        // BUG-006: Adicionado query parameter "periodo":
+        // Query parameter "periodo":
         //   - "30dias" (padrão) — últimos 30 dias
         //   - "mes"             — mês corrente
+        //   - "semana"          — semana atual
+        //   - "2meses"          — últimos 2 meses
+        //   - "3meses"          — últimos 3 meses
+        //   - ...até "12meses"
         //   - "tudo"            — todo o histórico
-        //
-        // Retorna a análise completa de frequência do bolsista logado.
         // ══════════════════════════════════════════════════════════
         group.MapGet("/meu-desempenho", async (
             [FromQuery] string periodo = "30dias",
@@ -55,12 +57,16 @@ public static class BolsistaEndpoints
             var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(idClaim, out int bolsistaId)) return Results.Unauthorized();
 
-            // Normaliza para valores aceitos (evita injeção de strings inesperadas)
+            // Valores aceitos para evitar injeção de strings inesperadas
             var periodoNormalizado = periodo switch
             {
-                "mes"  => "mes",
-                "tudo" => "tudo",
-                _      => "30dias"  // padrão seguro
+                "mes"    => "mes",
+                "semana" => "semana",
+                "tudo"   => "tudo",
+                _ when periodo.EndsWith("meses") &&
+                       int.TryParse(periodo.Replace("meses", ""), out int n) &&
+                       n >= 1 && n <= 12 => periodo,
+                _        => "30dias"  // padrão seguro
             };
 
             var response = await bolsistaService.MeuDesempenhoAsync(bolsistaId, periodoNormalizado);
@@ -100,7 +106,21 @@ public static class BolsistaEndpoints
         })
         .RequireAuthorization(policy => policy.RequireRole("Bolsista"));
 
-        // GET /api/bolsistas/{idHash}/relatorio-horas
+        // GET /api/bolsistas/meu-relatorio-horas
+        // Endpoint para o próprio bolsista consultar seu relatório via JWT (sem precisar do hash).
+        // NOVO: simplifica o fluxo do frontend que antes precisava buscar o hash do usuário.
+        group.MapGet("/meu-relatorio-horas", async (
+            BolsistaService bolsistaService,
+            ClaimsPrincipal user) =>
+        {
+            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(idClaim, out int bolsistaId)) return Results.Unauthorized();
+            var response = await bolsistaService.RelatorioHorasSemanaisAsync(bolsistaId);
+            return Results.Ok(response);
+        })
+        .RequireAuthorization(policy => policy.RequireRole("Bolsista"));
+
+        // GET /api/bolsistas/{idHash}/relatorio-horas (mantido para compatibilidade — Gerente/Recepção)
         group.MapGet("/{bolsistaIdHash}/relatorio-horas", async (string bolsistaIdHash, BolsistaService bolsistaService, IHashids hashids, ClaimsPrincipal user) =>
         {
             var decodedIds = hashids.Decode(bolsistaIdHash);
