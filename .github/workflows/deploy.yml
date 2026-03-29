@@ -90,4 +90,11 @@ jobs:
             cd /home/usuario/pontodadanca
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose pull
-            docker compose up -d
+            
+            # Carrega as variáveis do arquivo .env para o sistema
+            set -a
+            source .env
+            set +a
+            
+            # Faz o deploy oficial dentro do ecossistema Swarm da VPS
+            docker stack deploy --with-registry-auth -c docker-compose.yml pontodadanca
