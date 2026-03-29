@@ -111,7 +111,6 @@ public static class AulaParticularEndpoints
                 JanelaReposicaoDias = cfg.ObterJanelaReposicaoDias()
             }))
         .WithName("ObterConfiguracoesAulasParticulares")
-        .WithOpenApi()
         .Produces<object>(StatusCodes.Status200OK);
 
         // ══════════════════════════════════════════════════════════

@@ -1,4 +1,13 @@
-﻿using Blazored.LocalStorage;
+﻿// ARQUIVO: Rascunho.Client/Security/CustomAuthStateProvider.cs
+//
+// ALTERAÇÃO — Segurança de tokens:
+//   1. GetAuthenticationStateAsync agora verifica se o token está expirado (claim "exp").
+//      Se expirado, limpa o localStorage e retorna usuário anônimo automaticamente.
+//   2. TokenEstaExpirado: método auxiliar que lê a claim "exp" e compara com UtcNow.
+//   Isso garante que mesmo que o token ainda exista no localStorage, ele não é aceito
+//   pelo cliente se a validade já foi ultrapassada.
+
+using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components.Authorization;
 using System.Net.Http.Headers;
 using System.Security.Claims;
@@ -24,6 +33,15 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         if (string.IsNullOrWhiteSpace(token))
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
 
+        // VERIFICAÇÃO DE EXPIRAÇÃO: se o token expirou, limpa a sessão e retorna anônimo.
+        // Isso impede acesso a partes do sistema com token vencido mesmo antes de
+        // uma chamada HTTP ser feita.
+        if (TokenEstaExpirado(token))
+        {
+            await LimparSessaoAsync();
+            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+        }
+
         // Define o header em TODAS as chamadas subsequentes do HttpClient
         _httpClient.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", token);
@@ -33,6 +51,46 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         var user = new ClaimsPrincipal(identity);
 
         return new AuthenticationState(user);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // VERIFICAÇÃO DE EXPIRAÇÃO
+    //
+    // Lê a claim "exp" do payload JWT (segundos desde epoch Unix) e
+    // compara com o horário UTC atual.
+    // Retorna true se o token estiver expirado ou malformado.
+    // ──────────────────────────────────────────────────────────────
+    private static bool TokenEstaExpirado(string token)
+    {
+        try
+        {
+            var payload = token.Split('.')[1];
+            var jsonBytes = ParseBase64WithoutPadding(payload);
+            var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonBytes);
+
+            if (dict == null || !dict.TryGetValue("exp", out var expRaw))
+                return false; // Sem claim exp → não rejeita (token sem expiração)
+
+            if (!long.TryParse(expRaw?.ToString(), out var expSeconds))
+                return false;
+
+            var expDateTime = DateTimeOffset.FromUnixTimeSeconds(expSeconds).UtcDateTime;
+            return DateTime.UtcNow >= expDateTime;
+        }
+        catch
+        {
+            return true; // Token malformado → trata como expirado
+        }
+    }
+
+    // Limpa todos os itens de sessão do LocalStorage
+    private async Task LimparSessaoAsync()
+    {
+        await _localStorage.RemoveItemAsync("authToken");
+        await _localStorage.RemoveItemAsync("userName");
+        await _localStorage.RemoveItemAsync("userType");
+        await _localStorage.RemoveItemAsync("userFotoUrl");
+        _httpClient.DefaultRequestHeaders.Authorization = null;
     }
 
     public void NotifyUserAuthentication(string token)

@@ -133,7 +133,7 @@
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Primary"
                                            Size="Size.Small"
-                                           OnClick="@(() => Matricular(turma.IdHash))">
+                                           OnClick="@(() => SolicitarConfirmacaoMatricula(turma))">
                                     Matricular
                                 </MudButton>
                             }
@@ -173,6 +173,61 @@
     }
 </MudContainer>
 
+@* ══════════════════════════════════════════════════════════════
+   DIALOG DE CONFIRMAÇÃO DE MATRÍCULA (Aluno / Bolsista)
+══════════════════════════════════════════════════════════════ *@
+<MudDialog @bind-Visible="_dialogMatriculaAberto"
+           Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.HowToReg" Class="mr-2" />
+            Confirmar Matrícula
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_turmaParaConfirmar != null)
+        {
+            <MudText Typo="Typo.body1" Class="mb-3">
+                Você está se matriculando na turma:
+            </MudText>
+            <MudPaper Elevation="0" Class="pa-3 mb-3 rounded-lg" Style="background:#f5f5f5;">
+                <MudText Typo="Typo.subtitle1" Class="font-weight-bold">
+                    @_turmaParaConfirmar.RitmoNome — @_turmaParaConfirmar.Nivel
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    📅 @DiaDaSemanaTexto(_turmaParaConfirmar.DiaDaSemana) &nbsp;·&nbsp;
+                    🕐 @_turmaParaConfirmar.HorarioInicio — @_turmaParaConfirmar.HorarioFim
+                </MudText>
+                @if (_turmaParaConfirmar.NomesProfessores.Any())
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        👨‍🏫 @string.Join(", ", _turmaParaConfirmar.NomesProfessores)
+                    </MudText>
+                }
+            </MudPaper>
+            <MudAlert Severity="Severity.Info" Dense="true" Icon="@Icons.Material.Filled.Payments">
+                Esta matrícula pode alterar o valor mensal do seu plano.
+                Em caso de dúvidas, consulte a recepção.
+            </MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _dialogMatriculaAberto = false)" Disabled="@_processandoMatricula">
+            Cancelar
+        </MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   OnClick="ConfirmarMatricula"
+                   Disabled="@_processandoMatricula">
+            @if (_processandoMatricula)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Confirmar matrícula
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     [CascadingParameter]
     private Task<AuthenticationState>? AuthStateTask { get; set; }
@@ -182,6 +237,11 @@
     private bool ehBolsista = false;  // BUG-002: controla desabilitar botão Matricular nos dias obrigatórios
     private bool estaLogado = false;
     private HashSet<int> diasObrigatorios = new(); // BUG-002: dias obrigatórios do bolsista (0=Dom..6=Sáb)
+
+    // ── Confirmação de matrícula ─────────────────────────────────
+    private TurmaDto? _turmaParaConfirmar;
+    private bool _dialogMatriculaAberto = false;
+    private bool _processandoMatricula = false;
     private string filtroRitmo = "Todos";
     private string filtroDia = "Todos";
     private string filtroProfessor = "Todos";
@@ -282,21 +342,38 @@
         };
     }
 
-    private async Task Matricular(string turmaIdHash)
+    // ── Matrícula com confirmação ────────────────────────────────
+    private void SolicitarConfirmacaoMatricula(TurmaDto turma)
     {
-        var payload = new { Papel = "Ambos" };
-        var response = await Http.PostAsJsonAsync($"api/turmas/{turmaIdHash}/matricular", payload);
+        _turmaParaConfirmar = turma;
+        _dialogMatriculaAberto = true;
+    }
 
-        if (response.IsSuccessStatusCode)
+    private async Task ConfirmarMatricula()
+    {
+        if (_turmaParaConfirmar == null) return;
+        _processandoMatricula = true;
+        try
         {
-            var msg = await response.Content.ReadAsStringAsync();
-            Snackbar.Add(msg, Severity.Success);
-            await CarregarTurmas();
+            var payload = new { Papel = "Ambos" };
+            var response = await Http.PostAsJsonAsync($"api/turmas/{_turmaParaConfirmar.IdHash}/matricular", payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(msg, Severity.Success);
+                _dialogMatriculaAberto = false;
+                await CarregarTurmas();
+            }
+            else
+            {
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Erro: {erro}", Severity.Warning);
+            }
         }
-        else
+        finally
         {
-            var erro = await response.Content.ReadAsStringAsync();
-            Snackbar.Add($"Erro: {erro}", Severity.Warning);
+            _processandoMatricula = false;
         }
     }
 

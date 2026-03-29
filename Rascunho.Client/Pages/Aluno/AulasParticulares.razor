@@ -1,8 +1,14 @@
-﻿@* 
+﻿@*
   ARQUIVO: Rascunho.Client/Pages/Aluno/AulasParticulares.razor
   ROTA:    /aulas-particulares
   ACESSO:  Aluno, Bolsista
 
+  ALTERAÇÃO — Filtros de aulas particulares:
+  1. Professor DEVE ser selecionado PRIMEIRO (campo ritmo desabilitado até então).
+  2. Após selecionar o professor, os ritmos disponíveis são carregados dinamicamente
+     via GET /api/professores/{idHash}/ritmos — retorna apenas ritmos que o professor
+     domina (turmas ativas + habilidades cadastradas).
+  3. Ao trocar o professor, o ritmo selecionado é resetado.
 *@
 
 @page "/aulas-particulares"
@@ -27,23 +33,30 @@
             <MudText Typo="Typo.h6" Class="mb-4">Solicitar Nova Aula</MudText>
 
             <EditForm Model="@novaAula" OnValidSubmit="SolicitarAula">
+
+                @* PASSO 1: Professor — obrigatório primeiro *@
                 <MudSelect T="string"
-                           @bind-Value="novaAula.ProfessorIdHash"
-                           Label="Professor"
+                           Value="@novaAula.ProfessorIdHash"
+                           ValueChanged="@OnProfessorChanged"
+                           Label="Professor *"
                            Variant="Variant.Outlined"
-                           Class="mb-4">
+                           Class="mb-4"
+                           HelperText="Selecione o professor para ver os ritmos disponíveis">
                     @foreach (var prof in professores)
                     {
                         <MudSelectItem T="string" Value="@prof.IdHash">@prof.Nome</MudSelectItem>
                     }
                 </MudSelect>
 
+                @* PASSO 2: Ritmo — habilitado apenas após selecionar professor *@
                 <MudSelect T="string"
                            @bind-Value="novaAula.RitmoIdHash"
-                           Label="Ritmo"
+                           Label="Ritmo *"
                            Variant="Variant.Outlined"
-                           Class="mb-4">
-                    @foreach (var ritmo in ritmos)
+                           Class="mb-4"
+                           Disabled="@(string.IsNullOrEmpty(novaAula.ProfessorIdHash) || carregandoRitmos)"
+                           HelperText="@(string.IsNullOrEmpty(novaAula.ProfessorIdHash) ? "Selecione o professor primeiro" : carregandoRitmos ? "Carregando ritmos..." : "")">
+                    @foreach (var ritmo in ritmosDoProfessor)
                     {
                         <MudSelectItem T="string" Value="@ritmo.IdHash">
                             @ritmo.Nome (@ritmo.Modalidade)
@@ -70,8 +83,8 @@
                                Class="mb-4"
                                AmPm="false" />
 
-                @* Preview do valor que será cobrado *@
-                @if (!string.IsNullOrEmpty(novaAula.RitmoIdHash))
+                @* Preview do valor que será cobrado (exibido quando professor e ritmo estão selecionados) *@
+                @if (!string.IsNullOrEmpty(novaAula.ProfessorIdHash) && !string.IsNullOrEmpty(novaAula.RitmoIdHash))
                 {
                     <MudAlert Severity="@(ehBolsista? Severity.Success: Severity.Info)"
                               Dense="true" Class="mb-4">
@@ -234,6 +247,7 @@
     private Task<AuthenticationState>? AuthStateTask { get; set; }
 
     private bool carregando = true;
+    private bool carregandoRitmos = false;
     private bool enviando = false;
     private bool processando = false;
     private bool dialogReagendarAberto = false;
@@ -242,7 +256,8 @@
 
     private List<AulaParticularDto> aulasParticulares = new();
     private List<ProfessorSimples> professores = new();
-    private List<RitmoSimples> ritmos = new();
+    // ALTERAÇÃO: ritmos agora são filtrados por professor selecionado
+    private List<RitmoSimples> ritmosDoProfessor = new();
     private AulaParticularDto? aulaParaReagendar;
 
     private SolicitarAulaRequest novaAula = new();
@@ -262,16 +277,14 @@
         }
 
         var profTask = Http.GetFromJsonAsync<List<ProfessorSimples>>("api/usuarios/tipo/Professor/ativos/lista");
-        var ritmoTask = Http.GetFromJsonAsync<List<RitmoSimples>>("api/ritmos/listar");
         var aulasTask = Http.GetFromJsonAsync<List<AulaParticularDto>>("api/aulas-particulares/minhas");
-        // ✅ CORREÇÃO BUG #1: Mudada rota de /api/gerente/configuracoes para /api/aulas-particulares/configuracoes
-        // A rota anterior retornava 403 porque requer role "Gerente"
         var configTask = Http.GetFromJsonAsync<ConfigDto>("api/aulas-particulares/configuracoes");
 
-        await Task.WhenAll(profTask, ritmoTask, aulasTask);
+        // ALTERAÇÃO: não carrega mais todos os ritmos de uma vez.
+        // Os ritmos são carregados dinamicamente quando o professor é selecionado.
+        await Task.WhenAll(profTask, aulasTask);
 
         professores = profTask.Result ?? new();
-        ritmos = (ritmoTask.Result ?? new()).Where(r => r.Ativo).ToList();
         aulasParticulares = aulasTask.Result ?? new();
 
         try
@@ -282,6 +295,38 @@
         catch { /* usa preço padrão */ }
 
         carregando = false;
+    }
+
+    // ALTERAÇÃO: chamado quando o professor é selecionado.
+    // Reseta o ritmo e carrega os ritmos do professor via API.
+    private async Task OnProfessorChanged(string professorIdHash)
+    {
+        novaAula.ProfessorIdHash = professorIdHash;
+        novaAula.RitmoIdHash = ""; // Reseta ritmo ao trocar professor
+        ritmosDoProfessor = new();
+
+        if (string.IsNullOrEmpty(professorIdHash)) return;
+
+        carregandoRitmos = true;
+        StateHasChanged();
+        try
+        {
+            var ritmos = await Http.GetFromJsonAsync<List<RitmoSimples>>(
+                $"api/professores/{professorIdHash}/ritmos");
+            ritmosDoProfessor = ritmos ?? new();
+
+            if (!ritmosDoProfessor.Any())
+                Snackbar.Add("Este professor não possui ritmos cadastrados para aulas particulares.", Severity.Warning);
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar ritmos do professor.", Severity.Error);
+        }
+        finally
+        {
+            carregandoRitmos = false;
+            StateHasChanged();
+        }
     }
 
     private async Task SolicitarAula()

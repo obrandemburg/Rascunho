@@ -1,9 +1,14 @@
-﻿@* 
+﻿@*
   FLUXO: MainLayout é o layout raiz. Ele envolve todas as páginas via @Body.
   MudThemeProvider aplica as cores globalmente via CSS Variables do MudBlazor.
-  
+
   SEGURANÇA: AuthorizeView aqui controla o que aparece na AppBar dependendo
   do estado de autenticação. Nenhuma dado sensível fica exposto antes do login.
+
+  ALTERAÇÃO: Foto de perfil no botão direito da AppBar.
+  - Remove o botão de logout separado.
+  - O MudMenu exibe foto/inicial, nome do usuário, Ver Perfil e Sair.
+  - FotoUrl é carregada do LocalStorage (persistida pelo AuthService no login).
 *@
 
 @inherits LayoutComponentBase
@@ -42,25 +47,37 @@
         *@
         <AuthorizeView>
             <Authorized Context="authContext">
-                <MudTooltip Text="Encerrar Sessão">
-                    <MudIconButton Icon="@Icons.Material.Filled.Logout"
-                                   Color="Color.Inherit"
-                                   OnClick="Sair"
-                                   Class="mr-2" />
-                </MudTooltip>
+                @*
+                  ALTERAÇÃO: Botão de logout separado REMOVIDO.
+                  O menu agora centraliza todas as ações do usuário:
+                  foto de perfil, nome, Ver Perfil e Sair.
+                *@
                 <MudMenu ActivationEvent="@MouseEvent.LeftClick"
                          AnchorOrigin="Origin.BottomRight"
                          TransformOrigin="Origin.TopRight">
                     <ActivatorContent>
-                        @* Avatar com inicial do nome — identificação visual rápida *@
-                        <MudAvatar Color="Color.Secondary">
-                            @authContext.User.Identity?.Name?.FirstOrDefault()
-                        </MudAvatar>
+                        @*
+                          Exibe a foto do usuário ou a inicial do nome como fallback.
+                          FotoUrl é carregada do LocalStorage em OnInitializedAsync.
+                        *@
+                        <MudTooltip Text="@authContext.User.Identity?.Name">
+                            <UserAvatar FotoUrl="@_fotoUrl"
+                                        Nome="@(authContext.User.Identity?.Name ?? "")"
+                                        Size="Size.Medium"
+                                        Color="Color.Secondary" />
+                        </MudTooltip>
                     </ActivatorContent>
                     <ChildContent>
+                        @* Cabeçalho do menu: nome do usuário *@
+                        <MudText Typo="Typo.subtitle2"
+                                 Class="px-4 pt-3 pb-1 mud-text-secondary"
+                                 Style="font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase;">
+                            @authContext.User.Identity?.Name
+                        </MudText>
+                        <MudDivider Class="my-1" />
                         <MudMenuItem Href="/perfil"
                                      Icon="@Icons.Material.Filled.Person">
-                            Meu Perfil
+                            Ver perfil
                         </MudMenuItem>
                         <MudMenuItem OnClick="Sair"
                                      Icon="@Icons.Material.Filled.Logout">
@@ -98,15 +115,28 @@
 @code {
     private bool _drawerOpen = true;
 
+    // URL da foto do usuário logado — carregada do LocalStorage após o login
+    private string _fotoUrl = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Recupera a foto do LocalStorage (foi salva pelo AuthService no login)
+        _fotoUrl = await LocalStorage.GetItemAsync<string>("userFotoUrl") ?? "";
+    }
+
     private async Task Sair()
     {
-        // 1. Remove token do localStorage (invalida sessão local)
+        // 1. Remove todos os itens de sessão do localStorage
         await LocalStorage.RemoveItemAsync("authToken");
-        
+        await LocalStorage.RemoveItemAsync("userName");
+        await LocalStorage.RemoveItemAsync("userType");
+        await LocalStorage.RemoveItemAsync("userFotoUrl");
+
         // 2. Notifica o CustomAuthStateProvider que não há mais usuário
         //    Isso força re-render de todos os AuthorizeView da aplicação
         ((CustomAuthStateProvider)AuthStateProvider).NotifyUserLogout();
-        
+
+        _fotoUrl = "";
         Snackbar.Add("Sessão encerrada com sucesso.", Severity.Info);
         NavigationManager.NavigateTo("/login");
     }

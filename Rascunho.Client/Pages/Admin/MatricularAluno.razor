@@ -316,11 +316,15 @@ else
                        @bind-Value="papelSelecionado"
                        Variant="Variant.Outlined"
                        HelperText="Pré-selecionado com base no gênero do aluno"
-                       Dense="true">
+                       Dense="true"
+                       Class="mb-3">
                 <MudSelectItem Value="@("Condutor")">🕺 Condutor</MudSelectItem>
                 <MudSelectItem Value="@("Conduzido")">💃 Conduzido</MudSelectItem>
                 <MudSelectItem Value="@("Ambos")">🔄 Ambos</MudSelectItem>
             </MudSelect>
+            <MudAlert Severity="Severity.Info" Dense="true" Icon="@Icons.Material.Filled.Payments">
+                Esta matrícula pode alterar o valor mensal do plano do aluno.
+            </MudAlert>
         }
     </DialogContent>
     <DialogActions>

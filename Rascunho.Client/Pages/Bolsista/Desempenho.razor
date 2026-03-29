@@ -1,12 +1,13 @@
-﻿@* 
+@*
   ARQUIVO: Rascunho.Client/Pages/Bolsista/Desempenho.razor
   ROTA:    /bolsista/desempenho
   ACESSO:  Bolsista
 
-  SPRINT 7:
-  - DesempenhoDto local agora inclui FotoUrl (campo novo em DesempenhoResponse)
-  - Cabeçalho da tela usa <UserAvatar> com a foto do bolsista logado
-  - Substituído MudAvatar estático por componente dinâmico
+  ALTERAÇÃO (unificação):
+  - Página "Relatório de Horas Semanais" REMOVIDA e suas informações incorporadas aqui.
+  - Filtros de período: semana atual, mês atual, últimos N meses (2, 3, 6, 12), tudo.
+  - Sistema de horas corrigido: meta = 6 AULAS de 50 minutos (não 6 horas reais).
+  - Frequência calculada sobre TODAS as aulas esperadas no período (não apenas com presença).
 *@
 
 @page "/bolsista/desempenho"
@@ -22,61 +23,62 @@
     <MudIcon Icon="@Icons.Material.Filled.Insights" Class="mr-2" />
     Meu Desempenho
 </MudText>
+<MudText Class="mb-4 mud-text-secondary">
+    Frequência, horas cumpridas e histórico de presenças unificados.
+</MudText>
 
-@* BUG-006: Seletor de período para o cálculo de frequência *@
-<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-6">
-    <MudText Typo="Typo.body2" Class="mud-text-secondary">Período:</MudText>
-    <MudChipSet T="string" @bind-SelectedValue="periodoSelecionado" Mandatory="true" SelectionMode="SelectionMode.SingleSelection">
-        <MudChip T="string" Value="@("30dias")" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">
-            Últimos 30 dias
-        </MudChip>
-        <MudChip T="string" Value="@("mes")" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">
-            Mês atual
-        </MudChip>
-        <MudChip T="string" Value="@("tudo")" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">
-            Todo período
-        </MudChip>
-    </MudChipSet>
-    <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary"
-               OnClick="CarregarDesempenho" Disabled="@carregando">
-        Atualizar
-    </MudButton>
-</MudStack>
+@* ── Filtros de período ──────────────────────────────────── *@
+<MudPaper Elevation="1" Class="pa-4 rounded-xl mb-6">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.body2" Class="mud-text-secondary mr-2">Período:</MudText>
+
+        <MudChipSet T="string" @bind-SelectedValue="periodoSelecionado"
+                    Mandatory="true" SelectionMode="SelectionMode.SingleSelection">
+            <MudChip T="string" Value="@("semana")" Color="Color.Primary"
+                     Variant="Variant.Filled" Size="Size.Small">
+                Esta semana
+            </MudChip>
+            <MudChip T="string" Value="@("mes")" Color="Color.Primary"
+                     Variant="Variant.Filled" Size="Size.Small">
+                Mês atual
+            </MudChip>
+            <MudChip T="string" Value="@("2meses")" Color="Color.Primary"
+                     Variant="Variant.Filled" Size="Size.Small">
+                2 meses
+            </MudChip>
+            <MudChip T="string" Value="@("3meses")" Color="Color.Primary"
+                     Variant="Variant.Filled" Size="Size.Small">
+                3 meses
+            </MudChip>
+            <MudChip T="string" Value="@("6meses")" Color="Color.Primary"
+                     Variant="Variant.Filled" Size="Size.Small">
+                6 meses
+            </MudChip>
+            <MudChip T="string" Value="@("30dias")" Color="Color.Primary"
+                     Variant="Variant.Filled" Size="Size.Small">
+                30 dias
+            </MudChip>
+            <MudChip T="string" Value="@("tudo")" Color="Color.Primary"
+                     Variant="Variant.Filled" Size="Size.Small">
+                Todo período
+            </MudChip>
+        </MudChipSet>
+
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary"
+                   OnClick="CarregarDados" Disabled="@carregando" Class="ml-2">
+            Atualizar
+        </MudButton>
+    </MudStack>
+</MudPaper>
 
 @if (carregando)
 {
     <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
 }
-else if (desempenho == null)
+else if (desempenho == null || relatorio == null)
 {
     <MudAlert Severity="Severity.Warning">
-        Não foi possível carregar seu desempenho. Tente novamente.
-    </MudAlert>
-}
-else if (desempenho.TotalAulasObrigatorias == 0 && desempenho.TotalAulasExtras == 0)
-{
-    @* ── Cabeçalho mesmo sem dados ──────────────────────────────── *@
-    <MudPaper Elevation="2" Class="pa-4 rounded-xl mb-6">
-        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
-            @*
-              SPRINT 7: UserAvatar usa a FotoUrl retornada pelo backend.
-              O bolsista pode ver sua própria foto no topo da tela de desempenho.
-            *@
-            <UserAvatar FotoUrl="@desempenho.FotoUrl"
-                        Nome="@desempenho.Nome"
-                        Size="Size.Large"
-                        Color="Color.Secondary" />
-            <div>
-                <MudText Typo="Typo.h6" Class="font-weight-bold">@desempenho.Nome</MudText>
-                <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                    Dias obrigatórios: @DiaDaSemana(desempenho.DiaObrigatorio1 ?? 0) e @DiaDaSemana(desempenho.DiaObrigatorio2 ?? 0)
-                </MudText>
-            </div>
-        </MudStack>
-    </MudPaper>
-
-    <MudAlert Severity="Severity.Info">
-        Nenhuma presença registrada ainda. Seus registros aparecerão aqui após as primeiras chamadas.
+        Não foi possível carregar seus dados. Tente novamente.
     </MudAlert>
 }
 else
@@ -97,186 +99,282 @@ else
         </MudStack>
     </MudPaper>
 
-    @* ── Cards de métricas principais ─────────────────────────── *@
+    @* ── Seção: Horas Semanais ────────────────────────────────────── *@
+    <MudText Typo="Typo.h6" Class="mb-3 font-weight-bold">
+        <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" Class="mr-1" />
+        Horas Semanais
+    </MudText>
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+        A meta semanal é de <strong>6 aulas de 50 minutos</strong> (5 horas de dança efetiva).
+        Solo conta por matrícula ativa; salão conta por presença registrada na semana.
+    </MudAlert>
+
     <MudGrid Class="mb-6">
-
-        @* Card 1: Frequência obrigatória *@
-        <MudItem xs="12" md="6">
-            <MudPaper Elevation="4" Class="pa-6 rounded-xl text-center"
-                      Style="@($"border-top: 6px solid {CorIndicador(desempenho.IndicadorSituacao)};")">
-                <MudText Typo="Typo.h2" Class="font-weight-bold"
-                         Style="@($"color: {CorIndicador(desempenho.IndicadorSituacao)};")">
-                    @desempenho.FrequenciaObrigatoriaPct%
+        <MudItem xs="12" sm="4">
+            <MudCard Elevation="4" Class="rounded-xl text-center pa-4"
+                     Style="@($"border-top: 4px solid {(relatorio.MetaAtingida ? "#4caf50" : "#fbc02d")};")">
+                <MudIcon Icon="@Icons.Material.Filled.Timer"
+                         Color="@(relatorio.MetaAtingida ? Color.Success : Color.Warning)"
+                         Style="font-size: 2rem;" Class="mb-1" />
+                <MudText Typo="Typo.h4" Class="font-weight-bold"
+                         Style="@($"color: {(relatorio.MetaAtingida ? "#4caf50" : "#fbc02d")};")">
+                    @relatorio.HorasCumpridasNaSemana h
                 </MudText>
-                <MudText Typo="Typo.h6" Class="mt-1">Frequência nos Dias Obrigatórios</MudText>
-                <MudText Typo="Typo.body1" Class="mt-2 font-weight-bold"
-                         Style="@($"color: {CorIndicador(desempenho.IndicadorSituacao)};")">
-                    @MensagemIndicador(desempenho.IndicadorSituacao)
-                </MudText>
-                <MudDivider Class="my-3" />
-                <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                    @desempenho.TotalPresencasObrigatorias presentes de @desempenho.TotalAulasObrigatorias aulas
-                </MudText>
-            </MudPaper>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Horas cumpridas</MudText>
+            </MudCard>
         </MudItem>
-
-        @* Card 2: Frequência extra (informativo) *@
-        @if (desempenho.TotalAulasExtras > 0)
-        {
-            <MudItem xs="12" md="6">
-                <MudPaper Elevation="3" Class="pa-6 rounded-xl text-center"
-                          Style="border-top: 6px solid #2196f3;">
-                    <MudText Typo="Typo.h2" Class="font-weight-bold" Color="Color.Info">
-                        @desempenho.FrequenciaExtraPct%
-                    </MudText>
-                    <MudText Typo="Typo.h6" Class="mt-1">Frequência nos Dias Extras</MudText>
-                    <MudText Typo="Typo.body2" Class="mt-2 mud-text-secondary">
-                        (informativo — não impacta o indicador principal)
-                    </MudText>
-                    <MudDivider Class="my-3" />
-                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                        @desempenho.TotalPresencasExtras presentes de @desempenho.TotalAulasExtras aulas extras
-                    </MudText>
-                </MudPaper>
-            </MudItem>
-        }
+        <MudItem xs="12" sm="4">
+            <MudCard Elevation="4" Class="rounded-xl text-center pa-4"
+                     Style="@($"border-top: 4px solid {(relatorio.MetaAtingida ? "#4caf50" : "#f44336")};")">
+                <MudIcon Icon="@(relatorio.MetaAtingida ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Warning)"
+                         Color="@(relatorio.MetaAtingida ? Color.Success : Color.Error)"
+                         Style="font-size: 2rem;" Class="mb-1" />
+                <MudText Typo="Typo.h4" Class="font-weight-bold"
+                         Style="@($"color: {(relatorio.MetaAtingida ? "#4caf50" : "#f44336")};")">
+                    @(relatorio.MetaAtingida ? "✓" : $"{relatorio.HorasFaltantes} h")
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    @(relatorio.MetaAtingida ? "Meta atingida!" : "Horas faltando")
+                </MudText>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudCard Elevation="4" Class="rounded-xl text-center pa-4"
+                     Style="border-top: 4px solid #2196f3;">
+                <MudIcon Icon="@Icons.Material.Filled.Flag" Color="Color.Info"
+                         Style="font-size: 2rem;" Class="mb-1" />
+                <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Info">5 h</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Meta (6 aulas)</MudText>
+            </MudCard>
+        </MudItem>
     </MudGrid>
 
-    @* ── Barra de progresso visual ──────────────────────────────── *@
-    <MudPaper Elevation="3" Class="pa-6 rounded-xl mb-6">
+    @* Barra de progresso semanal *@
+    <MudPaper Elevation="3" Class="pa-4 rounded-xl mb-6">
         <div class="d-flex justify-space-between mb-2">
-            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Progresso da Semana</MudText>
-            <MudText Typo="Typo.subtitle1"
-                     Color="@(desempenho.FrequenciaObrigatoriaPct >= 85 ? Color.Success : Color.Default)">
-                @desempenho.TotalPresencasObrigatorias / @desempenho.TotalAulasObrigatorias presenças
+            <MudText Typo="Typo.subtitle2" Class="font-weight-bold">Progresso da Semana</MudText>
+            <MudText Typo="Typo.subtitle2" Color="@(relatorio.MetaAtingida ? Color.Success : Color.Default)">
+                @relatorio.HorasCumpridasNaSemana / 5h (meta)
             </MudText>
         </div>
-        <MudProgressLinear Color="@(desempenho.IndicadorSituacao == "Excelente" ? Color.Success
-                                                      : desempenho.IndicadorSituacao == "Vamos melhorar" ? Color.Warning
-                                                      : Color.Error)"
-                           Value="@desempenho.FrequenciaObrigatoriaPct"
-                           Size="Size.Large"
-                           Rounded="true"
-                           Class="mb-4"
-                           Style="height: 20px;" />
-
-        @if (desempenho.IndicadorSituacao == "Excelente")
+        <MudProgressLinear Color="@(relatorio.MetaAtingida ? Color.Success : (relatorio.HorasCumpridasNaSemana >= 3 ? Color.Warning : Color.Error))"
+                           Value="@(Math.Min(relatorio.HorasCumpridasNaSemana / 5.0 * 100, 100))"
+                           Size="Size.Large" Rounded="true" Class="mb-3" Style="height: 16px;" />
+        @if (relatorio.MetaAtingida)
         {
             <MudAlert Severity="Severity.Success" Dense="true">
-                🎉 Excelente frequência! Continue assim.
+                🎉 Parabéns! Meta de 6 aulas atingida esta semana!
             </MudAlert>
         }
-        else if (desempenho.IndicadorSituacao is "Vamos melhorar" or "Atenção")
+        else
         {
-            <MudAlert Severity="Severity.Warning" Dense="true">
-                Você precisa melhorar a presença nos seus dias obrigatórios.
-                Converse com o líder se precisar de ajuda.
-            </MudAlert>
-        }
-        else if (desempenho.IndicadorSituacao == "Crítico")
-        {
-            <MudAlert Severity="Severity.Error" Dense="true">
-                ⚠️ Frequência crítica. Converse imediatamente com o líder sobre sua situação.
+            <MudAlert Severity="@(relatorio.HorasFaltantes <= 1.5 ? Severity.Warning : Severity.Error)" Dense="true">
+                Faltam <strong>@relatorio.HorasFaltantes h</strong> para a meta semanal.
+                Veja as <MudLink Href="/bolsista/turmas-recomendadas" Color="Color.Error">turmas recomendadas</MudLink>!
             </MudAlert>
         }
     </MudPaper>
 
-    @* ── Histórico aula-a-aula ──────────────────────────────────── *@
-    @* BUG-006: título indica o período selecionado *@
-    <MudText Typo="Typo.h6" Class="mb-3">
-        Histórico — @(periodoSelecionado switch {
-            "mes"  => "Mês Atual",
-            "tudo" => "Todo o Período",
-            _      => "Últimos 30 Dias"
-        })
+    @* ── Seção: Frequência nos dias obrigatórios ────────────────── *@
+    <MudText Typo="Typo.h6" Class="mb-3 font-weight-bold">
+        <MudIcon Icon="@Icons.Material.Filled.Insights" Size="Size.Small" Class="mr-1" />
+        Frequência — @TituloPeriodo(periodoSelecionado)
     </MudText>
-    <MudTable T="HistoricoItemDto"
-              Items="@desempenho.Historico"
-              Hover="true" Dense="true"
-              Elevation="3" Class="rounded-xl">
-        <HeaderContent>
-            <MudTh>Data</MudTh>
-            <MudTh>Turma</MudTh>
-            <MudTh>Professor</MudTh>
-            <MudTh>Tipo</MudTh>
-            <MudTh>Presença</MudTh>
-        </HeaderContent>
-        <RowTemplate Context="item">
-            <MudTd>@item.DataAula.ToString("dd/MM/yyyy")</MudTd>
-            <MudTd>@item.NomeTurma</MudTd>
-            <MudTd>@item.NomeProfessor</MudTd>
-            <MudTd>
-                @if (item.EhDiaObrigatorio)
-                {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">
-                        Obrigatório
-                    </MudChip>
-                }
-                else
-                {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
-                        Extra
-                    </MudChip>
-                }
-            </MudTd>
-            <MudTd>
-                @if (item.Presente)
-                {
-                    <MudText Color="Color.Success">✅ Presente</MudText>
-                }
-                else
-                {
-                    <MudText Color="Color.Error">❌ Falta</MudText>
-                }
-            </MudTd>
-        </RowTemplate>
-    </MudTable>
+
+    @if (desempenho.TotalAulasObrigatorias == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-6">
+            Nenhuma aula obrigatória registrada no período selecionado.
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid Class="mb-6">
+            <MudItem xs="12" md="6">
+                <MudPaper Elevation="4" Class="pa-6 rounded-xl text-center"
+                          Style="@($"border-top: 6px solid {CorIndicador(desempenho.IndicadorSituacao)};")">
+                    <MudText Typo="Typo.h2" Class="font-weight-bold"
+                             Style="@($"color: {CorIndicador(desempenho.IndicadorSituacao)};")">
+                        @desempenho.FrequenciaObrigatoriaPct%
+                    </MudText>
+                    <MudText Typo="Typo.h6" Class="mt-1">Frequência nos Dias Obrigatórios</MudText>
+                    <MudText Typo="Typo.body1" Class="mt-2 font-weight-bold"
+                             Style="@($"color: {CorIndicador(desempenho.IndicadorSituacao)};")">
+                        @MensagemIndicador(desempenho.IndicadorSituacao)
+                    </MudText>
+                    <MudDivider Class="my-3" />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        @desempenho.TotalPresencasObrigatorias presentes de @desempenho.TotalAulasObrigatorias aulas esperadas
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+            @if (desempenho.TotalAulasExtras > 0)
+            {
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="3" Class="pa-6 rounded-xl text-center"
+                              Style="border-top: 6px solid #2196f3;">
+                        <MudText Typo="Typo.h2" Class="font-weight-bold" Color="Color.Info">
+                            @desempenho.FrequenciaExtraPct%
+                        </MudText>
+                        <MudText Typo="Typo.h6" Class="mt-1">Frequência nos Dias Extras</MudText>
+                        <MudText Typo="Typo.body2" Class="mt-2 mud-text-secondary">
+                            (informativo — não impacta o indicador principal)
+                        </MudText>
+                        <MudDivider Class="my-3" />
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            @desempenho.TotalPresencasExtras presentes de @desempenho.TotalAulasExtras aulas extras
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <MudPaper Elevation="3" Class="pa-6 rounded-xl mb-6">
+            <div class="d-flex justify-space-between mb-2">
+                <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Progresso de Frequência</MudText>
+                <MudText Typo="Typo.subtitle1"
+                         Color="@(desempenho.FrequenciaObrigatoriaPct >= 85 ? Color.Success : Color.Default)">
+                    @desempenho.TotalPresencasObrigatorias / @desempenho.TotalAulasObrigatorias presenças
+                </MudText>
+            </div>
+            <MudProgressLinear Color="@(desempenho.IndicadorSituacao == "Excelente" ? Color.Success
+                                                          : desempenho.IndicadorSituacao == "Vamos melhorar" ? Color.Warning
+                                                          : Color.Error)"
+                               Value="@desempenho.FrequenciaObrigatoriaPct"
+                               Size="Size.Large" Rounded="true" Class="mb-4" Style="height: 20px;" />
+
+            @if (desempenho.IndicadorSituacao == "Excelente")
+            {
+                <MudAlert Severity="Severity.Success" Dense="true">🎉 Excelente frequência! Continue assim.</MudAlert>
+            }
+            else if (desempenho.IndicadorSituacao is "Vamos melhorar" or "Atenção")
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true">
+                    Você precisa melhorar a presença nos seus dias obrigatórios.
+                </MudAlert>
+            }
+            else if (desempenho.IndicadorSituacao == "Crítico")
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">
+                    ⚠️ Frequência crítica. Converse imediatamente com o líder sobre sua situação.
+                </MudAlert>
+            }
+        </MudPaper>
+    }
+
+    @* ── Histórico aula-a-aula ──────────────────────────────────── *@
+    @if (desempenho.Historico.Any())
+    {
+        <MudText Typo="Typo.h6" Class="mb-3 font-weight-bold">
+            <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" Class="mr-1" />
+            Histórico de Presenças
+        </MudText>
+        <MudTable T="HistoricoItemDto" Items="@desempenho.Historico"
+                  Hover="true" Dense="true" Elevation="3" Class="rounded-xl">
+            <HeaderContent>
+                <MudTh>Data</MudTh>
+                <MudTh>Turma</MudTh>
+                <MudTh>Professor</MudTh>
+                <MudTh>Tipo</MudTh>
+                <MudTh>Presença</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="item">
+                <MudTd>@item.DataAula.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@item.NomeTurma</MudTd>
+                <MudTd>@item.NomeProfessor</MudTd>
+                <MudTd>
+                    @if (item.EhDiaObrigatorio)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">
+                            Obrigatório
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                            Extra
+                        </MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    @if (item.Presente)
+                    {
+                        <MudText Color="Color.Success">✅ Presente</MudText>
+                    }
+                    else
+                    {
+                        <MudText Color="Color.Error">❌ Falta</MudText>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
 }
 
 @code {
     private bool carregando = true;
     private DesempenhoDto? desempenho;
-    // BUG-006: padrão de 30 dias para evitar indicadores enganosos baseados em histórico antigo
-    private string periodoSelecionado = "30dias";
+    private RelatorioDto? relatorio;
+    private string periodoSelecionado = "mes";
 
     protected override async Task OnInitializedAsync()
     {
-        await CarregarDesempenho();
+        await CarregarDados();
     }
 
-    // BUG-006: método separado para permitir recarregar ao mudar o período
-    private async Task CarregarDesempenho()
+    private async Task CarregarDados()
     {
         carregando = true;
         try
         {
-            desempenho = await Http.GetFromJsonAsync<DesempenhoDto>(
+            var desempenhoTask = Http.GetFromJsonAsync<DesempenhoDto>(
                 $"api/bolsistas/meu-desempenho?periodo={periodoSelecionado}");
+            // Novo endpoint: o próprio bolsista chama sem precisar do hash
+            var relatorioTask = Http.GetFromJsonAsync<RelatorioDto>(
+                "api/bolsistas/meu-relatorio-horas");
+
+            await Task.WhenAll(desempenhoTask, relatorioTask);
+
+            desempenho = desempenhoTask.Result;
+            relatorio = relatorioTask.Result;
         }
         catch
         {
-            Snackbar.Add("Erro ao carregar desempenho.", Severity.Error);
+            Snackbar.Add("Erro ao carregar dados de desempenho.", Severity.Error);
         }
         finally { carregando = false; }
     }
 
+    private string TituloPeriodo(string periodo) => periodo switch
+    {
+        "semana"  => "Esta Semana",
+        "mes"     => "Mês Atual",
+        "30dias"  => "Últimos 30 Dias",
+        "2meses"  => "Últimos 2 Meses",
+        "3meses"  => "Últimos 3 Meses",
+        "6meses"  => "Últimos 6 Meses",
+        "tudo"    => "Todo o Período",
+        _         => periodo
+    };
+
     private string CorIndicador(string indicador) => indicador switch
     {
-        "Excelente" => "#4caf50",
+        "Excelente"      => "#4caf50",
         "Vamos melhorar" => "#ff9800",
-        "Atenção" => "#f44336",
-        "Crítico" => "#b71c1c",
-        _ => "#9e9e9e"
+        "Atenção"        => "#f44336",
+        "Crítico"        => "#b71c1c",
+        _                => "#9e9e9e"
     };
 
     private string MensagemIndicador(string indicador) => indicador switch
     {
-        "Excelente" => "Excelente! Continue assim. 🌟",
+        "Excelente"      => "Excelente! Continue assim. 🌟",
         "Vamos melhorar" => "Vamos melhorar! Você está quase lá.",
-        "Atenção" => "Atenção: está tudo bem? Converse com o líder.",
-        "Crítico" => "⚠️ Converse imediatamente com o líder sobre sua frequência.",
-        "Sem registros" => "Aguardando primeiros registros de presença.",
-        _ => indicador
+        "Atenção"        => "Atenção: está tudo bem? Converse com o líder.",
+        "Crítico"        => "⚠️ Converse imediatamente com o líder sobre sua frequência.",
+        "Sem registros"  => "Aguardando primeiros registros de presença.",
+        _                => indicador
     };
 
     private string DiaDaSemana(int dia) => dia switch
@@ -290,17 +388,12 @@ else
         _ => "domingo"
     };
 
-    // ──────────────────────────────────────────────────────────────
-    // DTO LOCAL — espelha DesempenhoResponse do backend.
-    //
-    // SPRINT 7: FotoUrl adicionado na posição 3 (após Nome),
-    // correspondendo à nova declaração em BolsistaDTOs.cs.
-    // ──────────────────────────────────────────────────────────────
+    // DTOs
     public class DesempenhoDto
     {
         public string BolsistaIdHash { get; set; } = "";
         public string Nome { get; set; } = "";
-        public string FotoUrl { get; set; } = "";   // ← NOVO Sprint 7
+        public string FotoUrl { get; set; } = "";
         public int? DiaObrigatorio1 { get; set; }
         public int? DiaObrigatorio2 { get; set; }
         public double FrequenciaObrigatoriaPct { get; set; }
@@ -320,5 +413,14 @@ else
         public string NomeProfessor { get; set; } = "";
         public bool Presente { get; set; }
         public bool EhDiaObrigatorio { get; set; }
+    }
+
+    public class RelatorioDto
+    {
+        public string BolsistaIdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public double HorasCumpridasNaSemana { get; set; }
+        public double HorasFaltantes { get; set; }
+        public bool MetaAtingida { get; set; }
     }
 }

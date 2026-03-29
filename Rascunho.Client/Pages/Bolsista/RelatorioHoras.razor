@@ -32,6 +32,11 @@
   - MetaAtingida = HorasCumpridasNaSemana >= 6
 *@
 
+@* ══════════════════════════════════════════════════════════════
+   PÁGINA LEGADA — redirect para /bolsista/desempenho
+   O conteúdo desta página foi unificado em Desempenho.razor
+   (Tasks 4+5). Mantida apenas para não quebrar bookmarks antigos.
+══════════════════════════════════════════════════════════════ *@
 @page "/bolsista/relatorio-horas"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -39,6 +44,7 @@
 @attribute [Authorize(Roles = "Bolsista")]
 @inject HttpClient Http
 @inject ISnackbar Snackbar
+@inject NavigationManager NavManager
 
 <PageTitle>Relatório de Horas — Ponto da Dança</PageTitle>
 
@@ -182,7 +188,9 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        await CarregarRelatorio();
+        // Redireciona para a página unificada de desempenho (Tasks 4+5)
+        NavManager.NavigateTo("/bolsista/desempenho", replace: true);
+        await Task.CompletedTask;
     }
 
     private async Task CarregarRelatorio()
