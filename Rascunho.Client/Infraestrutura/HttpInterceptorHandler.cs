@@ -1,10 +1,9 @@
 ﻿// ARQUIVO: Rascunho.Client/Infraestrutura/HttpInterceptorHandler.cs
 //
-// ALTERAÇÃO — Logout automático em 401:
-//   Quando o backend retorna HTTP 401 (Unauthorized), o interceptador agora
-//   limpa o LocalStorage e redireciona para /login automaticamente.
-//   Isso garante que um token expirado — mesmo que não detectado no cliente —
-//   resulte em logout ao tentar acessar um endpoint protegido.
+// ALTERAÇÃO — Logout automático em 401 e Correção de Loop Infinito (100%):
+//   O construtor agora recebe apenas o IServiceProvider.
+//   Os demais serviços são instanciados dinamicamente sob demanda para evitar 
+//   a Dependência Circular que travava o carregamento do Blazor WebAssembly.
 
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -12,33 +11,21 @@ using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using Rascunho.Client.Security;
 using Rascunho.Shared.DTOs;
 
 namespace Rascunho.Client.Infraestrutura;
 
-// Herda de DelegatingHandler para entrar no "meio" do pipeline HTTP
 public class HttpInterceptorHandler : DelegatingHandler
 {
-    private readonly IWebAssemblyHostEnvironment _env;
-    private readonly ISnackbar _snackbar;
-    private readonly ILocalStorageService _localStorage;
-    private readonly AuthenticationStateProvider _authStateProvider;
-    private readonly NavigationManager _navigationManager;
+    private readonly IServiceProvider _serviceProvider;
 
-    public HttpInterceptorHandler(
-        IWebAssemblyHostEnvironment env,
-        ISnackbar snackbar,
-        ILocalStorageService localStorage,
-        AuthenticationStateProvider authStateProvider,
-        NavigationManager navigationManager)
+    public HttpInterceptorHandler(IServiceProvider serviceProvider)
     {
-        _env = env;
-        _snackbar = snackbar;
-        _localStorage = localStorage;
-        _authStateProvider = authStateProvider;
-        _navigationManager = navigationManager;
+        // Injeta apenas o Provedor de Serviços para quebrar a dependência circular
+        _serviceProvider = serviceProvider;
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -55,20 +42,26 @@ public class HttpInterceptorHandler : DelegatingHandler
         Console.WriteLine($"[INTERCEPTADOR] Falha HTTP {(int)response.StatusCode} na rota {request.RequestUri}");
         Console.WriteLine($"[INTERCEPTADOR] Resposta: {corpo}");
 
+        // Resolvendo as dependências apenas quando necessárias (Lazy Loading)
+        var localStorage = _serviceProvider.GetRequiredService<ILocalStorageService>();
+        var authStateProvider = _serviceProvider.GetRequiredService<AuthenticationStateProvider>();
+        var navigationManager = _serviceProvider.GetRequiredService<NavigationManager>();
+        var snackbar = _serviceProvider.GetRequiredService<ISnackbar>();
+        var env = _serviceProvider.GetRequiredService<IWebAssemblyHostEnvironment>();
+
         // ── 401 UNAUTHORIZED: token expirado ou inválido ──────────
         // Remove a sessão do localStorage e redireciona para login.
-        // Isso garante logout automático quando o token expira no servidor.
         if ((int)response.StatusCode == 401)
         {
-            await _localStorage.RemoveItemAsync("authToken");
-            await _localStorage.RemoveItemAsync("userName");
-            await _localStorage.RemoveItemAsync("userType");
-            await _localStorage.RemoveItemAsync("userFotoUrl");
+            await localStorage.RemoveItemAsync("authToken");
+            await localStorage.RemoveItemAsync("userName");
+            await localStorage.RemoveItemAsync("userType");
+            await localStorage.RemoveItemAsync("userFotoUrl");
 
-            ((CustomAuthStateProvider)_authStateProvider).NotifyUserLogout();
+            ((CustomAuthStateProvider)authStateProvider).NotifyUserLogout();
 
-            _snackbar.Add("Sua sessão expirou. Faça login novamente.", Severity.Warning);
-            _navigationManager.NavigateTo("/login");
+            snackbar.Add("Sua sessão expirou. Faça login novamente.", Severity.Warning);
+            navigationManager.NavigateTo("/login");
             return response;
         }
 
@@ -84,20 +77,20 @@ public class HttpInterceptorHandler : DelegatingHandler
                 var primeiraMensagem = problema?.Errors?.Values.FirstOrDefault()?.FirstOrDefault();
                 if (primeiraMensagem != null) mensagemUsuario = primeiraMensagem;
 
-                _snackbar.Add(mensagemUsuario, Severity.Warning);
+                snackbar.Add(mensagemUsuario, Severity.Warning);
             }
             else if ((int)response.StatusCode == 422) // Regras de Negócio
             {
                 var erroNegocio = JsonSerializer.Deserialize<ErroGenericoDto>(corpo, jsonOptions);
                 if (erroNegocio?.Erro != null) mensagemUsuario = erroNegocio.Erro;
 
-                _snackbar.Add(mensagemUsuario, Severity.Error);
+                snackbar.Add(mensagemUsuario, Severity.Error);
             }
             else // Erro 500 ou outros (404, 403)
             {
                 var erro500 = JsonSerializer.Deserialize<ErroGenericoDto>(corpo, jsonOptions);
 
-                _snackbar.Add(erro500?.Erro ?? mensagemUsuario, Severity.Error);
+                snackbar.Add(erro500?.Erro ?? mensagemUsuario, Severity.Error);
 
                 Console.WriteLine($"=== ERRO HTTP {(int)response.StatusCode} ===");
                 Console.WriteLine($"URL: {request.RequestUri}");
@@ -108,8 +101,8 @@ public class HttpInterceptorHandler : DelegatingHandler
         catch
         {
             // Se o JSON vier quebrado ou o backend mandar HTML de erro
-            _snackbar.Add(mensagemUsuario, Severity.Error);
-            if (_env.IsDevelopment()) Console.WriteLine($"Erro bruto: {corpo}");
+            snackbar.Add(mensagemUsuario, Severity.Error);
+            if (env.IsDevelopment()) Console.WriteLine($"Erro bruto: {corpo}");
         }
 
         // Retorna a resposta para o componente (caso ele ainda queira checar o StatusCode)
