@@ -91,10 +91,8 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose pull
             
-            # Carrega as variáveis do arquivo .env para o sistema
-            set -a
-            source .env
-            set +a
+            # Segredo do Swarm: O Compose lê o .env nativamente e gera um arquivo com as variáveis preenchidas
+            docker compose config > docker-stack-pronto.yml
             
-            # Faz o deploy oficial dentro do ecossistema Swarm da VPS
-            docker stack deploy --with-registry-auth -c docker-compose.yml pontodadanca
+            # O Swarm faz o deploy oficial com segurança
+            docker stack deploy --with-registry-auth -c docker-stack-pronto.yml pontodadanca
