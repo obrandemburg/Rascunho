@@ -91,8 +91,11 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose pull
             
-            # Segredo do Swarm: O Compose lê o .env nativamente e gera um arquivo com as variáveis preenchidas
+            # O Compose lê o .env e gera o arquivo (mas coloca aspas na porta)
             docker compose config > docker-stack-pronto.yml
+            
+            # TRUQUE: Usa o sed para remover as aspas apenas da linha da porta, consertando o bug
+            sed -i 's/published: "54321"/published: 54321/g' docker-stack-pronto.yml
             
             # O Swarm faz o deploy oficial com segurança
             docker stack deploy --with-registry-auth -c docker-stack-pronto.yml pontodadanca
