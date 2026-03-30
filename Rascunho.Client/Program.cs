@@ -13,18 +13,36 @@ builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 // 1. Registra o Interceptador
-builder.Services.AddTransient<HttpInterceptorHandler>();
+// ALTERAÇÃO: mudado para AddScoped para permitir injeção de serviços Scoped
+// (ILocalStorageService, AuthenticationStateProvider, NavigationManager)
+// necessários para o logout automático em 401.
+builder.Services.AddScoped<HttpInterceptorHandler>();
 
-// 2. Injeta o HttpClient FORÇANDO ele a passar pelo interceptador
+//    ┌─────────────────────────────────────────────────────────────────┐
+//    │  Mecanismo de seleção da URL base da API                        │
+//    │                                                                 │
+//    │  Development (dotnet run / VS local):                           │
+//    │    → builder.HostEnvironment.IsDevelopment() == true            │
+//    │    → Lê "ApiBaseUrl" de appsettings.Development.json            │
+//    │    → Fallback: http://localhost:5132/                           │
+//    │                                                                 │
+//    │  Production (container publicado):                              │
+//    │    → builder.HostEnvironment.IsDevelopment() == false           │
+//    │    → Aponta para o próprio domínio seguro carregado pelo Traefik│
+//    └─────────────────────────────────────────────────────────────────┘
+
+var apiBaseUrl = builder.HostEnvironment.IsDevelopment()
+    ? builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5132/"
+    : builder.HostEnvironment.BaseAddress; // Resolve automaticamente para https://pontodadanca...
+
 builder.Services.AddScoped(sp =>
 {
     var interceptor = sp.GetRequiredService<HttpInterceptorHandler>();
-    // Garante que o interceptador tenha um motor base para fazer a requisição na web
     interceptor.InnerHandler = new HttpClientHandler();
 
     return new HttpClient(interceptor)
     {
-        BaseAddress = new Uri("http://5.161.202.169:8080/")
+        BaseAddress = new Uri(apiBaseUrl)
     };
 });
 

@@ -1,7 +1,19 @@
-﻿using System.Net.Http.Json;
+﻿// ARQUIVO: Rascunho.Client/Infraestrutura/HttpInterceptorHandler.cs
+//
+// ALTERAÇÃO — Logout automático em 401:
+//   Quando o backend retorna HTTP 401 (Unauthorized), o interceptador agora
+//   limpa o LocalStorage e redireciona para /login automaticamente.
+//   Isso garante que um token expirado — mesmo que não detectado no cliente —
+//   resulte em logout ao tentar acessar um endpoint protegido.
+
+using System.Net.Http.Json;
 using System.Text.Json;
+using Blazored.LocalStorage;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor;
+using Rascunho.Client.Security;
 using Rascunho.Shared.DTOs;
 
 namespace Rascunho.Client.Infraestrutura;
@@ -11,11 +23,22 @@ public class HttpInterceptorHandler : DelegatingHandler
 {
     private readonly IWebAssemblyHostEnvironment _env;
     private readonly ISnackbar _snackbar;
+    private readonly ILocalStorageService _localStorage;
+    private readonly AuthenticationStateProvider _authStateProvider;
+    private readonly NavigationManager _navigationManager;
 
-    public HttpInterceptorHandler(IWebAssemblyHostEnvironment env, ISnackbar snackbar)
+    public HttpInterceptorHandler(
+        IWebAssemblyHostEnvironment env,
+        ISnackbar snackbar,
+        ILocalStorageService localStorage,
+        AuthenticationStateProvider authStateProvider,
+        NavigationManager navigationManager)
     {
         _env = env;
         _snackbar = snackbar;
+        _localStorage = localStorage;
+        _authStateProvider = authStateProvider;
+        _navigationManager = navigationManager;
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -29,9 +52,25 @@ public class HttpInterceptorHandler : DelegatingHandler
         // --- SE CAIU AQUI, DEU ERRO ---
         var corpo = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        // FORÇA IMPRIMIR NO CONSOLE (F12) PARA VOCÊ VER NA VPS!
         Console.WriteLine($"[INTERCEPTADOR] Falha HTTP {(int)response.StatusCode} na rota {request.RequestUri}");
         Console.WriteLine($"[INTERCEPTADOR] Resposta: {corpo}");
+
+        // ── 401 UNAUTHORIZED: token expirado ou inválido ──────────
+        // Remove a sessão do localStorage e redireciona para login.
+        // Isso garante logout automático quando o token expira no servidor.
+        if ((int)response.StatusCode == 401)
+        {
+            await _localStorage.RemoveItemAsync("authToken");
+            await _localStorage.RemoveItemAsync("userName");
+            await _localStorage.RemoveItemAsync("userType");
+            await _localStorage.RemoveItemAsync("userFotoUrl");
+
+            ((CustomAuthStateProvider)_authStateProvider).NotifyUserLogout();
+
+            _snackbar.Add("Sua sessão expirou. Faça login novamente.", Severity.Warning);
+            _navigationManager.NavigateTo("/login");
+            return response;
+        }
 
         string mensagemUsuario = "Ocorreu um erro inesperado.";
 
@@ -54,21 +93,16 @@ public class HttpInterceptorHandler : DelegatingHandler
 
                 _snackbar.Add(mensagemUsuario, Severity.Error);
             }
-            else // Erro 500 ou outros (404, 401, 403)
+            else // Erro 500 ou outros (404, 403)
             {
                 var erro500 = JsonSerializer.Deserialize<ErroGenericoDto>(corpo, jsonOptions);
 
-                // Exibe só a mensagem genérica na UI
                 _snackbar.Add(erro500?.Erro ?? mensagemUsuario, Severity.Error);
 
-                // LOGA OS DETALHES NO CONSOLE APENAS EM DESENVOLVIMENTO
-                //if (_env.IsDevelopment())
-                //{
-                    Console.WriteLine($"=== ERRO HTTP {(int)response.StatusCode} ===");
-                    Console.WriteLine($"URL: {request.RequestUri}");
-                    Console.WriteLine($"Detalhes: {erro500?.Detalhes ?? corpo}");
-                    Console.WriteLine("===========================");
-                //}
+                Console.WriteLine($"=== ERRO HTTP {(int)response.StatusCode} ===");
+                Console.WriteLine($"URL: {request.RequestUri}");
+                Console.WriteLine($"Detalhes: {erro500?.Detalhes ?? corpo}");
+                Console.WriteLine("===========================");
             }
         }
         catch
