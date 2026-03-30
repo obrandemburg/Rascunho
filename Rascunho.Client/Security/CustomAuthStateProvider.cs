@@ -36,10 +36,18 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
         // VERIFICAÇÃO DE EXPIRAÇÃO: se o token expirou, limpa a sessão e retorna anônimo.
         // Isso impede acesso a partes do sistema com token vencido mesmo antes de
         // uma chamada HTTP ser feita.
+        //
+        // NotifyAuthenticationStateChanged é chamado após LimparSessaoAsync para garantir
+        // que TODOS os componentes que escutam o estado de autenticação (AuthorizeView,
+        // CascadingAuthenticationState, etc.) sejam atualizados. Sem essa notificação,
+        // componentes já renderizados continuariam exibindo conteúdo autenticado mesmo
+        // após a detecção da expiração do token.
         if (TokenEstaExpirado(token))
         {
             await LimparSessaoAsync();
-            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+            var estadoAnonimo = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+            NotifyAuthenticationStateChanged(Task.FromResult(estadoAnonimo));
+            return estadoAnonimo;
         }
 
         // Define o header em TODAS as chamadas subsequentes do HttpClient

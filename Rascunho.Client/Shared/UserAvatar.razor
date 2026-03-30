@@ -1,4 +1,4 @@
-﻿@* 
+﻿@*
   ARQUIVO: Rascunho.Client/Shared/UserAvatar.razor
 
   SPRINT 7 — Componente centralizado de avatar de usuário.
@@ -25,24 +25,28 @@
   COMO FUNCIONA:
   1. Tenta renderizar a <img> dentro do MudAvatar se FotoUrl não está vazio.
   2. O <img> usa object-fit:cover para preencher o círculo sem deformar.
-  3. Se a URL falhar (404, timeout), o browser simplesmente não renderiza o <img>
-     — o MudAvatar fica visível com a cor de fundo, sem erro para o usuário.
-  4. Fallback com a inicial do Nome quando FotoUrl é vazio/nulo.
+  3. CORREÇÃO: Se a URL falhar (404, host inacessível, etc.), o handler @onerror
+     seta _imgErro = true, causando re-render e exibindo a inicial do nome
+     em vez do texto do atributo alt que o browser exibia no espaço da imagem.
+  4. Fallback com a inicial do Nome quando FotoUrl é vazio/nulo ou ao erro de carga.
+  5. OnParametersSet reseta _imgErro quando FotoUrl muda (troca de usuário/foto).
 *@
 
 @using MudBlazor
 
-@if (!string.IsNullOrWhiteSpace(FotoUrl))
+@if (FotoUrlNormalizada != null && !_imgErro)
 {
     @*
       Exibe a foto dentro de um MudAvatar.
-      border-radius: 50% garante que a imagem respeita o shape circular do Avatar.
-      overflow: hidden no MudAvatar já cuida disso no MudBlazor, mas
-      definimos aqui como garantia extra para qualquer versão do componente.
+      src usa FotoUrlNormalizada (caminho relativo) para funcionar em qualquer ambiente
+      sem depender do host onde a foto foi originalmente carregada.
+      @onerror: captura falha de carregamento (arquivo não encontrado, permissão, etc.)
+      e seta _imgErro = true, forçando re-render para o fallback com a inicial.
     *@
     <MudAvatar Size="@Size" Color="@Color" Style="overflow: hidden; padding: 0;">
-        <img src="@FotoUrl"
-             alt="Foto de @Nome"
+        <img src="@FotoUrlNormalizada"
+             alt=""
+             @onerror="OnImageError"
              style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block;" />
     </MudAvatar>
 }
@@ -50,7 +54,8 @@ else
 {
     @*
       Fallback: exibe a inicial do primeiro nome.
-      FirstOrDefault() retorna '\0' se a string estiver vazia — 
+      Ativado quando FotoUrl é vazio/nulo OU quando a imagem falhou ao carregar.
+      FirstOrDefault() retorna '\0' se a string estiver vazia —
       ToString() de '\0' é string vazia, o que é aceitável no MudAvatar.
     *@
     <MudAvatar Size="@Size" Color="@Color">
@@ -59,17 +64,21 @@ else
 }
 
 @code {
+    // Flag interna: true quando o browser não conseguiu carregar a imagem.
+    // Força exibição da inicial em vez do alt text do <img> quebrado.
+    private bool _imgErro = false;
+
     /// <summary>
     /// URL pública da foto do usuário.
     /// Formato esperado: http://IP:8080/uploads/fotos/uuid.jpg
-    /// Nulo ou vazio → exibe a inicial do nome.
+    /// Nulo, vazio ou URL inacessível → exibe a inicial do nome.
     /// </summary>
     [Parameter]
     public string? FotoUrl { get; set; }
 
     /// <summary>
     /// Nome completo do usuário.
-    /// Usado para o alt da imagem e para calcular a inicial no fallback.
+    /// Usado para calcular a inicial no fallback.
     /// </summary>
     [Parameter]
     public string Nome { get; set; } = "";
@@ -88,4 +97,46 @@ else
     /// </summary>
     [Parameter]
     public Color Color { get; set; } = Color.Primary;
+
+    // Chamado pelo evento onerror do <img> quando a imagem não carrega.
+    // StateHasChanged é implícito — Blazor detecta mudança de estado em event handlers.
+    private void OnImageError() => _imgErro = true;
+
+    // Reseta o erro quando FotoUrl muda (ex: usuário trocou a foto ou logou com outro perfil).
+    // Sem isso, se uma URL válida substituir uma inválida, o componente continuaria
+    // mostrando a inicial por causa do _imgErro = true residual.
+    protected override void OnParametersSet() => _imgErro = false;
+
+    /// <summary>
+    /// Normaliza a URL da foto para caminho relativo.
+    ///
+    /// PROBLEMA: A foto é armazenada no banco como URL absoluta com o host do
+    /// ambiente onde foi feita o upload (ex: http://5.161.202.169:8080/uploads/fotos/uuid.jpg).
+    /// Em outro ambiente (desenvolvimento local, homologação), esse host não é acessível.
+    ///
+    /// SOLUÇÃO: Extraímos apenas o caminho (PathAndQuery) da URL e deixamos o browser
+    /// resolver contra a origem atual. Assim a mesma URL funciona em qualquer ambiente,
+    /// desde que o backend esteja servindo os arquivos estáticos de /uploads/.
+    ///
+    /// Exemplos:
+    ///   http://5.161.202.169:8080/uploads/fotos/uuid.jpg → /uploads/fotos/uuid.jpg ✅ local e prod
+    ///   http://localhost:5000/uploads/fotos/uuid.jpg     → /uploads/fotos/uuid.jpg ✅ local
+    ///   /uploads/fotos/uuid.jpg                         → /uploads/fotos/uuid.jpg ✅ já relativo
+    ///   ""  ou  null                                    → null (exibe inicial)
+    /// </summary>
+    private string? FotoUrlNormalizada
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(FotoUrl))
+                return null;
+
+            // URL absoluta: extrai apenas o caminho relativo
+            if (Uri.TryCreate(FotoUrl, UriKind.Absolute, out var uri))
+                return uri.PathAndQuery;
+
+            // Já é relativa (começa com "/") — usa como está
+            return FotoUrl;
+        }
+    }
 }

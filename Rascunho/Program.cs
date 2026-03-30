@@ -55,6 +55,54 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             NameClaimType = System.Security.Claims.ClaimTypes.Name,
             ClockSkew = TimeSpan.FromMinutes(5)
         };
+
+        // ── Invalidação server-side de tokens após logout ────────────────
+        // Após o usuário fazer logout, UltimoLogoutEmUtc é gravado no banco.
+        // Aqui verificamos se o token atual foi emitido ANTES desse horário.
+        // Se sim, o token é rejeitado com 401, mesmo que ainda não tenha expirado.
+        //
+        // A claim "iat" (issued-at) é gerada automaticamente pelo JwtSecurityTokenHandler
+        // em GerarToken (TokenService.cs) e representa o momento de emissão do JWT.
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+
+                var userIdStr = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!int.TryParse(userIdStr, out int usuarioId))
+                {
+                    context.Fail("Token sem identificador de usuário válido.");
+                    return;
+                }
+
+                var usuario = await db.Usuarios.FindAsync(usuarioId);
+
+                // Usuário não encontrado ou desativado → token inválido
+                if (usuario == null || !usuario.Ativo)
+                {
+                    context.Fail("Usuário não encontrado ou inativo.");
+                    return;
+                }
+
+                // Verifica se o token foi emitido antes do último logout
+                if (usuario.UltimoLogoutEmUtc.HasValue)
+                {
+                    var iatStr = context.Principal?.FindFirst("iat")?.Value;
+                    if (iatStr != null && long.TryParse(iatStr, out long iatSeconds))
+                    {
+                        var emitidoEm = DateTimeOffset.FromUnixTimeSeconds(iatSeconds).UtcDateTime;
+
+                        // Token emitido em ou antes do logout → revogado
+                        if (emitidoEm <= usuario.UltimoLogoutEmUtc.Value)
+                        {
+                            context.Fail("Token revogado. Faça login novamente.");
+                            return;
+                        }
+                    }
+                }
+            }
+        };
     });
 
 builder.Services.AddAuthorization();

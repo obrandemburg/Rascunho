@@ -9,15 +9,23 @@
   - Remove o botão de logout separado.
   - O MudMenu exibe foto/inicial, nome do usuário, Ver Perfil e Sair.
   - FotoUrl é carregada do LocalStorage (persistida pelo AuthService no login).
+
+  CORREÇÃO: Subscrito AuthenticationStateChanged para recarregar _fotoUrl
+  sempre que o estado de autenticação mudar (pós-login ou pós-logout),
+  evitando que o avatar fique sem foto após login na mesma sessão.
+  Sair() agora usa AuthService.LogoutAsync() para revogar o token no servidor.
 *@
 
 @inherits LayoutComponentBase
+@implements IDisposable
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
 @using Rascunho.Client.Security
+@using Rascunho.Client.Services
 @using Blazored.LocalStorage
 @inject ILocalStorageService LocalStorage
 @inject AuthenticationStateProvider AuthStateProvider
+@inject AuthService AuthService
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 
@@ -52,20 +60,24 @@
                   O menu agora centraliza todas as ações do usuário:
                   foto de perfil, nome, Ver Perfil e Sair.
                 *@
-                <MudMenu ActivationEvent="@MouseEvent.LeftClick"
-                         AnchorOrigin="Origin.BottomRight"
+                @*
+                  CORREÇÃO MudBlazor v9:
+                  Em v9, ActivatorContent mudou de RenderFragment para RenderFragment<MenuContext>.
+                  O menu NÃO abre mais automaticamente via ActivationEvent — é preciso chamar
+                  context.ToggleAsync() explicitamente no evento de clique do elemento ativador.
+                  A div wrapper captura o @onclick e repassa ao MenuContext.
+                  style cursor:pointer indica ao usuário que o avatar é clicável.
+                *@
+                <MudMenu AnchorOrigin="Origin.BottomRight"
                          TransformOrigin="Origin.TopRight">
                     <ActivatorContent>
-                        @*
-                          Exibe a foto do usuário ou a inicial do nome como fallback.
-                          FotoUrl é carregada do LocalStorage em OnInitializedAsync.
-                        *@
-                        <MudTooltip Text="@authContext.User.Identity?.Name">
+                        <div @onclick="context.ToggleAsync"
+                             style="cursor: pointer; display: inline-flex; align-items: center;">
                             <UserAvatar FotoUrl="@_fotoUrl"
                                         Nome="@(authContext.User.Identity?.Name ?? "")"
                                         Size="Size.Medium"
                                         Color="Color.Secondary" />
-                        </MudTooltip>
+                        </div>
                     </ActivatorContent>
                     <ChildContent>
                         @* Cabeçalho do menu: nome do usuário *@
@@ -122,21 +134,41 @@
     {
         // Recupera a foto do LocalStorage (foi salva pelo AuthService no login)
         _fotoUrl = await LocalStorage.GetItemAsync<string>("userFotoUrl") ?? "";
+
+        // CORREÇÃO: Subscreve mudanças de autenticação para atualizar _fotoUrl
+        // sem precisar recarregar a página. Assim, ao fazer login, a foto/inicial
+        // aparece imediatamente na AppBar sem necessidade de F5.
+        AuthStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
+    }
+
+    // Invocado pelo AuthenticationStateProvider sempre que o estado muda
+    // (login, logout ou expiração de token detectada pelo CustomAuthStateProvider).
+    private async void OnAuthStateChanged(Task<AuthenticationState> task)
+    {
+        // Recarrega a foto do LocalStorage — pode ter sido atualizada pelo
+        // AuthService.LoginAsync() ou apagada pelo AuthService.LogoutAsync().
+        _fotoUrl = await LocalStorage.GetItemAsync<string>("userFotoUrl") ?? "";
+
+        // Força re-render do componente na thread do Blazor
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // IDisposable: remove a subscricão ao destruir o componente para evitar
+    // memory leaks (o delegate ficaria preso em AuthStateProvider).
+    public void Dispose()
+    {
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthStateChanged;
     }
 
     private async Task Sair()
     {
-        // 1. Remove todos os itens de sessão do localStorage
-        await LocalStorage.RemoveItemAsync("authToken");
-        await LocalStorage.RemoveItemAsync("userName");
-        await LocalStorage.RemoveItemAsync("userType");
-        await LocalStorage.RemoveItemAsync("userFotoUrl");
+        // Usa AuthService.LogoutAsync() que:
+        //   1. Chama POST /api/auth/logout (revoga token no servidor)
+        //   2. Limpa todos os itens do LocalStorage
+        //   3. Remove o header Authorization do HttpClient
+        //   4. Notifica o CustomAuthStateProvider → dispara OnAuthStateChanged acima
+        await AuthService.LogoutAsync();
 
-        // 2. Notifica o CustomAuthStateProvider que não há mais usuário
-        //    Isso força re-render de todos os AuthorizeView da aplicação
-        ((CustomAuthStateProvider)AuthStateProvider).NotifyUserLogout();
-
-        _fotoUrl = "";
         Snackbar.Add("Sessão encerrada com sucesso.", Severity.Info);
         NavigationManager.NavigateTo("/login");
     }

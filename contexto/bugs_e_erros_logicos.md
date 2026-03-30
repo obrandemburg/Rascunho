@@ -1,7 +1,7 @@
 # Bugs e Erros Lógicos — Ponto da Dança
 
-> Gerado em: 27/03/2026 | Atualizado em: 28/03/2026
-> BUG-001 a BUG-012, BUG-014 corrigidos em 28/03/2026
+> Gerado em: 27/03/2026 | Atualizado em: 30/03/2026
+> BUG-001 a BUG-012, BUG-014, BUG-015 corrigidos em 28/03/2026 | BUG-016 a BUG-021 corrigidos em 30/03/2026
 
 ---
 
@@ -252,6 +252,111 @@ O registro duplicado causava comportamento imprevisível de roteamento no ASP.NE
 
 ---
 
+## ~~BUG-016~~ — ✅ CORRIGIDO — Migration `CorrigirListaEsperaDataTypes` com tipos SQL Server bloqueava startup
+
+**Severidade:** 🔴 Crítico → ✅ Resolvido em 30/03/2026
+**Tipo:** Migration inválida / startup falhando
+
+**Descrição:**
+A migration `20260326002000_CorrigirListaEsperaDataTypes` foi gerada com tipos do **SQL Server** (`datetimeoffset`, `datetime2`) em vez de tipos do **PostgreSQL**. Ao iniciar, a aplicação tentava executar:
+```sql
+ALTER TABLE "ListasEspera" ALTER COLUMN "DataEntrada" TYPE datetimeoffset;
+```
+PostgreSQL não reconhece o tipo `datetimeoffset` (erro 42704), causando falha em todas as 5 tentativas de migration com retry policy. Como essa migration bloqueava a sequência, as migrations seguintes também não rodavam, incluindo `20260330000001_AddUltimoLogoutEmUtc` — fazendo a coluna `UltimoLogoutEmUtc` não existir no banco e causar erros 42703 em runtime.
+
+**Efeito cascata:**
+1. `20260326002000_CorrigirListaEsperaDataTypes` → falha (tipo SQL Server)
+2. `20260328000001_RemoveInteresseObsoleto` → bloqueada
+3. `20260330000001_AddUltimoLogoutEmUtc` → bloqueada → coluna ausente → erro 42703
+
+**Correção aplicada:**
+- `20260326002000_CorrigirListaEsperaDataTypes.cs`: substituídos tipos inválidos nos métodos `Up()` e `Down()`:
+  - `DateTimeOffset` / `"datetimeoffset"` → `DateTime` / `"timestamp with time zone"`
+  - `DateTime` / `"datetime2"` → `DateTime` / `"timestamp without time zone"`
+
+---
+
+## ~~BUG-017~~ — ✅ CORRIGIDO — Avatar da AppBar não carregava foto/inicial após login
+
+**Severidade:** 🟠 Alto → ✅ Resolvido em 30/03/2026
+**Tipo:** Bug de estado reativo / UX
+
+**Descrição:**
+`MainLayout.razor` carregava `_fotoUrl` apenas em `OnInitializedAsync`. Quando o usuário fazia login na mesma sessão (sem recarregar a página), o `AuthenticationStateChanged` era disparado pelo `CustomAuthStateProvider`, o `AuthorizeView` re-renderizava mostrando o `UserAvatar`, mas `_fotoUrl` nunca era atualizado — então a foto/inicial não aparecia corretamente.
+
+Adicionalmente, o método `Sair()` inline não chamava `AuthService.LogoutAsync()`, perdendo a revogação do token no servidor (POST `/api/auth/logout`) que atualiza `UltimoLogoutEmUtc`.
+
+**Correção aplicada em `MainLayout.razor`:**
+- Adicionado `@implements IDisposable`
+- Subscrito `AuthStateProvider.AuthenticationStateChanged += OnAuthStateChanged` em `OnInitializedAsync`
+- `OnAuthStateChanged`: recarrega `_fotoUrl` do LocalStorage e chama `InvokeAsync(StateHasChanged)`
+- Implementado `Dispose()` para remover a subscricão e evitar memory leak
+- `Sair()` agora delega para `AuthService.LogoutAsync()` (revogação no servidor + limpeza local)
+
+---
+
+## ~~BUG-018~~ — ✅ CORRIGIDO — Avatar exibia texto "Foto de X" quando a imagem falhava ao carregar
+
+**Severidade:** 🟠 Alto → ✅ Resolvido em 30/03/2026
+**Tipo:** Bug visual / fallback ausente
+
+**Descrição:**
+O `UserAvatar.razor` tentava carregar `<img src="@FotoUrl">` sem tratar falha de rede. Quando a URL não era acessível (ex: foto salva com host da VPS `5.161.202.169:8080` sendo acessada em ambiente diferente), o browser exibia o texto do atributo `alt="Foto de @Nome"` no espaço circular do avatar. Na AppBar e na página Desempenho aparecia o texto "Foto" (truncado) dentro do círculo amarelo.
+
+**Correção aplicada em `UserAvatar.razor`:**
+- Adicionado campo `_imgErro = false`
+- Adicionado `@onerror="OnImageError"` na tag `<img>` → seta `_imgErro = true` e força re-render
+- Condição alterada para `!string.IsNullOrWhiteSpace(FotoUrl) && !_imgErro`
+- `alt` esvaziado (`alt=""`) para não exibir texto em falha enquanto o estado é atualizado
+- `OnParametersSet` reseta `_imgErro` quando `FotoUrl` muda (troca de usuário/foto)
+
+---
+
+## ~~BUG-019~~ — ✅ CORRIGIDO — Clicar no avatar da AppBar não abria o menu de opções
+
+**Severidade:** 🟠 Alto → ✅ Resolvido em 30/03/2026
+**Tipo:** Bug de interação / evento bloqueado
+
+**Descrição:**
+O `MudTooltip` envolvendo o `UserAvatar` dentro do `ActivatorContent` do `MudMenu` interceptava os eventos de mouse antes que o `MudMenu` pudesse detectá-los. Resultado: clicar no avatar não abria o dropdown com "Ver perfil" e "Sair".
+
+**Correção aplicada em `MainLayout.razor`:**
+- Removido `<MudTooltip>` do `ActivatorContent` do `MudMenu`
+- O nome do usuário já é exibido como cabeçalho dentro do `ChildContent` do menu, tornando o tooltip redundante
+
+---
+
+## ~~BUG-020~~ — ✅ CORRIGIDO — MudMenu não abria ao clicar no avatar (MudBlazor v9 breaking change)
+
+**Severidade:** 🔴 Crítico → ✅ Resolvido em 30/03/2026
+**Tipo:** Breaking change MudBlazor v9 / menu inacessível
+
+**Descrição:**
+Em MudBlazor v9, `MudMenu.ActivatorContent` mudou de `RenderFragment` para `RenderFragment<MenuContext>`. O menu não abre mais automaticamente via `ActivationEvent` — é obrigatório chamar `context.ToggleAsync()` explicitamente no evento de clique do ativador. O código anterior usava `ActivationEvent="@MouseEvent.LeftClick"` e um `UserAvatar` simples sem `@onclick`, então o menu nunca abria.
+
+**Correção aplicada em `MainLayout.razor`:**
+- Removido `ActivationEvent="@MouseEvent.LeftClick"` (não tem efeito em v9 com ActivatorContent customizado)
+- Adicionado `<div @onclick="context.ToggleAsync" style="cursor: pointer;">` envolvendo o `UserAvatar`
+- O `context` é o `MenuContext` tipado injetado pelo `RenderFragment<MenuContext>` do MudBlazor v9
+
+---
+
+## ~~BUG-021~~ — ✅ CORRIGIDO — Foto não carregava em ambiente diferente do upload (URL com host fixo)
+
+**Severidade:** 🟠 Alto → ✅ Resolvido em 30/03/2026
+**Tipo:** Bug de ambiente / URL absoluta dependente de host
+
+**Descrição:**
+A foto era armazenada no banco com a URL absoluta do host onde foi feita o upload (ex: `http://5.161.202.169:8080/uploads/fotos/uuid.jpg`). Em desenvolvimento local, esse host não era acessível, então a imagem falhava silenciosamente (ou exibia o texto do alt — ver BUG-018).
+
+**Correção aplicada em `UserAvatar.razor`:**
+- Adicionada propriedade computada `FotoUrlNormalizada` que extrai apenas o `PathAndQuery` da URL absoluta usando `Uri.TryCreate`
+- Exemplos: `http://5.161.202.169:8080/uploads/fotos/uuid.jpg` → `/uploads/fotos/uuid.jpg`
+- O browser carrega o caminho relativo contra a origem atual (dev local ou produção), sem depender do host original
+- O `<img src>` agora usa `FotoUrlNormalizada` em vez de `FotoUrl` diretamente
+
+---
+
 ## Resumo de Bugs por Severidade
 
 | ID | Descrição curta | Severidade | Status |
@@ -271,3 +376,9 @@ O registro duplicado causava comportamento imprevisível de roteamento no ASP.NE
 | BUG-014 | AulaExperimental exposta mas incompleta | 🟡 Médio | ✅ Corrigido |
 | BUG-009 | GerenciarTurmas sem aviso no erro de recarregamento | 🟢 Baixo | ✅ Corrigido |
 | BUG-010 | Entidade `Interesse` obsoleta no banco | 🟢 Baixo | ✅ Corrigido |
+| BUG-016 | Migration com tipos SQL Server bloqueava startup | 🔴 Crítico | ✅ Corrigido |
+| BUG-017 | Avatar da AppBar não carregava foto/inicial após login | 🟠 Alto | ✅ Corrigido |
+| BUG-018 | Avatar exibia texto "Foto de X" com imagem inacessível | 🟠 Alto | ✅ Corrigido |
+| BUG-019 | Clicar no avatar não abria o menu (MudTooltip bloqueava cliques) | 🟠 Alto | ✅ Corrigido |
+| BUG-020 | MudMenu não abria — MudBlazor v9 exige context.ToggleAsync() | 🔴 Crítico | ✅ Corrigido |
+| BUG-021 | Foto não carregava em ambiente diferente do upload (URL com host fixo) | 🟠 Alto | ✅ Corrigido |
