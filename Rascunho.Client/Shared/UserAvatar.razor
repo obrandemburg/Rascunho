@@ -108,21 +108,24 @@ else
     protected override void OnParametersSet() => _imgErro = false;
 
     /// <summary>
-    /// Normaliza a URL da foto para caminho relativo.
+    /// Normaliza qualquer URL de foto para o formato /api/fotos/{nomeArquivo}.
     ///
-    /// PROBLEMA: A foto é armazenada no banco como URL absoluta com o host do
-    /// ambiente onde foi feita o upload (ex: http://5.161.202.169:8080/uploads/fotos/uuid.jpg).
-    /// Em outro ambiente (desenvolvimento local, homologação), esse host não é acessível.
+    /// PROBLEMA: Fotos antigas foram salvas no banco como URL absoluta com host
+    /// interno do backend (ex: http://5.161.202.169:8080/uploads/fotos/uuid.jpg).
+    /// Isso causava dois problemas:
+    ///   1. Mixed Content: frontend HTTPS carregava imagem HTTP com IP → bloqueado
+    ///   2. Dependência de ambiente: URL hardcoded no IP da VPS não funciona em dev
     ///
-    /// SOLUÇÃO: Extraímos apenas o caminho (PathAndQuery) da URL e deixamos o browser
-    /// resolver contra a origem atual. Assim a mesma URL funciona em qualquer ambiente,
-    /// desde que o backend esteja servindo os arquivos estáticos de /uploads/.
+    /// SOLUÇÃO: Extraímos o nome do arquivo de qualquer formato de URL e montamos
+    /// sempre /api/fotos/{nomeArquivo}. Este caminho é roteado pelo Traefik/proxy
+    /// para o backend em qualquer ambiente (HTTPS/HTTP, prod/dev/homolog).
     ///
-    /// Exemplos:
-    ///   http://5.161.202.169:8080/uploads/fotos/uuid.jpg → /uploads/fotos/uuid.jpg ✅ local e prod
-    ///   http://localhost:5000/uploads/fotos/uuid.jpg     → /uploads/fotos/uuid.jpg ✅ local
-    ///   /uploads/fotos/uuid.jpg                         → /uploads/fotos/uuid.jpg ✅ já relativo
-    ///   ""  ou  null                                    → null (exibe inicial)
+    /// Formatos aceitos (retrocompatíveis):
+    ///   http://5.161.202.169:8080/uploads/fotos/uuid.jpg → /api/fotos/uuid.jpg ✅
+    ///   http://localhost:5000/uploads/fotos/uuid.jpg     → /api/fotos/uuid.jpg ✅
+    ///   /uploads/fotos/uuid.jpg                         → /api/fotos/uuid.jpg ✅
+    ///   /api/fotos/uuid.jpg                             → /api/fotos/uuid.jpg ✅ (já correto)
+    ///   ""  ou  null                                    → null (exibe inicial do nome)
     /// </summary>
     private string? FotoUrlNormalizada
     {
@@ -131,12 +134,18 @@ else
             if (string.IsNullOrWhiteSpace(FotoUrl))
                 return null;
 
-            // URL absoluta: extrai apenas o caminho relativo
-            if (Uri.TryCreate(FotoUrl, UriKind.Absolute, out var uri))
-                return uri.PathAndQuery;
+            // Extrai o nome do arquivo de qualquer URL (absoluta ou relativa)
+            // Path.GetFileName trata tanto "/" quanto "\" como separadores
+            var nomeArquivo = Path.GetFileName(
+                Uri.TryCreate(FotoUrl, UriKind.Absolute, out var uri)
+                    ? uri.AbsolutePath   // extrai só o path da URL absoluta
+                    : FotoUrl            // já é relativo
+            );
 
-            // Já é relativa (começa com "/") — usa como está
-            return FotoUrl;
+            if (string.IsNullOrEmpty(nomeArquivo))
+                return null;
+
+            return $"/api/fotos/{nomeArquivo}";
         }
     }
 }

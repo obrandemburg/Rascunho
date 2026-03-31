@@ -357,6 +357,26 @@ A foto era armazenada no banco com a URL absoluta do host onde foi feita o uploa
 
 ---
 
+## ~~BUG-022~~ — ✅ CORRIGIDO — Mixed Content: foto HTTP bloqueada em site HTTPS
+
+**Severidade:** 🔴 Crítico → ✅ Resolvido em 30/03/2026
+**Tipo:** Mixed Content / arquitetura de URL
+
+**Causa raiz:**
+O `UploadEndpoints.cs` construía a URL pública da foto usando `ctx.Request.Scheme + ctx.Request.Host`, que refletia o host interno do backend (`http://5.161.202.169:8080`), não o domínio público. Atrás do reverse proxy Traefik, o backend não recebia o host original da requisição. Resultado: fotos salvas com `http://5.161.202.169:8080/uploads/fotos/uuid.jpg`. O frontend HTTPS em `pontodadanca.trindaflow.com.br` tentava carregar essa URL HTTP com IP e o browser bloqueava.
+
+Além disso, o caminho `/uploads/fotos/...` no Traefik era roteado para o container nginx do frontend, que não tem esses arquivos — mesmo que o Mixed Content fosse resolvido, as fotos dariam 404.
+
+**Correção em 3 partes:**
+
+1. **`UploadEndpoints.cs` — Novos uploads**: URL pública agora é sempre `/api/fotos/{nomeArquivo}` (relativa). O Traefik roteia `/api/*` para o backend em todos os ambientes.
+
+2. **`UploadEndpoints.cs` — Novo endpoint**: `GET /api/fotos/{nomeArquivo}` serve o arquivo diretamente pelo backend (sem autenticação, com Content-Type correto por extensão). Sem path traversal (Path.GetFileName).
+
+3. **`UserAvatar.razor` — Retrocompatibilidade**: `FotoUrlNormalizada` agora extrai o `nomeArquivo` de qualquer formato de URL (absoluta com IP, relativa `/uploads/`, ou já no novo formato `/api/fotos/`) e sempre retorna `/api/fotos/{nomeArquivo}`. Fotos antigas no banco continuam funcionando sem migration.
+
+---
+
 ## Resumo de Bugs por Severidade
 
 | ID | Descrição curta | Severidade | Status |
@@ -382,3 +402,4 @@ A foto era armazenada no banco com a URL absoluta do host onde foi feita o uploa
 | BUG-019 | Clicar no avatar não abria o menu (MudTooltip bloqueava cliques) | 🟠 Alto | ✅ Corrigido |
 | BUG-020 | MudMenu não abria — MudBlazor v9 exige context.ToggleAsync() | 🔴 Crítico | ✅ Corrigido |
 | BUG-021 | Foto não carregava em ambiente diferente do upload (URL com host fixo) | 🟠 Alto | ✅ Corrigido |
+| BUG-022 | Mixed Content: foto HTTP bloqueada em site HTTPS (URL via IP da VPS) | 🔴 Crítico | ✅ Corrigido |
