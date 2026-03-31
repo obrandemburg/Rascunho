@@ -19,7 +19,9 @@ public static class UsuarioEndpoints
         {
             var response = await usuarioService.CriarUsuarioAsync(request);
             return Results.Created($"/api/usuarios/{response.IdHash}", response);
-        }).AddEndpointFilter<ValidationFilter<CriarUsuarioRequest>>();
+        })
+        .AddEndpointFilter<ValidationFilter<CriarUsuarioRequest>>()
+        .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
         // 2. CADASTRO EM MASSA
         group.MapPost("/cadastrar/lista", async (

@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER:     ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB:       ${DB_NAME}
+      TZ: America/Sao_Paulo
+    ports:
+      - target: 5432
+        published: 54321
+        protocol: tcp
+        mode: host
+    volumes:
+      - pd_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout:  5s
+      retries:  5
+
+  api:
+    image: ghcr.io/obrandemburg/rascunho:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD}
+      - Jwt__Key=${JWT_KEY}
+      - Jwt__Issuer=${JWT_ISSUER}
+      - Jwt__Audience=${JWT_AUDIENCE}
+      - Hashids__Salt=${HASHIDS_SALT}
+      - adminDefault__email=${ADMIN_EMAIL}
+      - adminDefault__password=${ADMIN_PASSWORD}
+      - AulaParticular__PrecoPadrao=80.00
+      - Reposicao__JanelaElegibilidadeDias=30
+      - ASPNETCORE_AllowedHosts=${ASPNETCORE_ALLOWEDHOSTS}
+      - Cors__AllowedOrigins=${CORS_ALLOWED_ORIGINS}
+    volumes:
+      - pd_uploads:/app/uploads
+    networks:
+      - default
+      - network_swarm_public
+    # No serviço api:
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_swarm_public"
+        # Regra simplificada: à prova de bugs de conversão do YAML
+        - "traefik.http.routers.pd_api.rule=Host(`pontodadanca.trindaflow.com.br`) && PathPrefix(`/api`, `/uploads`, `/scalar`, `/openapi`)"
+        - "traefik.http.routers.pd_api.entrypoints=websecure"
+        - "traefik.http.routers.pd_api.tls=true"
+        - "traefik.http.routers.pd_api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.pd_api.loadbalancer.server.port=8080"
+
+  frontend:
+    image: ghcr.io/obrandemburg/rascunho-client:latest
+    networks:
+      - default
+      - network_swarm_public
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_swarm_public"
+        - "traefik.http.routers.pontodadanca.rule=Host(`pontodadanca.trindaflow.com.br`)"
+        - "traefik.http.routers.pontodadanca.entrypoints=websecure"
+        - "traefik.http.routers.pontodadanca.tls=true"
+        - "traefik.http.routers.pontodadanca.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.pontodadanca.loadbalancer.server.port=80"
+        - "traefik.http.routers.pontodadanca-http.rule=Host(`pontodadanca.trindaflow.com.br`)"
+        - "traefik.http.routers.pontodadanca-http.entrypoints=web"
+        - "traefik.http.routers.pontodadanca-http.middlewares=redirecionar-https"
+        - "traefik.http.middlewares.redirecionar-https.redirectscheme.scheme=https"
+
+volumes:
+  pd_pgdata:
+  pd_uploads:
+    driver: local
+
+networks:
+  network_swarm_public:
+    external: true

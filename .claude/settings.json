@@ -1,0 +1,54 @@
+{
+  "defaultAgent": "architect",
+  "projectName": "Ponto da Dança",
+  "repositoryAlias": "Rascunho",
+  "language": "pt-BR",
+  "style": {
+    "codeLanguage": "portuguese",
+    "codeStyle": "clean",
+    "architecture": "minimal-api-modular",
+    "comments": "portuguese"
+  },
+  "agents": {
+    "architect": "Orquestrador — analisa, planeja e delega",
+    "backend": "ASP.NET Core 10 Minimal API + EF Core",
+    "frontend": "Blazor WebAssembly + MudBlazor",
+    "db": "PostgreSQL + EF Core + migrations",
+    "auth": "JWT + BCrypt + Hashids + isolamento por perfil",
+    "tests": "Testes unitários e de integração das regras de negócio",
+    "reviewer": "Code review com checklist do projeto"
+  },
+  "rules": [
+    "Nunca usar controllers — apenas Minimal API",
+    "Nunca usar AutoMapper — mappers manuais em Mappers/",
+    "Nunca usar repositório pattern",
+    "Nunca colocar lógica de negócio em endpoints",
+    "Nunca expor IDs internos sem Hashids",
+    "Sempre escrever código em português",
+    "Sempre validar regras BOL, TUR, CHA, AP, REP, ACE",
+    "Sempre usar FluentValidation para validação de entrada",
+    "Sempre usar RegraNegocioException para violar regras de negócio",
+    "Nunca commitar diretamente em main — usar develop"
+  ],
+  "conventions": {
+    "namingLanguage": "portuguese",
+    "idPattern": "hashids",
+    "validationLibrary": "FluentValidation",
+    "errorHandling": "GlobalExceptionHandler + RegraNegocioException",
+    "ormPattern": "EF Core direto nos Services (sem repositório)",
+    "mappingPattern": "Mappers manuais em Rascunho/Mappers/"
+  },
+  "pendingBugs": {
+    "BUG-004": "ConfiguracaoService perde dados no restart — sem persistência no banco",
+    "BUG-011": "CORS AllowAnyOrigin em produção — vulnerabilidade de segurança",
+    "BUG-013": "IP da VPS hardcoded em Rascunho.Client/Program.cs"
+  },
+  "deployment": {
+    "productionBranch": "main",
+    "developBranch": "develop",
+    "ciTrigger": "push em main → GitHub Actions → Docker → VPS",
+    "vpsIp": "5.161.202.169",
+    "backendPort": 8080,
+    "registry": "ghcr.io/obrandemburg"
+  }
+}

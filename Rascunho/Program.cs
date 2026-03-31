@@ -24,7 +24,17 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("PermitirFrontend", policy =>
     {
-        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+        var origensPermitidas = builder.Configuration["Cors:AllowedOrigins"];
+
+        if (string.IsNullOrWhiteSpace(origensPermitidas) || origensPermitidas == "*")
+        {
+            policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+        }
+        else
+        {
+            var origens = origensPermitidas.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            policy.WithOrigins(origens).AllowAnyHeader().AllowAnyMethod();
+        }
     });
 });
 
