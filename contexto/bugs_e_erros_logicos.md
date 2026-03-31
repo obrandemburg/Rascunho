@@ -1,7 +1,8 @@
 # Bugs e Erros Lógicos — Ponto da Dança
 
-> Gerado em: 27/03/2026 | Atualizado em: 30/03/2026
-> BUG-001 a BUG-012, BUG-014, BUG-015 corrigidos em 28/03/2026 | BUG-016 a BUG-021 corrigidos em 30/03/2026
+> Gerado em: 27/03/2026 | Atualizado em: 31/03/2026
+> BUG-001 a BUG-012, BUG-014, BUG-015 corrigidos em 28/03/2026 | BUG-016 a BUG-022 corrigidos em 30/03/2026
+> SEC-01, SEC-02, SEC-03 corrigidos em 31/03/2026 (auditoria de segurança — ver `auditoria_seguranca_desempenho.md`)
 
 ---
 
@@ -387,7 +388,7 @@ Além disso, o caminho `/uploads/fotos/...` no Traefik era roteado para o contai
 | BUG-002 | RN-BOL05 bloqueia só "solo", não "salão" | 🟠 Alto | ✅ Corrigido |
 | BUG-003 | Fila de espera com buracos de posição | 🟠 Alto | ✅ Corrigido |
 | BUG-004 | ConfiguracaoService perde dados no restart | 🟠 Alto | ⏳ Pendente |
-| BUG-011 | CORS AllowAnyOrigin em produção | 🟠 Alto | ⏳ Pendente |
+| BUG-011 | CORS AllowAnyOrigin em produção | 🟠 Alto | ✅ Corrigido (31/03) |
 | BUG-005 | ReposicaoService e ConfiguracaoService dessincronizados | 🟡 Médio | ✅ Corrigido |
 | BUG-006 | Frequência calculada sobre todo o histórico | 🟡 Médio | ✅ Corrigido |
 | BUG-007 | TurmasObrigatorias e TurmasRecomendadas duplicadas | 🟡 Médio | ✅ Corrigido |
@@ -403,3 +404,24 @@ Além disso, o caminho `/uploads/fotos/...` no Traefik era roteado para o contai
 | BUG-020 | MudMenu não abria — MudBlazor v9 exige context.ToggleAsync() | 🔴 Crítico | ✅ Corrigido |
 | BUG-021 | Foto não carregava em ambiente diferente do upload (URL com host fixo) | 🟠 Alto | ✅ Corrigido |
 | BUG-022 | Mixed Content: foto HTTP bloqueada em site HTTPS (URL via IP da VPS) | 🔴 Crítico | ✅ Corrigido |
+
+---
+
+## Issues de Segurança (auditoria 31/03/2026)
+
+> Detalhamento completo em `auditoria_seguranca_desempenho.md`
+
+| ID | Descrição curta | Severidade | Status |
+|---|---|---|---|
+| SEC-01 | Stack trace completo exposto em produção | 🔴 Crítico | ✅ Corrigido (31/03) |
+| SEC-02 | CORS `AllowAnyOrigin` em produção | 🔴 Crítico | ✅ Corrigido (31/03) |
+| SEC-03 | `POST /cadastrar` sem autenticação — qualquer um criava Gerente | 🔴 Crítico | ✅ Corrigido (31/03) |
+| SEC-04 | `AllowedHosts: "*"` — desativa proteção contra Host Header Injection | 🔴 Crítico | 🚫 Revertido (causa 400 em produção atrás do Traefik) |
+| SEC-05 | Upload valida apenas `Content-Type` do cliente (falsificável) | 🟠 Alto | ⏳ Pendente |
+| SEC-06 | Desmatriculação sem restrição de role | 🟠 Alto | ⏳ Pendente |
+| SEC-08 | Política de senha inconsistente (6 chars na criação, 8 na alteração) | 🟠 Alto | ⏳ Pendente |
+| SEC-09 | `int.TryParse` sem verificação de retorno em BolsistaEndpoints | 🟠 Alto | ⏳ Pendente |
+| SEC-10 | ConfiguracaoService sem persistência — redefinição de preços no restart | 🟠 Alto | ⏳ Pendente (= BUG-004) |
+| SEC-12 | Headers HTTP de segurança ausentes (X-Frame-Options, CSP, etc.) | 🟡 Médio | ⏳ Pendente |
+| SEC-13 | Sem rate limiting no `POST /api/auth/login` | 🟡 Médio | ⏳ Pendente |
+| SEC-16 | Endpoint `registrar-conversa` não persiste dados | 🟡 Médio | ⏳ Pendente (= Sprint 13) |

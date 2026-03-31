@@ -15,6 +15,7 @@ Para uma conversa sobre o projeto, anexe ou cole o conteúdo dos arquivos abaixo
 | `camada2_stack_tecnico.md` | Quando for implementar funcionalidades, corrigir bugs ou discutir arquitetura |
 | `camada3_estado_atual.md` | Quando for planejar próximos passos, priorizar tarefas ou retomar o desenvolvimento |
 | `planejamento_MVP_Pontodadanca.md` | Quando for planejar próximos passos, priorizar tarefas ou retomar o desenvolvimento |
+| `auditoria_seguranca_desempenho.md` | Quando for implementar correções de segurança (SEC-) ou desempenho (PERF-) |
 
 Para conversas completas (ex: "o que devo fazer a seguir?" ou "implemente X"), inclua os 3 arquivos.
 

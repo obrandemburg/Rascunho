@@ -46,15 +46,20 @@ public class HttpInterceptorHandler : DelegatingHandler
             System.Text.Encoding.UTF8,
             response.Content.Headers.ContentType?.MediaType ?? "application/json");
 
-        Console.WriteLine($"[INTERCEPTADOR] Falha HTTP {(int)response.StatusCode} na rota {request.RequestUri}");
-        Console.WriteLine($"[INTERCEPTADOR] Resposta: {corpo}");
+        // Resolve env primeiro para guardar logs com verificação de ambiente
+        var env = _serviceProvider.GetRequiredService<IWebAssemblyHostEnvironment>();
 
-        // Resolvendo as dependências apenas quando necessárias (Lazy Loading)
+        if (env.IsDevelopment())
+        {
+            Console.WriteLine($"[INTERCEPTADOR] Falha HTTP {(int)response.StatusCode} na rota {request.RequestUri}");
+            Console.WriteLine($"[INTERCEPTADOR] Resposta: {corpo}");
+        }
+
+        // Resolvendo as demais dependências apenas quando necessárias (Lazy Loading)
         var localStorage = _serviceProvider.GetRequiredService<ILocalStorageService>();
         var authStateProvider = _serviceProvider.GetRequiredService<AuthenticationStateProvider>();
         var navigationManager = _serviceProvider.GetRequiredService<NavigationManager>();
         var snackbar = _serviceProvider.GetRequiredService<ISnackbar>();
-        var env = _serviceProvider.GetRequiredService<IWebAssemblyHostEnvironment>();
 
         // ── 401 UNAUTHORIZED: token expirado ou inválido ──────────
         // Remove a sessão do localStorage e redireciona para login.
@@ -99,10 +104,13 @@ public class HttpInterceptorHandler : DelegatingHandler
 
                 snackbar.Add(erro500?.Erro ?? mensagemUsuario, Severity.Error);
 
-                Console.WriteLine($"=== ERRO HTTP {(int)response.StatusCode} ===");
-                Console.WriteLine($"URL: {request.RequestUri}");
-                Console.WriteLine($"Detalhes: {erro500?.Detalhes ?? corpo}");
-                Console.WriteLine("===========================");
+                if (env.IsDevelopment())
+                {
+                    Console.WriteLine($"=== ERRO HTTP {(int)response.StatusCode} ===");
+                    Console.WriteLine($"URL: {request.RequestUri}");
+                    Console.WriteLine($"Detalhes: {erro500?.Detalhes ?? corpo}");
+                    Console.WriteLine("===========================");
+                }
             }
         }
         catch

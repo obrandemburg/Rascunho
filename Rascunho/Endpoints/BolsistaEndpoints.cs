@@ -127,7 +127,8 @@ public static class BolsistaEndpoints
             if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID inválido." });
             var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
             var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            int.TryParse(idClaim, out int usuarioLogadoId);
+            if (!int.TryParse(idClaim, out int usuarioLogadoId))
+                return Results.Unauthorized();
             if (roleClaim != "Gerente" && roleClaim != "Recepção" && usuarioLogadoId != decodedIds[0])
                 return Results.Forbid();
             var response = await bolsistaService.RelatorioHorasSemanaisAsync(decodedIds[0]);

@@ -73,8 +73,46 @@ public static class UploadEndpoints
                     erro = "Formato inválido. Aceitos: JPG, PNG, WEBP."
                 });
 
+            // ── Validação 4: magic bytes (conteúdo real do arquivo) ───────
+            // Lê os primeiros 12 bytes do stream para comparar com as assinaturas
+            // conhecidas de cada formato. Isso impede que um arquivo .exe seja
+            // enviado com Content-Type: image/jpeg.
+            var bufferMagic = new byte[12];
+            await using (var streamMagic = foto.OpenReadStream())
+            {
+                await streamMagic.ReadAsync(bufferMagic, 0, 12);
+            }
+
+            bool magicValido = foto.ContentType.ToLowerInvariant() switch
+            {
+                "image/jpeg" or "image/jpg" =>
+                    bufferMagic[0] == 0xFF && bufferMagic[1] == 0xD8 && bufferMagic[2] == 0xFF,
+                "image/png" =>
+                    bufferMagic[0] == 0x89 && bufferMagic[1] == 0x50 &&
+                    bufferMagic[2] == 0x4E && bufferMagic[3] == 0x47,
+                "image/webp" =>
+                    bufferMagic[0] == 0x52 && bufferMagic[1] == 0x49 &&
+                    bufferMagic[2] == 0x46 && bufferMagic[3] == 0x46 &&
+                    bufferMagic[8] == 0x57 && bufferMagic[9] == 0x45 &&
+                    bufferMagic[10] == 0x42 && bufferMagic[11] == 0x50,
+                _ => false
+            };
+
+            if (!magicValido)
+                return Results.BadRequest(new
+                {
+                    erro = "Arquivo inválido. O conteúdo não corresponde ao tipo declarado."
+                });
+
             // ── Gera nome único com GUID ──────────────────────────
-            var extensao = Path.GetExtension(foto.FileName).ToLowerInvariant();
+            // Extensão derivada do MIME validado — nunca de foto.FileName (controlado pelo cliente)
+            var extensao = foto.ContentType.ToLowerInvariant() switch
+            {
+                "image/jpeg" or "image/jpg" => ".jpg",
+                "image/png" => ".png",
+                "image/webp" => ".webp",
+                _ => ".jpg"
+            };
             var nomeArquivo = $"{Guid.NewGuid()}{extensao}";
 
             // ── Garante que a pasta existe ────────────────────────
