@@ -80,21 +80,42 @@ public class AuthService
     }
 
     /// <summary>
-    /// Encerra a sessão do usuário: remove todos os dados do LocalStorage
-    /// e notifica o CustomAuthStateProvider para redefinir o estado.
+    /// Encerra a sessão do usuário.
+    ///
+    /// Ordem de operações:
+    ///   1. Notifica o servidor para revogar o token (POST /api/auth/logout).
+    ///      Isso atualiza UltimoLogoutEmUtc no banco, invalidando o JWT mesmo
+    ///      antes de ele expirar naturalmente (8 horas). Se a chamada falhar
+    ///      (sem conexão), o logout local prossegue normalmente — o token
+    ///      simplesmente expirará no horário original.
+    ///   2. Remove todos os dados da sessão do LocalStorage.
+    ///   3. Notifica o CustomAuthStateProvider para redefinir o estado.
     /// </summary>
     public async Task LogoutAsync()
     {
-        // Remove todos os itens relacionados à sessão
+        // 1. Revoga o token no servidor (fire-and-forget com tolerância a falha)
+        //    O header Authorization ainda está presente neste momento, então a
+        //    requisição é autenticada e o backend sabe qual usuário está saindo.
+        try
+        {
+            await _httpClient.PostAsync("api/auth/logout", null);
+        }
+        catch
+        {
+            // Falha de rede: ignora e prossegue com o logout local.
+            // O token expirará naturalmente no horário original (8h após o login).
+        }
+
+        // 2. Remove todos os itens relacionados à sessão
         await _localStorage.RemoveItemAsync("authToken");
         await _localStorage.RemoveItemAsync("userName");
         await _localStorage.RemoveItemAsync("userType");
-        await _localStorage.RemoveItemAsync("userFotoUrl"); // NOVO Sprint 6
+        await _localStorage.RemoveItemAsync("userFotoUrl");
 
-        // Remove o header Authorization do HttpClient
+        // 3. Remove o header Authorization do HttpClient
         _httpClient.DefaultRequestHeaders.Authorization = null;
 
-        // Notifica o estado de autenticação como anônimo
+        // 4. Notifica o estado de autenticação como anônimo
         ((CustomAuthStateProvider)_authStateProvider).NotifyUserLogout();
     }
 }

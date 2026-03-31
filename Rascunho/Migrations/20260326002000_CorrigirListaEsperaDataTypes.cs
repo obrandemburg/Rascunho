@@ -10,62 +10,62 @@ namespace Rascunho.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Alterar colunas de DateTime para DateTimeOffset para suportar timezone
-            migrationBuilder.AlterColumn<DateTimeOffset>(
+            // Alterar colunas de timestamp para timestamp with time zone (PostgreSQL)
+            migrationBuilder.AlterColumn<DateTime>(
                 name: "DataEntrada",
                 table: "ListasEspera",
-                type: "datetimeoffset",
+                type: "timestamp with time zone",
                 nullable: false,
                 oldClrType: typeof(DateTime),
-                oldType: "datetime2");
+                oldType: "timestamp without time zone");
 
-            migrationBuilder.AlterColumn<DateTimeOffset>(
+            migrationBuilder.AlterColumn<DateTime>(
                 name: "DataNotificacao",
                 table: "ListasEspera",
-                type: "datetimeoffset",
+                type: "timestamp with time zone",
                 nullable: true,
                 oldClrType: typeof(DateTime),
-                oldType: "datetime2",
+                oldType: "timestamp without time zone",
                 oldNullable: true);
 
-            migrationBuilder.AlterColumn<DateTimeOffset>(
+            migrationBuilder.AlterColumn<DateTime>(
                 name: "DataExpiracao",
                 table: "ListasEspera",
-                type: "datetimeoffset",
+                type: "timestamp with time zone",
                 nullable: true,
                 oldClrType: typeof(DateTime),
-                oldType: "datetime2",
+                oldType: "timestamp without time zone",
                 oldNullable: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // Reverter para DateTime se necessário
+            // Reverter para timestamp without time zone
             migrationBuilder.AlterColumn<DateTime>(
                 name: "DataEntrada",
                 table: "ListasEspera",
-                type: "datetime2",
+                type: "timestamp without time zone",
                 nullable: false,
-                oldClrType: typeof(DateTimeOffset),
-                oldType: "datetimeoffset");
+                oldClrType: typeof(DateTime),
+                oldType: "timestamp with time zone");
 
             migrationBuilder.AlterColumn<DateTime>(
                 name: "DataNotificacao",
                 table: "ListasEspera",
-                type: "datetime2",
+                type: "timestamp without time zone",
                 nullable: true,
-                oldClrType: typeof(DateTimeOffset),
-                oldType: "datetimeoffset",
+                oldClrType: typeof(DateTime),
+                oldType: "timestamp with time zone",
                 oldNullable: true);
 
             migrationBuilder.AlterColumn<DateTime>(
                 name: "DataExpiracao",
                 table: "ListasEspera",
-                type: "datetime2",
+                type: "timestamp without time zone",
                 nullable: true,
-                oldClrType: typeof(DateTimeOffset),
-                oldType: "datetimeoffset",
+                oldClrType: typeof(DateTime),
+                oldType: "timestamp with time zone",
                 oldNullable: true);
         }
     }

@@ -37,7 +37,14 @@ public class HttpInterceptorHandler : DelegatingHandler
             return response;
 
         // --- SE CAIU AQUI, DEU ERRO ---
+        // Lê e rebufferiza o corpo: após ReadAsStringAsync o stream original é consumido.
+        // Ao substituir o Content por StringContent, o componente chamador ainda pode
+        // fazer response.Content.ReadFromJsonAsync<T>() ou similares sem receber vazio.
         var corpo = await response.Content.ReadAsStringAsync(cancellationToken);
+        response.Content = new StringContent(
+            corpo,
+            System.Text.Encoding.UTF8,
+            response.Content.Headers.ContentType?.MediaType ?? "application/json");
 
         Console.WriteLine($"[INTERCEPTADOR] Falha HTTP {(int)response.StatusCode} na rota {request.RequestUri}");
         Console.WriteLine($"[INTERCEPTADOR] Resposta: {corpo}");

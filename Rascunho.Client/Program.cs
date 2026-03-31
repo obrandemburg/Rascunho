@@ -33,7 +33,7 @@ builder.Services.AddScoped<HttpInterceptorHandler>();
 
 var apiBaseUrl = builder.HostEnvironment.IsDevelopment()
     ? builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5132/"
-    : builder.HostEnvironment.BaseAddress; // Resolve automaticamente para https://pontodadanca...
+    : builder.HostEnvironment.BaseAddress;
 
 builder.Services.AddScoped(sp =>
 {

@@ -25,6 +25,14 @@ public abstract class Usuario
     public string? Cpf { get; protected set; }
     public string Genero { get; protected set; } = "Não informado";
 
+    // ── Controle de revogação de tokens JWT ───────────────────────
+    // Quando o usuário faz logout, este campo é atualizado com o horário UTC do logout.
+    // O middleware de autenticação rejeita qualquer token cujo "iat" (emitido em) seja
+    // anterior ou igual a este valor, invalidando sessões abertas em outros dispositivos.
+    public DateTime? UltimoLogoutEmUtc { get; private set; }
+
+    public void RegistrarLogout() => UltimoLogoutEmUtc = DateTime.UtcNow;
+
     protected Usuario() { }
 
     protected Usuario(string nome, string email, string senhaHash, string tipo)
