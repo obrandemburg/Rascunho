@@ -19,6 +19,16 @@ public static class UploadEndpoints
             "image/jpeg", "image/jpg", "image/png", "image/webp"
         };
 
+    // Mapa de extensão → MIME type para servir fotos corretamente
+    private static readonly Dictionary<string, string> ExtensaoParaMime =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            [".jpg"]  = "image/jpeg",
+            [".jpeg"] = "image/jpeg",
+            [".png"]  = "image/png",
+            [".webp"] = "image/webp",
+        };
+
     public static void MapUploadEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/upload").RequireAuthorization();
@@ -29,6 +39,13 @@ public static class UploadEndpoints
         // Aceita: multipart/form-data com campo "foto" (IFormFile)
         // Retorna: UploadFotoResponse { Url, NomeArquivo, TamanhoBytes }
         //
+        // CORREÇÃO Mixed Content / multi-ambiente:
+        //   A URL pública agora é sempre /api/fotos/{nomeArquivo} (relativa).
+        //   Isso garante que a foto seja carregada pelo mesmo domínio/protocolo
+        //   da aplicação, eliminando erros de Mixed Content (HTTPS → HTTP) e
+        //   problemas de host hardcoded (IP da VPS vs localhost em dev).
+        //   O Traefik/proxy roteia /api/* para o backend em todos os ambientes.
+        //
         // Segurança implementada:
         //   ✅ Validação de MIME type
         //   ✅ Limite de 5 MB
@@ -36,7 +53,7 @@ public static class UploadEndpoints
         //   ✅ Requer autenticação (qualquer usuário logado)
         //   ✅ DisableAntiforgery (endpoints de API não usam cookie antiforgery)
         // ══════════════════════════════════════════════════════════
-        group.MapPost("/foto", async (IFormFile foto, HttpContext ctx) =>
+        group.MapPost("/foto", async (IFormFile foto) =>
         {
             // ── Validação 1: arquivo presente ─────────────────────
             if (foto == null || foto.Length == 0)
@@ -50,9 +67,6 @@ public static class UploadEndpoints
                 });
 
             // ── Validação 3: tipo de arquivo ──────────────────────
-            // ContentType é definido pelo navegador com base na extensão.
-            // Para segurança máxima em produção, adicione a lib FileSignatures
-            // que verifica os "magic bytes" do arquivo (independe da extensão).
             if (!MimesAceitos.Contains(foto.ContentType))
                 return Results.BadRequest(new
                 {
@@ -60,8 +74,6 @@ public static class UploadEndpoints
                 });
 
             // ── Gera nome único com GUID ──────────────────────────
-            // GUID garante que dois uploads simultâneos nunca colidam.
-            // Manter a extensão original facilita a exibição pelo navegador.
             var extensao = Path.GetExtension(foto.FileName).ToLowerInvariant();
             var nomeArquivo = $"{Guid.NewGuid()}{extensao}";
 
@@ -74,11 +86,13 @@ public static class UploadEndpoints
             await using var stream = new FileStream(caminhoCompleto, FileMode.Create);
             await foto.CopyToAsync(stream);
 
-            // ── Monta URL pública ─────────────────────────────────
-            // Usa o mesmo host da requisição — funciona em dev e produção
-            // sem precisar configurar URLs em appsettings
-            var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
-            var urlPublica = $"{baseUrl}/{PastaRelativa}/{nomeArquivo}";
+            // ── URL pública: sempre relativa via /api/fotos/ ──────
+            // Antes usava o host da requisição (ex: http://5.161.202.169:8080/uploads/...).
+            // Isso causava Mixed Content quando o frontend rodava em HTTPS e o
+            // backend estava atrás de um reverse proxy com IP/porta diferente.
+            // Agora a URL é sempre /api/fotos/{nomeArquivo}, que o browser
+            // resolve contra a origem atual — funciona em dev e produção.
+            var urlPublica = $"/api/fotos/{nomeArquivo}";
 
             return Results.Ok(new UploadFotoResponse(
                 Url: urlPublica,
@@ -87,6 +101,47 @@ public static class UploadEndpoints
             ));
         })
         .DisableAntiforgery(); // Endpoints Minimal API de upload precisam disso
+
+        // ══════════════════════════════════════════════════════════
+        // GET /api/fotos/{nomeArquivo}
+        //
+        // Serve arquivos de foto diretamente via API.
+        //
+        // MOTIVAÇÃO:
+        //   A aplicação usa Traefik como reverse proxy. Apenas rotas /api/*
+        //   são encaminhadas ao container do backend. O caminho /uploads/*
+        //   vai para o container nginx do frontend, que não tem esses arquivos.
+        //   Servindo via /api/fotos/, garantimos que o Traefik roteie
+        //   corretamente para o backend em qualquer ambiente (dev e produção).
+        //
+        // RETROCOMPATIBILIDADE:
+        //   Fotos antigas armazenadas com URL http://IP:8080/uploads/fotos/uuid.jpg
+        //   são tratadas no componente UserAvatar.razor (FotoUrlNormalizada),
+        //   que extrai o nome do arquivo e usa /api/fotos/{nomeArquivo}.
+        //
+        // SEGURANÇA:
+        //   Path.GetFileName() neutraliza path traversal antes de qualquer I/O.
+        //   Nenhuma autenticação necessária — fotos são recursos públicos por design.
+        // ══════════════════════════════════════════════════════════
+        app.MapGet("/api/fotos/{nomeArquivo}", (string nomeArquivo) =>
+        {
+            // Sanitiza o nome para prevenir path traversal
+            var nomeSanitizado = Path.GetFileName(nomeArquivo);
+            if (string.IsNullOrEmpty(nomeSanitizado))
+                return Results.BadRequest(new { erro = "Nome de arquivo inválido." });
+
+            var caminho = Path.Combine(
+                Directory.GetCurrentDirectory(), PastaRelativa, nomeSanitizado);
+
+            if (!File.Exists(caminho))
+                return Results.NotFound(new { erro = "Foto não encontrada." });
+
+            // Determina o Content-Type pela extensão do arquivo
+            var extensao = Path.GetExtension(nomeSanitizado).ToLowerInvariant();
+            var contentType = ExtensaoParaMime.GetValueOrDefault(extensao, "application/octet-stream");
+
+            return Results.File(caminho, contentType);
+        });
 
         // ══════════════════════════════════════════════════════════
         // DELETE /api/upload/foto/{nomeArquivo}
