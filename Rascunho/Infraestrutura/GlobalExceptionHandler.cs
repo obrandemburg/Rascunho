@@ -6,10 +6,12 @@ namespace Rascunho.Infraestrutura;
 public class GlobalExceptionHandler : IExceptionHandler
 {
     private readonly ILogger<GlobalExceptionHandler> _logger;
+    private readonly IHostEnvironment _env;
 
-    public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger)
+    public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHostEnvironment env)
     {
         _logger = logger;
+        _env = env;
     }
 
     public async ValueTask<bool> TryHandleAsync(
@@ -19,7 +21,6 @@ public class GlobalExceptionHandler : IExceptionHandler
     {
         int statusCode = StatusCodes.Status500InternalServerError;
         string mensagem = "Ocorreu um erro interno no servidor.";
-        string? detalhes = null; // NOVA VARIÁVEL
 
         if (exception is ArgumentException)
         {
@@ -36,16 +37,19 @@ public class GlobalExceptionHandler : IExceptionHandler
             statusCode = StatusCodes.Status500InternalServerError;
             mensagem = "Ocorreu um erro interno. Tente novamente mais tarde.";
 
-            // Captura o stacktrace completo para enviar ao frontend
-            detalhes = exception.ToString();
-
             _logger.LogError(exception, "ERRO NÃO TRATADO CAPTURADO PELO GLOBAL HANDLER");
         }
 
         httpContext.Response.StatusCode = statusCode;
 
-        // Agora retornamos um objeto com duas propriedades
-        await httpContext.Response.WriteAsJsonAsync(new { erro = mensagem, detalhes = detalhes }, cancellationToken);
+        if (_env.IsDevelopment())
+        {
+            await httpContext.Response.WriteAsJsonAsync(new { erro = mensagem, detalhes = exception.ToString() }, cancellationToken);
+        }
+        else
+        {
+            await httpContext.Response.WriteAsJsonAsync(new { erro = mensagem }, cancellationToken);
+        }
 
         return true;
     }

@@ -387,3 +387,7 @@ FodyWeavers.xsd
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Configurações da VPS — contém credenciais de produção, NUNCA commitar
+stacksVPS/.env
+stacksVPS/docker-stack-pronto.yml

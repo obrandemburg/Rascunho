@@ -1,0 +1,94 @@
+version: "3.8"
+# Definição dos Serviços
+services:
+  # Definição do Nome do Serviço
+  traefik:
+    # Imagem do Serviço
+    # https://hub.docker.com/_/traefik
+    image: traefik:v2
+    # Define o hostname do Container
+    hostname: "{{.Service.Name}}.{{.Task.Slot}}"
+    # Commando que irá executar o Serviço
+    command:
+      - "--api.dashboard=false"
+      - "--providers.docker.swarmMode=true"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=network_swarm_public"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencryptresolver.acme.email=adsleads4@gmail.com"
+      - "--certificatesresolvers.letsencryptresolver.acme.storage=/etc/traefik/letsencrypt/acme.json"
+      - "--log.level=DEBUG"
+      - "--log.format=common"
+      - "--log.filePath=/var/log/traefik/traefik.log"
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access-log"
+    # Configura os volumes do Serviço
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "vol_certificates:/etc/traefik/letsencrypt"
+    # Configura a rede do Serviço
+    networks:
+      - network_swarm_public
+    # Configura as portas do Serviço para acesso externo
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+    # Configura o Modo de Deploy da Aplicação
+    deploy:
+      # Configura o modo de deploy do Serviço
+      mode: replicated
+      # Configura o numero de réplicas do Serviço (1 é o padrão)
+      replicas: 1
+      # Define a estratégia de deploy do Serviço
+      placement:
+        constraints:
+          - node.role == manager # Rodar serviço no Manager
+          # - node.hostname == srv-manager # Rodar serviço no Host
+          # - node.labels.app == workers # Rodar serviço no Host no Label: app, valor do label: workers
+      # Define a política de Reinício do Serviço
+      restart_policy:
+        condition: any
+        delay: 5s
+      # Define os Labels do Traefik
+      labels:
+        # Habilita o Traefik
+        - "traefik.enable=true"
+        # Middleware para redirecionar todo o tráfego HTTP para HTTPS
+        - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
+        # Configura o redirecionamento como permanente (código de status HTTP 301)
+        - "traefik.http.middlewares.redirect-https.redirectscheme.permanent=true"
+        # Define uma regra para capturar todo o tráfego HTTP
+        # `{host:.+}` é uma expressão regular que captura todos os hosts
+        - "traefik.http.routers.http-catchall.rule=hostregexp(`{host:.+}`)"
+        # Define o ponto de entrada "web" (geralmente na porta 80) para a rota HTTP
+        - "traefik.http.routers.http-catchall.entrypoints=web"
+        # Aplica o middleware de redirecionamento HTTPS à rota HTTP
+        - "traefik.http.routers.http-catchall.middlewares=redirect-https@docker"
+        # Define a prioridade da Roda do Serviço
+        - "traefik.http.routers.http-catchall.priority=1"
+
+# Define os Volumes
+volumes:
+  vol_shared:
+    external: true
+    name: volume_swarm_shared
+  vol_certificates:
+    external: true
+    name: volume_swarm_certificates
+
+# Define as Redes
+networks:
+  network_swarm_public:
+    external: true
+    name: network_swarm_public
