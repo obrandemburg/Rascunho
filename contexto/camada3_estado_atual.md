@@ -1,6 +1,6 @@
 # Ponto da Dança — Camada 3: Estado Atual
 
-> Última atualização: 28/03/2026 (BUG-001 a BUG-015 corrigidos; MinhasHabilidades CRUD implementado; contexto atualizado)
+> Última atualização: 31/03/2026 (BUG-016–022 corrigidos; auditoria de segurança e desempenho realizada; SEC-01/02/03 corrigidos; CI/CD profissionalizado)
 
 ---
 
@@ -83,20 +83,38 @@ O frontend tem as páginas criadas, mas o grau de completude varia. Páginas exi
 
 ### Crítico
 - **IP da VPS hardcoded** no `Rascunho.Client/Program.cs`: `http://5.161.202.169:8080/`
-  - Deve ser movido para `appsettings.json` ou variável de ambiente
+  - Deve ser movido para `appsettings.json` ou variável de ambiente (BUG-013)
 - **Notificações Push não funcionam** — `NotificacaoServiceStub` não envia nada
   - Bloqueia: confirmação de presença de bolsistas, notificação de vaga na lista de espera, alertas de aulas particulares
-  - Solução: implementar `FirebaseNotificacaoService` (Feature #4)
-- **Migrations sem Designer gerado** para as últimas (`AddListaEspera`, `CorrigirListaEsperaDataTypes`, `RemoveInteresseObsoleto`)
-  - Não é bloqueante para o funcionamento, mas pode causar problemas se precisar reverter
+  - Solução: implementar `FirebaseNotificacaoService` (Feature #4 — Sprint 15)
 
 ### Médio
-- **CORS configurado como `AllowAnyOrigin`** — aceitável para desenvolvimento, deve ser restrito em produção (BUG-011 pendente)
-- **`appsettings.Development.json`** com dados sensíveis gerenciados via `UserSecrets` — confirmar que secrets estão configurados na VPS
+- **ConfiguracaoService não persiste** — preços e janelas de reposição resetam a cada deploy (BUG-004 / SEC-10)
+- **N+1 queries em telas de desempenho e turmas recomendadas** — PERF-01 e PERF-02
+- **Índices ausentes** em colunas de alta frequência no PostgreSQL — PERF-05 + PERF-08
+- **Upload sem validação de magic bytes** — SEC-05 (extensão derivada do Content-Type do cliente)
+- **Sem rate limiting** no endpoint de login — SEC-13
+- **Headers HTTP de segurança ausentes** — SEC-12
 
 ### Baixo
-- Algumas pages do Bolsista têm nomes que podem não refletir o planejamento final (`MinhasHabilidades`, `RelatorioHoras`, `TurmasRecomendadas`) — podem ter sido criadas antes da definição final do MVP
-- O `Dockerfile.Client` usa NGINX — verificar se a config do `nginx.conf` do cliente está correta para roteamento SPA
+- Endpoint `/api/usuarios/listar` sem paginação ainda ativo — PERF-03
+- `ClockSkew` de 5 min no JWT — SEC-17
+- Migrations sem arquivo Designer gerado para `AddListaEspera`, `CorrigirListaEsperaDataTypes`, `RemoveInteresseObsoleto`
+
+---
+
+## Auditoria de Segurança e Desempenho (31/03/2026)
+
+Auditoria completa realizada em 31/03/2026. **31 issues identificados** (18 segurança, 13 desempenho).
+
+**Corrigidos nesta sessão:**
+- ✅ SEC-01 — Stack trace não mais exposto em produção
+- ✅ SEC-02 — CORS restrito ao domínio em produção via variável de ambiente
+- ✅ SEC-03 — `POST /api/usuarios/cadastrar` agora exige role Recepção/Gerente
+
+**Pendentes de maior impacto:** SEC-05, SEC-06, SEC-08, SEC-09, SEC-13, PERF-01, PERF-02, PERF-05, PERF-08
+
+> Ver detalhamento completo em `contexto/auditoria_seguranca_desempenho.md`
 
 ---
 
@@ -137,11 +155,14 @@ O frontend tem as páginas criadas, mas o grau de completude varia. Páginas exi
 - Frontend: `dotnet run` no projeto `Rascunho.Client` com DevServer
 
 ### Produção (VPS)
-- Endereço da API: `http://5.161.202.169:8080`
-- Deploy: Docker Compose via GitHub Actions (push em `main`)
+- **Domínio:** `https://pontodadanca.trindaflow.com.br`
+- **Infraestrutura:** Docker Compose + Traefik v2 (reverse proxy + SSL Let's Encrypt) em Docker Swarm, VPS Hetzner
+- Deploy: GitHub Actions (push em `main`) → build paralelo das imagens → SSH na VPS → `docker compose pull && docker compose up -d`
 - Imagens: `ghcr.io/obrandemburg/rascunho:latest` (backend) e `ghcr.io/obrandemburg/rascunho-client:latest` (frontend)
 - Volume: `pd_uploads` para fotos de perfil persistentes
 - Pasta na VPS: `/home/usuario/pontodadanca`
+- Configuração sensível: via `.env` na VPS (não versionado) + variáveis de ambiente no `docker-compose.yml`
+- Secrets configurados: `DB_USER/PASSWORD`, `JWT_KEY/ISSUER/AUDIENCE`, `HASHIDS_SALT`, `CORS_ALLOWED_ORIGINS`, `ASPNETCORE_ALLOWEDHOSTS`
 
 ### Git
 - Branch de produção: `main`

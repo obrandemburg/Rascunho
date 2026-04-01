@@ -20,7 +20,7 @@ public class CriarUsuarioRequestValidator : AbstractValidator<CriarUsuarioReques
 
         RuleFor(x => x.Senha)
             .NotEmpty().WithMessage("A senha é obrigatória.")
-            .MinimumLength(6).WithMessage("A senha deve ter no mínimo 6 caracteres.");
+            .MinimumLength(8).WithMessage("A senha deve ter no mínimo 8 caracteres.");
 
         RuleFor(x => x.Tipo)
             .NotEmpty().WithMessage("O tipo de usuário é obrigatório.")

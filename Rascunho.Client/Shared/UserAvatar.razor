@@ -33,6 +33,7 @@
 *@
 
 @using MudBlazor
+@inject IConfiguration Configuration
 
 @if (FotoUrlNormalizada != null && !_imgErro)
 {
@@ -145,7 +146,18 @@ else
             if (string.IsNullOrEmpty(nomeArquivo))
                 return null;
 
-            return $"/api/fotos/{nomeArquivo}";
+            // Em desenvolvimento, a API roda em porta diferente do frontend (5132 vs 5000).
+            // O browser resolve URLs relativas contra a origem do frontend, não da API.
+            // ApiBaseUrl (definido em appsettings.Development.json) força a URL absoluta
+            // apontando para a API, corrigindo o carregamento de fotos em dev local.
+            // Em produção, ApiBaseUrl não está definido → retorna URL relativa,
+            // que o Traefik roteia corretamente para o container da API.
+            var caminhoRelativo = $"/api/fotos/{nomeArquivo}";
+            var apiBaseUrl = Configuration["ApiBaseUrl"];
+            if (!string.IsNullOrEmpty(apiBaseUrl))
+                return $"{apiBaseUrl.TrimEnd('/')}{caminhoRelativo}";
+
+            return caminhoRelativo;
         }
     }
 }

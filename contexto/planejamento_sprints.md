@@ -1,13 +1,14 @@
 # Planejamento de Sprints — Ponto da Dança
 
-> Gerado em: 27/03/2026 | Base: análise do código + implementações faltantes + bugs mapeados
+> Gerado em: 27/03/2026 | Atualizado em: 31/03/2026
+> Sprint 9 concluída | Auditoria de segurança realizada | SEC-01/02/03 corrigidos em produção
 
 ---
 
 ## Premissas do Planejamento
 
-- **Sprint atual concluída:** Sprint 8 (UserAvatar, remoção de Ingressos do nav, Ritmos no admin)
-- **Próxima sprint:** Sprint 9
+- **Sprint atual concluída:** Sprint 9 (BUG-001, BUG-002, BUG-003, BUG-011, BUG-012 — todos corrigidos)
+- **Próxima sprint:** Sprint 10
 - **Duração estimada por sprint:** ~1 semana de desenvolvimento ativo
 - **Convenção:** `BE` = backend, `FE` = frontend, `INFRA` = infraestrutura
 - **Prioridade máxima:** Fechar o MVP (fase 1.1) antes de iniciar a fase 1.2
@@ -383,13 +384,147 @@ Adicionar parâmetro de janela temporal (padrão: 90 dias) ao cálculo de frequ�
 
 ---
 
-## Sprint 14 — Dívida Técnica e Infraestrutura
+## Sprint 14 — Segurança, Desempenho e Dívida Técnica
 
-**Objetivo:** Eliminar os débitos técnicos que afetam estabilidade e segurança em produção.
+**Objetivo:** Eliminar os débitos técnicos e implementar as correções de segurança e desempenho identificadas na auditoria de 31/03/2026.
 
-**Estimativa:** 3–5 dias
+> Ver detalhamento completo de cada item em `contexto/auditoria_seguranca_desempenho.md`
 
-### Itens
+**Estimativa:** 5–7 dias
+
+### Itens de Segurança
+
+#### [BE] SEC-05 + SEC-14: Validar magic bytes no upload de foto
+
+**Arquivo:** `Rascunho/Endpoints/UploadEndpoints.cs`
+
+Ler os primeiros 4 bytes do stream e verificar assinatura JPEG (`FF D8 FF`), PNG (`89 50 4E 47`) ou WebP (`52 49 46 46`). Derivar extensão do MIME validado, nunca de `foto.FileName`. Rejeitar com 400 se magic bytes não corresponderem a nenhum formato aceito.
+
+---
+
+#### [BE] SEC-06: Restringir role na desmatriculação
+
+**Arquivo:** `Rascunho/Endpoints/TurmaEndpoints.cs`
+
+Adicionar `.RequireAuthorization(policy => policy.RequireRole("Aluno", "Bolsista", "Líder"))` ao endpoint `DELETE /{turmaIdHash}/desmatricular`.
+
+---
+
+#### [BE] SEC-08: Padronizar tamanho mínimo de senha
+
+**Arquivos:**
+- `Rascunho/Validations/CriarUsuarioRequestValidator.cs` — alterar de 6 para 8 caracteres mínimos
+- `Rascunho/Validations/AlterarSenhaRequestValidator.cs` — já está em 8, confirmar
+
+---
+
+#### [BE] SEC-09: Verificar retorno de `int.TryParse` em BolsistaEndpoints
+
+**Arquivo:** `Rascunho/Endpoints/BolsistaEndpoints.cs` (linhas 130–132)
+
+```csharp
+if (!int.TryParse(idClaim, out int usuarioLogadoId))
+    return Results.Unauthorized();
+```
+
+---
+
+#### [BE] SEC-13: Rate limiting no endpoint de login
+
+**Arquivo:** `Rascunho/Program.cs` + `Rascunho/Endpoints/AuthEndpoints.cs`
+
+```csharp
+builder.Services.AddRateLimiter(options =>
+    options.AddSlidingWindowLimiter("login", opt =>
+    {
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.PermitLimit = 5;
+        opt.SegmentsPerWindow = 1;
+    }));
+// No endpoint:
+.RequireRateLimiting("login")
+```
+
+---
+
+#### [BE] SEC-12: Headers HTTP de segurança
+
+**Arquivo:** `Rascunho/Program.cs`
+
+```csharp
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.Append("X-Frame-Options", "DENY");
+    context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+    await next();
+});
+```
+
+---
+
+### Itens de Desempenho
+
+#### [BE] PERF-05 + PERF-08: Índices e eliminação de `ToLower()` em queries
+
+**Migration:** `AddIndicesDesempenho`
+
+1. Padronizar `Email` para lowercase no cadastro (gravar sempre em `request.Email.ToLower()`) e remover `.ToLower()` nas buscas
+2. Criar índices via migration:
+
+```csharp
+migrationBuilder.CreateIndex("ix_usuarios_ativo_tipo", "Usuarios", new[] { "Ativo", "Tipo" });
+migrationBuilder.CreateIndex("ix_registrospresencas_alunoid", "RegistrosPresencas", "AlunoId");
+migrationBuilder.CreateIndex("ix_aulasparticulares_alunoid_status", "AulasParticulares", new[] { "AlunoId", "Status" });
+migrationBuilder.CreateIndex("ix_aulasparticulares_professorid_status", "AulasParticulares", new[] { "ProfessorId", "Status" });
+migrationBuilder.Sql(@"CREATE UNIQUE INDEX ix_usuarios_email_lower ON ""Usuarios"" (LOWER(""Email""))");
+```
+
+---
+
+#### [BE] PERF-01: Eliminar N+1 em `TurmasRecomendadasParaBolsistaAsync`
+
+**Arquivo:** `Rascunho/Services/BolsistaService.cs`
+
+Refatorar `AnalisarEBalancearTurmaAsync` para aceitar o objeto `Turma` já carregado em vez do ID, evitando re-queries para cada turma do loop.
+
+---
+
+#### [BE] PERF-02: Eliminar N+1 em `desempenho-bolsistas`
+
+**Arquivo:** `Rascunho/Services/BolsistaService.cs` + `GerenteEndpoints.cs`
+
+Reescrever para buscar todos os registros de presença de todos os bolsistas com uma única query `WHERE AlunoId IN (...)` e calcular indicadores em memória.
+
+---
+
+#### [BE] PERF-11: `SairDaFilaAsync` com UPDATE único
+
+**Arquivo:** `Rascunho/Services/ListaEsperaService.cs`
+
+Substituir N updates de reordenação por um único `ExecuteSqlRawAsync`:
+```csharp
+await _context.Database.ExecuteSqlRawAsync(
+    @"UPDATE ""ListasEspera"" SET ""Posicao"" = ""Posicao"" - 1
+      WHERE ""TurmaId"" = {0} AND ""Posicao"" > {1}
+        AND ""Status"" IN ('Aguardando', 'Notificado')",
+    turmaId, posicaoRemovida);
+```
+
+---
+
+#### [BE] PERF-10: Filtro de `DayOfWeek` via SQL em `MeuDesempenhoAsync`
+
+**Arquivo:** `Rascunho/Services/BolsistaService.cs`
+
+```csharp
+var diasComoInt = diasObrigatorios.Select(d => (int)d).ToList();
+.Where(rp => diasComoInt.Contains((int)rp.DataAula.DayOfWeek))
+```
+
+---
+
+### Itens de Dívida Técnica (originais da Sprint 14)
 
 #### [BE] BUG-004 + BUG-005: Persistir Configurações no Banco
 

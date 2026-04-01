@@ -116,26 +116,7 @@ public static class TurmaEndpoints
         .AddEndpointFilter<ValidationFilter<MatricularRequest>>();
 
         // ══════════════════════════════════════════════════════════════════
-        // 4. DESMATRICULAR (auto-serviço)
-        // ══════════════════════════════════════════════════════════════════
-        group.MapDelete("/{turmaIdHash}/desmatricular", async (
-            string turmaIdHash,
-            TurmaService turmaService,
-            IHashids hashids,
-            ClaimsPrincipal user) =>
-        {
-            var decodedIds = hashids.Decode(turmaIdHash);
-            if (decodedIds.Length == 0) return Results.BadRequest(new { erro = "ID da turma inválido." });
-
-            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(idClaim, out int alunoLogadoId)) return Results.Unauthorized();
-
-            await turmaService.DesmatricularAlunoAsync(decodedIds[0], alunoLogadoId);
-            return Results.Ok(new { Mensagem = "Você saiu da turma/fila de espera." });
-        });
-
-        // ══════════════════════════════════════════════════════════════════
-        // 5. ADMIN: Recepção matricula qualquer aluno
+        // 4. ADMIN: Recepção matricula qualquer aluno
         // ══════════════════════════════════════════════════════════════════
         group.MapPost("/{turmaIdHash}/admin/matricular", async (
             string turmaIdHash,

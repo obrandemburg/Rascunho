@@ -260,6 +260,12 @@
                                      Color="Color.Default" Variant="Variant.Outlined">
                                 @aluno.Papel
                             </MudChip>
+                            <MudTooltip Text="Desmatricular aluno">
+                                <MudIconButton Icon="@Icons.Material.Filled.PersonRemove"
+                                               Color="Color.Error" Size="Size.Small"
+                                               Disabled="@desmatriculando"
+                                               OnClick="@(() => ConfirmarDesmatricular(aluno))" />
+                            </MudTooltip>
                         </MudStack>
                     </MudListItem>
                     <MudDivider />
@@ -278,6 +284,7 @@
     private bool carregandoAlunos = false;
     private bool criando = false;
     private bool modalAlunosAberto = false;
+    private bool desmatriculando = false;
 
     private TurmaRequest novaTurma = new() { LimiteAlunos = 30 };
     private TimeSpan? horarioInicio;
@@ -425,6 +432,42 @@
         finally
         {
             carregandoAlunos = false;
+        }
+    }
+
+    private async Task ConfirmarDesmatricular(AlunoMatriculadoDto aluno)
+    {
+        var parametros = new DialogParameters
+        {
+            { "ContentText",
+                $"Desmatricular '{aluno.Nome}' desta turma?\n\n" +
+                "O aluno precisará ir à recepção para se rematricular." },
+            { "ButtonText", "Desmatricular" },
+            { "Color", Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirmar Desmatriculação", parametros);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            desmatriculando = true;
+            try
+            {
+                var response = await Http.DeleteAsync(
+                    $"api/turmas/{turmaSelecionada!.IdHash}/admin/desmatricular/{aluno.AlunoIdHash}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    alunosDaTurma.RemoveAll(a => a.AlunoIdHash == aluno.AlunoIdHash);
+                    Snackbar.Add($"'{aluno.Nome}' foi desmatriculado com sucesso.", Severity.Success);
+                }
+                // Erros são tratados automaticamente pelo HttpInterceptorHandler
+            }
+            finally
+            {
+                desmatriculando = false;
+            }
         }
     }
 
