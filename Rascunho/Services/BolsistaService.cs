@@ -278,7 +278,9 @@ public class BolsistaService
         var turmasDoDia = await _context.Turmas
             .Include(t => t.Matriculas)
             .Include(t => t.Ritmo)
-            .Where(t => t.Ativa && t.DiaDaSemana == dia)
+            .Where(t => t.Ativa &&
+                        t.DiaDaSemana == dia &&
+                        t.Ritmo.Modalidade.ToLower() != "dança solo")
             .ToListAsync();
 
         var resultados = new List<SugestaoBalanceamentoResponse>();

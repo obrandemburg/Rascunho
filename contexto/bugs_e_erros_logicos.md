@@ -2,6 +2,7 @@
 
 > Gerado em: 27/03/2026 | Atualizado em: 31/03/2026
 > BUG-001 a BUG-012, BUG-014, BUG-015 corrigidos em 28/03/2026 | BUG-016 a BUG-022 corrigidos em 30/03/2026
+> BUG-023 corrigido em 31/03/2026
 > SEC-01, SEC-02, SEC-03 corrigidos em 31/03/2026 (auditoria de segurança — ver `auditoria_seguranca_desempenho.md`)
 
 ---
@@ -378,6 +379,22 @@ Além disso, o caminho `/uploads/fotos/...` no Traefik era roteado para o contai
 
 ---
 
+## ~~BUG-023~~ — ✅ CORRIGIDO — "Turmas do Dia" indicava turmas de "Dança solo" para bolsistas
+
+**Severidade:** 🟠 Alto → ✅ Resolvido em 31/03/2026
+**Tipo:** Regra de negócio violada
+**Arquivo:** `Rascunho/Services/BolsistaService.cs`
+
+**Descrição:**
+O método `TurmasRecomendadasParaBolsistaAsync` buscava todas as turmas ativas do dia selecionado sem filtrar pela modalidade. Turmas de "Dança solo" eram incluídas na lista de recomendações exibida no endpoint `/turmas-recomendadas` ("Turmas do Dia"). Como turmas solo são individuais, não se beneficiam da presença de bolsistas para balancear pares — a indicação era incorreta e potencialmente confusa.
+
+**Correção aplicada:**
+- `BolsistaService.cs` — `TurmasRecomendadasParaBolsistaAsync`: adicionada condição `t.Ritmo.Modalidade.ToLower() != "dança solo"` ao `Where` da query de `turmasDoDia`. O filtro ocorre na mesma query EF Core (não em memória), aproveitando o `.Include(t => t.Ritmo)` já existente.
+
+**Observação:** A lógica de bloqueio de matrícula (BOL04) e de aulas particulares (BOL05) não foi alterada — essas regras já estavam corretas e independentes desta indicação.
+
+---
+
 ## Resumo de Bugs por Severidade
 
 | ID | Descrição curta | Severidade | Status |
@@ -404,6 +421,7 @@ Além disso, o caminho `/uploads/fotos/...` no Traefik era roteado para o contai
 | BUG-020 | MudMenu não abria — MudBlazor v9 exige context.ToggleAsync() | 🔴 Crítico | ✅ Corrigido |
 | BUG-021 | Foto não carregava em ambiente diferente do upload (URL com host fixo) | 🟠 Alto | ✅ Corrigido |
 | BUG-022 | Mixed Content: foto HTTP bloqueada em site HTTPS (URL via IP da VPS) | 🔴 Crítico | ✅ Corrigido |
+| BUG-023 | "Turmas do Dia" indicava turmas de "Dança solo" para bolsistas | 🟠 Alto | ✅ Corrigido |
 
 ---
 
