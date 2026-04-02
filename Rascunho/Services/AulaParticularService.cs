@@ -66,11 +66,14 @@ public class AulaParticularService
         }
 
         // RN-AP06: Aluno já tem outra particular aceita no mesmo horário?
+        var inicioUtc = DateTime.SpecifyKind(request.DataHoraInicio, DateTimeKind.Utc);
+        var fimUtc = DateTime.SpecifyKind(request.DataHoraFim, DateTimeKind.Utc);
+
         bool choqueAluno = await _context.AulasParticulares.AnyAsync(a =>
             a.AlunoId == alunoId &&
             a.Status == "Aceita" &&
-            request.DataHoraInicio < a.DataHoraFim &&
-            request.DataHoraFim > a.DataHoraInicio);
+            inicioUtc < a.DataHoraFim &&
+            fimUtc > a.DataHoraInicio);
 
         if (choqueAluno)
             throw new RegraNegocioException(
@@ -82,7 +85,7 @@ public class AulaParticularService
 
         var aula = new AulaParticular(
             alunoId, profDecoded[0], ritmoDecoded[0],
-            request.DataHoraInicio, request.DataHoraFim,
+            inicioUtc, fimUtc,
             request.Observacao, valorCobrado);
 
         _context.AulasParticulares.Add(aula);
@@ -214,12 +217,15 @@ public class AulaParticularService
                     "Entre em contato diretamente com o professor. [RN-AP03]");
         }
 
+        var novoInicioUtc = DateTime.SpecifyKind(request.NovaDataHoraInicio, DateTimeKind.Utc);
+        var novoFimUtc = DateTime.SpecifyKind(request.NovaDataHoraFim, DateTimeKind.Utc);
+
         // Validação das novas datas
-        if (request.NovaDataHoraInicio >= request.NovaDataHoraFim)
+        if (novoInicioUtc >= novoFimUtc)
             throw new RegraNegocioException(
                 "O horário de início deve ser anterior ao horário de fim.");
 
-        if (request.NovaDataHoraInicio <= DateTime.UtcNow)
+        if (novoInicioUtc <= DateTime.UtcNow)
             throw new RegraNegocioException("O novo horário deve ser no futuro.");
 
         // RN-AP06: Verifica choque no NOVO horário (excluindo a aula atual)
@@ -227,8 +233,8 @@ public class AulaParticularService
             a.AlunoId == alunoId &&
             a.Id != aulaId &&
             a.Status == "Aceita" &&
-            request.NovaDataHoraInicio < a.DataHoraFim &&
-            request.NovaDataHoraFim > a.DataHoraInicio);
+            novoInicioUtc < a.DataHoraFim &&
+            novoFimUtc > a.DataHoraInicio);
 
         if (choqueAluno)
             throw new RegraNegocioException(
@@ -243,8 +249,8 @@ public class AulaParticularService
             alunoId,
             aulaAtual.ProfessorId,
             aulaAtual.RitmoId,
-            request.NovaDataHoraInicio,
-            request.NovaDataHoraFim,
+            novoInicioUtc,
+            novoFimUtc,
             aulaAtual.ObservacaoAluno,
             aulaAtual.ValorCobrado);  // Mantém o preço original
 

@@ -43,8 +43,8 @@ public class AulaParticular
         AlunoId = alunoId;
         ProfessorId = professorId;
         RitmoId = ritmoId;
-        DataHoraInicio = dataHoraInicio.ToUniversalTime();
-        DataHoraFim = dataHoraFim.ToUniversalTime();
+        DataHoraInicio = DateTime.SpecifyKind(dataHoraInicio, DateTimeKind.Utc);
+        DataHoraFim = DateTime.SpecifyKind(dataHoraFim, DateTimeKind.Utc);
         ObservacaoAluno = observacaoAluno;
         ValorCobrado = valorCobrado;
         Status = "Pendente";

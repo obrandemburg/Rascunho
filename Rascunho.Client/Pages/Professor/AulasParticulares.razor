@@ -106,7 +106,7 @@
                         @* Professor pode cancelar a qualquer momento (RN-AP04) *@
                         <MudButton Color="Color.Error" Variant="Variant.Text"
                                    StartIcon="@Icons.Material.Filled.Cancel"
-                                   OnClick="@(() => Cancelar(aula.IdHash))">
+                                   OnClick="@(() => AbrirDialogCancelar(aula.IdHash))">
                             Cancelar
                         </MudButton>
                         @* Nota: WhatsApp do aluno requer telefone no cadastro (não implementado ainda) *@
@@ -186,10 +186,34 @@
     </MudTabPanel>
 </MudTabs>
 
+@* ── Dialog de confirmação de cancelamento ──────────────────── *@
+<MudDialog @bind-Visible="dialogCancelarAberto"
+           Options="@(new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Confirmar Cancelamento</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText>Tem certeza que deseja cancelar esta aula? Esta ação não pode ser desfeita.</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => dialogCancelarAberto = false)" Variant="Variant.Text">
+            Voltar
+        </MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled"
+                   OnClick="ConfirmarCancelar"
+                   Disabled="@processandoCancelamento">
+            @(processandoCancelamento ? "Cancelando..." : "Confirmar Cancelamento")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     private bool carregando = true;
     private bool carregandoDisponibilidade = true;
     private bool salvandoDisponibilidade = false;
+    private bool dialogCancelarAberto = false;
+    private bool processandoCancelamento = false;
+    private string? aulaParaCancelarIdHash;
 
     private List<AulaParticularDto> pendentes = new();
     private List<AulaParticularDto> agendadas = new();
@@ -231,14 +255,33 @@
         }
     }
 
-    private async Task Cancelar(string idHash)
+    private void AbrirDialogCancelar(string idHash)
     {
-        var response = await Http.DeleteAsync($"api/aulas-particulares/{idHash}/cancelar");
-        if (response.IsSuccessStatusCode)
+        aulaParaCancelarIdHash = idHash;
+        dialogCancelarAberto = true;
+    }
+
+    private async Task ConfirmarCancelar()
+    {
+        if (aulaParaCancelarIdHash == null) return;
+
+        processandoCancelamento = true;
+        try
         {
-            Snackbar.Add("Aula cancelada.", Severity.Info);
-            await Recarregar();
+            var response = await Http.DeleteAsync($"api/aulas-particulares/{aulaParaCancelarIdHash}/cancelar");
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Aula cancelada.", Severity.Info);
+                dialogCancelarAberto = false;
+                await Recarregar();
+            }
+            else
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Erro: {msg}", Severity.Error);
+            }
         }
+        finally { processandoCancelamento = false; }
     }
 
     private async Task Recarregar()
