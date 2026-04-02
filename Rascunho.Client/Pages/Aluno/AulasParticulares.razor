@@ -83,6 +83,14 @@
                                Class="mb-4"
                                AmPm="false" />
 
+                <MudTextField @bind-Value="observacaoNovaAula"
+                              Label="O que você gostaria de aprender? (opcional)"
+                              Variant="Variant.Outlined"
+                              Class="mb-4"
+                              Lines="3"
+                              MaxLength="500"
+                              HelperText="Descreva habilidades, técnicas ou objetivos para a aula (máx. 500 caracteres)" />
+
                 @* Preview do valor que será cobrado (exibido quando professor e ritmo estão selecionados) *@
                 @if (!string.IsNullOrEmpty(novaAula.ProfessorIdHash) && !string.IsNullOrEmpty(novaAula.RitmoIdHash))
                 {
@@ -167,22 +175,31 @@
                         </CardHeaderActions>
                     </MudCardHeader>
                     <MudCardActions Class="justify-space-between">
-                        <MudButton Color="Color.Error"
-                                   Variant="Variant.Text"
-                                   Disabled="@(aula.Status != "Pendente" && aula.Status != "Aceita")"
-                                   OnClick="@(() => Cancelar(aula.IdHash))">
-                            Cancelar
-                        </MudButton>
+                        @{
+                            var motivoCancelar = MotivoCancelamentoDesabilitado(aula);
+                            var podeReagendar = PodeReagendar(aula);
+                        }
+                        <MudTooltip Text="@(motivoCancelar ?? "")" Disabled="@(motivoCancelar == null)">
+                            <MudButton Color="Color.Error"
+                                       Variant="Variant.Text"
+                                       Disabled="@(motivoCancelar != null)"
+                                       OnClick="@(() => Cancelar(aula.IdHash))">
+                                Cancelar
+                            </MudButton>
+                        </MudTooltip>
 
-                        @* Botão Reagendar: disponível apenas para Pendente ou Aceita *@
                         @if (aula.Status == "Pendente" || aula.Status == "Aceita")
                         {
-                            <MudButton Color="Color.Info"
-                                       Variant="Variant.Text"
-                                       StartIcon="@Icons.Material.Filled.EventRepeat"
-                                       OnClick="@(() => AbrirDialogReagendar(aula))">
-                                Reagendar
-                            </MudButton>
+                            <MudTooltip Text="Não é possível reagendar uma aula com menos de 12 horas de antecedência"
+                                        Disabled="@podeReagendar">
+                                <MudButton Color="Color.Info"
+                                           Variant="Variant.Text"
+                                           StartIcon="@Icons.Material.Filled.EventRepeat"
+                                           Disabled="@(!podeReagendar)"
+                                           OnClick="@(() => AbrirDialogReagendar(aula))">
+                                    Reagendar
+                                </MudButton>
+                            </MudTooltip>
                         }
                     </MudCardActions>
                 </MudCard>
@@ -264,6 +281,7 @@
     private DateTime? dataInicio;
     private TimeSpan? horaInicio;
     private TimeSpan? horaFim;
+    private string observacaoNovaAula = "";
     private DateTime? novaDataReagendar;
     private TimeSpan? novaHoraInicioReagendar;
     private TimeSpan? novaHoraFimReagendar;
@@ -352,7 +370,7 @@
                 novaAula.RitmoIdHash,
                 DataHoraInicio = dataInicio.Value.Date + horaInicio.Value,
                 DataHoraFim = dataInicio.Value.Date + horaFim.Value,
-                Observacao = ""
+                Observacao = observacaoNovaAula ?? ""
             };
 
             var response = await Http.PostAsJsonAsync("api/aulas-particulares/solicitar", payload);
@@ -361,7 +379,7 @@
             {
                 Snackbar.Add("Solicitação enviada! Aguarde o professor aceitar. ✅", Severity.Success);
                 novaAula = new();
-                dataInicio = null; horaInicio = null; horaFim = null;
+                dataInicio = null; horaInicio = null; horaFim = null; observacaoNovaAula = "";
                 aulasParticulares = await Http.GetFromJsonAsync<List<AulaParticularDto>>(
                     "api/aulas-particulares/minhas") ?? new();
             }
@@ -432,6 +450,27 @@
         finally { processando = false; }
     }
 
+    private bool MenosDe12Horas(DateTime dataHoraInicio) =>
+        (dataHoraInicio.ToUniversalTime() - DateTime.UtcNow).TotalHours < 12;
+
+    // Retorna null se pode cancelar, ou a mensagem do motivo se não pode
+    private string? MotivoCancelamentoDesabilitado(AulaParticularDto aula)
+    {
+        if (aula.Status != "Pendente" && aula.Status != "Aceita")
+            return "Não é possível cancelar uma aula com status " + aula.Status;
+        if (MenosDe12Horas(aula.DataHoraInicio))
+            return "Cancelamento com menos de 12 horas de antecedência não é permitido. Entre em contato com o professor ou a recepção.";
+        return null;
+    }
+
+    // Reagendar só é bloqueado por 12h quando a aula já está Aceita
+    private bool PodeReagendar(AulaParticularDto aula)
+    {
+        if (aula.Status == "Aceita" && MenosDe12Horas(aula.DataHoraInicio))
+            return false;
+        return true;
+    }
+
     private Color StatusCor(string status) => status switch
     {
         "Aceita" => Color.Success,
@@ -452,10 +491,12 @@
         public string IdHash { get; set; } = "";
         public string ProfessorIdHash { get; set; } = "";
         public string NomeProfessor { get; set; } = "";
+        public string NomeAluno { get; set; } = "";
         public string NomeRitmo { get; set; } = "";
         public DateTime DataHoraInicio { get; set; }
         public DateTime DataHoraFim { get; set; }
         public string Status { get; set; } = "";
+        public string? Observacao { get; set; }
         public decimal ValorCobrado { get; set; }
     }
 
