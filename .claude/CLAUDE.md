@@ -120,21 +120,12 @@ Páginas criadas com grau variado de completude. Telas faltantes críticas:
 ### Bugs Pendentes
 | Bug | Severidade | Descrição |
 |-----|-----------|-----------|
-| BUG-004 | 🟠 Alto | ConfiguracaoService não persiste entre restarts |
-| BUG-011 | 🟠 Alto | CORS AllowAnyOrigin em produção |
-| BUG-013 | 🔴 Crítico | IP da VPS hardcoded no frontend |
+
 
 ---
 
 ## Próximos Passos (por prioridade)
 
-1. **BUG-013** — Externalizar URL da API do frontend para `wwwroot/appsettings.json`
-2. **InicioAdmin.razor** — Tela de dashboard da Recepção (`/admin`)
-3. **SistemaBolsistas.razor** — Sistema de bolsistas para Recepção (`/admin/bolsistas`)
-4. **QuadroTurmas.razor** — Quadro de turmas autenticado para Aluno
-5. **BUG-011** — Restringir CORS em produção
-6. **BUG-004** — Persistir configurações no banco
-7. **Feature #4** — Notificações Push FCM (Sprint 15)
 
 ---
 

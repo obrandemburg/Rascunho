@@ -1,6 +1,6 @@
 # Implementações Faltantes — Ponto da Dança
 
-> Gerado em: 27/03/2026 | Base: análise completa do código (backend + frontend)
+> Gerado em: 27/03/2026 | Atualizado em: 18/05/2026 | Base: análise completa do código (backend + frontend)
 
 ---
 
@@ -141,14 +141,9 @@ Cada item indica **o que falta**, **onde falta** (backend/frontend/ambos) e **qu
 
 ---
 
-#### 🟠 Tela: Professor — Minha Disponibilidade (Aba 3 de AulasParticulares)
+#### ✅ Tela: Professor — Minha Disponibilidade (Aba 3 de AulasParticulares) — IMPLEMENTADO (18/05/2026)
 
-**Status:** `AulasParticulares.razor` do professor tem 2 abas (Pendentes e Agendadas). A aba 3 "Minha disponibilidade" está listada na spec (tela 17) mas não existe no código.
-
-**O que falta:**
-- Aba "Minha disponibilidade" em `Pages/Professor/AulasParticulares.razor`
-- Grid de dias e horários editável
-- Chamadas para `GET /api/professor/disponibilidade` e `PUT /api/professor/disponibilidade`
+**Status:** `AulasParticulares.razor` do professor agora tem 3 abas (Pendentes, Agendadas, Minha Disponibilidade). A aba de disponibilidade permite adicionar/editar/remover slots de horário por dia da semana, com `GET /api/professores/minha-disponibilidade` e `PUT /api/professores/minha-disponibilidade`.
 
 ---
 

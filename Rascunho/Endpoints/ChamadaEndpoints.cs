@@ -10,7 +10,6 @@ public static class ChamadaEndpoints
 {
     public static void MapChamadaEndpoints(this IEndpointRouteBuilder app)
     {
-        // CORREÇÃO: removido "Assistente" da lista de roles — tipo inexistente no sistema
         var group = app.MapGroup("/api/turmas/{turmaIdHash}/chamada")
             .RequireAuthorization(policy => policy.RequireRole("Professor", "Recepção", "Gerente"));
 

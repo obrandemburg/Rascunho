@@ -39,9 +39,7 @@
     "mappingPattern": "Mappers manuais em Rascunho/Mappers/"
   },
   "pendingBugs": {
-    "BUG-004": "ConfiguracaoService perde dados no restart — sem persistência no banco",
-    "BUG-011": "CORS AllowAnyOrigin em produção — vulnerabilidade de segurança",
-    "BUG-013": "IP da VPS hardcoded em Rascunho.Client/Program.cs"
+    
   },
   "deployment": {
     "productionBranch": "main",

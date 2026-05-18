@@ -1,6 +1,6 @@
 # Ponto da Dança — Camada 3: Estado Atual
 
-> Última atualização: 31/03/2026 (BUG-016–022 corrigidos; auditoria de segurança e desempenho realizada; SEC-01/02/03 corrigidos; CI/CD profissionalizado)
+> Última atualização: 18/05/2026 (Seção B da Chamada implementada; bugs de agendamento de aulas particulares corrigidos; correção de turmas recomendadas para bolsistas; link para quadro de turmas corrigido)
 
 ---
 
@@ -49,7 +49,7 @@ As migrations revelam a ordem em que os módulos foram construídos:
 | Usuários (CRUD) | ✅ Completo | Cadastro em massa, edição, desativação, foto, gênero, CPF |
 | Ritmos e Salas | ✅ Completo | CRUD simples |
 | Turmas | ✅ Completo | CRUD com validações TUR01-TUR06 |
-| Chamada | ✅ Completo | Registro, participantes extras, validações CHA01-CHA05 |
+| Chamada | ✅ Completo | Registro, participantes extras (Seção A+B com busca debounced), validações CHA01-CHA05 |
 | Aulas Particulares | ✅ Completo | Agendamento, aceite/recusa, disponibilidade professor, validações AP01-AP06 |
 | Sistema de Bolsistas | ✅ Completo | Dias obrigatórios, frequência, papel dominante, BOL01-BOL09 |
 | Avisos | ✅ Completo | CRUD com período, público-alvo, expiração |
@@ -71,7 +71,7 @@ O frontend tem as páginas criadas, mas o grau de completude varia. Páginas exi
 | Auth | `Login.razor` | ✅ Funcional |
 | Aluno | `PainelAluno` (BUG-008 ✅), `MinhasAulas`, `AulasParticulares`, `Reagendar`, `MinhasEsperas`, `AulaExperimental`, `Ingressos` | 🔄 Parcial |
 | Bolsista | `TurmasRecomendadas` (BUG-007 ✅ — "Turmas do Dia"), `Desempenho` (BUG-006 ✅), `RelatorioHoras`, `MinhasHabilidades` (✅ CRUD completo 28/03) | 🔄 Parcial |
-| Professor | `MinhasTurmas`, `FazerChamada`, `AulasParticulares` | 🔄 Parcial |
+| Professor | `MinhasTurmas`, `FazerChamada` (Seção A+B ✅), `AulasParticulares` (3 abas: Pendentes, Agendadas, Disponibilidade ✅) | 🔄 Parcial |
 | Admin (Recepção) | `GerenciarTurmas` (BUG-001 ✅ modal de alunos), `GerenciarSalas`, `GerenciarRitmos`, `CriarUsuario`, `MatricularAluno`, `CriarAviso`, `FilaEspera` | 🔄 Parcial |
 | Gerência | `Dashboard`, `GestaoUsuarios`, `QuadroDesempenho` | 🔄 Parcial |
 | Público | `Turmas` (BUG-002 ✅ botão desativado para bolsistas), `RitmosPublico` | 🔄 Parcial |
@@ -82,8 +82,6 @@ O frontend tem as páginas criadas, mas o grau de completude varia. Páginas exi
 ## Débitos Técnicos Conhecidos
 
 ### Crítico
-- **IP da VPS hardcoded** no `Rascunho.Client/Program.cs`: `http://5.161.202.169:8080/`
-  - Deve ser movido para `appsettings.json` ou variável de ambiente (BUG-013)
 - **Notificações Push não funcionam** — `NotificacaoServiceStub` não envia nada
   - Bloqueia: confirmação de presença de bolsistas, notificação de vaga na lista de espera, alertas de aulas particulares
   - Solução: implementar `FirebaseNotificacaoService` (Feature #4 — Sprint 15)
@@ -115,6 +113,19 @@ Auditoria completa realizada em 31/03/2026. **31 issues identificados** (18 segu
 **Pendentes de maior impacto:** SEC-05, SEC-06, SEC-08, SEC-09, SEC-13, PERF-01, PERF-02, PERF-05, PERF-08
 
 > Ver detalhamento completo em `contexto/auditoria_seguranca_desempenho.md`
+
+---
+
+## O que foi implementado desde 31/03/2026
+
+| Data | O que foi feito |
+|---|---|
+| Sprints 9-10 | Correção de bugs relacionados ao agendamento de aulas particulares |
+| Sprints 9-10 | Correção de turmas recomendadas para bolsistas |
+| Sprints 9-10 | Correção do link para o quadro de turmas |
+| 18/05/2026 | FazerChamada.razor: Seção B implementada (busca debounced 400ms, chips por tipo de participante, observações expansíveis) |
+| 18/05/2026 | ChamadaEndpoints.cs: endpoint `GET /buscar-extras` adicionado para suporte à Seção B |
+| 18/05/2026 | Professor > AulasParticulares: aba "Minha Disponibilidade" implementada (3 abas totais) |
 
 ---
 
