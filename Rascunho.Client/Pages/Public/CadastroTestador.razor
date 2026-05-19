@@ -1,0 +1,644 @@
+@*
+  ARQUIVO: Rascunho.Client/Pages/Public/CadastroTestador.razor
+  ROTA:    /cadastrar
+  ACESSO:  Público (sem [Authorize]) — para testadores voluntários
+
+  FLUXO:
+  Etapa 1 — Seleção do perfil de acesso (cartões clicáveis)
+  Etapa 2 — Formulário com campos relevantes ao tipo escolhido:
+    - Todos: Nome, Email, Senha, Confirmar Senha, DataNascimento, Telefone, Gênero
+    - Opcional (exceto Recepção): CPF
+    - Professor: seleção de ritmos (chips via GET api/ritmos/listar — endpoint público)
+    - Bolsista: PapelDominante + DiaObrigatorio1 + DiaObrigatorio2
+
+  Foto: preview local disponível, mas envio desabilitado pois o endpoint
+  POST /api/upload/foto exige autenticação. FotoUrl vai como null.
+*@
+
+@page "/cadastrar"
+@layout Rascunho.Client.Layout.AuthLayout
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Cadastro de Testador — Ponto da Dança</PageTitle>
+
+<MudPaper Elevation="4" Class="pa-6"
+          Style="width: 100%; max-width: 680px; border-top: 5px solid #1b5e20; border-radius: 8px;">
+
+    @* ── Cabeçalho ────────────────────────────────────────────── *@
+    <div class="d-flex justify-center mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.DirectionsWalk" Size="Size.Large" Style="color: #1b5e20;" />
+    </div>
+    <MudText Typo="Typo.h5" Align="Align.Center" Class="mb-1" Style="color: #1b5e20; font-weight: bold;">
+        Ponto da Dança
+    </MudText>
+    <MudText Typo="Typo.subtitle2" Align="Align.Center" Class="mb-1 mud-text-secondary">
+        Cadastro de Testador — Passo @_step de 2
+    </MudText>
+
+    <MudProgressLinear Value="@(_step == 1 ? 50 : 100)" Color="Color.Primary" Class="mb-6" />
+
+    @* ══════════════════════════════════════════════════════════
+       ETAPA 1 — Seleção do tipo de acesso
+    ══════════════════════════════════════════════════════════ *@
+    @if (_step == 1)
+    {
+        <MudText Typo="Typo.h6" Class="mb-4 font-weight-bold">Qual é o seu perfil?</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4 mud-text-secondary">
+            Escolha o tipo de acesso que deseja testar. Os campos do cadastro serão adaptados conforme a sua escolha.
+        </MudText>
+
+        <MudGrid Spacing="3" Class="mb-4">
+            @foreach (var tipo in TiposDisponiveis)
+            {
+                var info = ObterInfoTipo(tipo);
+                bool selecionado = _tipoSelecionado == tipo;
+                <MudItem xs="12" sm="6">
+                    <MudCard Elevation="@(selecionado ? 6 : 2)"
+                             @onclick="@(() => _tipoSelecionado = tipo)"
+                             Style="@($"cursor:pointer; border: 2px solid {(selecionado ? info.Cor : "transparent")}; border-radius: 10px; transition: all 0.15s; height: 100%;")">
+                        <MudCardContent Class="pa-4">
+                            <MudText Typo="Typo.h4" Class="mb-1">@info.Emoji</MudText>
+                            <MudText Typo="Typo.subtitle1"
+                                     Style="@($"color:{info.Cor}; font-weight: bold;")">
+                                @tipo
+                            </MudText>
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+                                @info.Descricao
+                            </MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+
+        @if (_tentouAvancar && _tipoSelecionado is null)
+        {
+            <MudText Color="Color.Error" Typo="Typo.caption" Class="d-block mb-3">
+                Selecione um perfil para continuar.
+            </MudText>
+        }
+
+        <MudButton Variant="Variant.Filled"
+                   FullWidth="true"
+                   Size="Size.Large"
+                   OnClick="AvancarParaEtapa2"
+                   Style="background-color: #1b5e20; color: white; font-weight: bold;">
+            Continuar
+        </MudButton>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.body2" Align="Align.Center">
+            Já tem conta?
+            <MudLink Href="/login" Color="Color.Primary">Entrar</MudLink>
+        </MudText>
+    }
+
+    @* ══════════════════════════════════════════════════════════
+       ETAPA 2 — Formulário de cadastro
+    ══════════════════════════════════════════════════════════ *@
+    @if (_step == 2)
+    {
+        @* ── Foto de perfil ─────────────────────────────────── *@
+        <MudText Typo="Typo.subtitle2" Class="mb-2 font-weight-bold">Foto de Perfil</MudText>
+        <div class="d-flex align-center gap-4 mb-2">
+            <MudAvatar Style="width:72px; height:72px; font-size:1.8rem;" Color="Color.Primary">
+                @if (!string.IsNullOrEmpty(_fotoPreviewUrl))
+                {
+                    <MudImage Src="@_fotoPreviewUrl" Alt="Preview da foto"
+                              Style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />
+                }
+                else
+                {
+                    @(string.IsNullOrEmpty(_form.Nome)
+                        ? "?"
+                        : _form.Nome.FirstOrDefault().ToString().ToUpper())
+                }
+            </MudAvatar>
+            <div>
+                <InputFile id="inputFotoCadastro"
+                           OnChange="SelecionarFoto"
+                           accept="image/jpeg,image/jpg,image/png,image/webp"
+                           style="display:none;" />
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.CameraAlt"
+                           OnClick="AbrirSeletorFoto">
+                    @(string.IsNullOrEmpty(_fotoPreviewUrl) ? "Escolher Foto" : "Trocar Foto")
+                </MudButton>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-1">
+                    A foto pode ser adicionada após o login no seu perfil.
+                </MudText>
+            </div>
+        </div>
+
+        <MudDivider Class="mb-4 mt-2" />
+
+        @* ── Dados básicos (comuns a todos) ──────────────────── *@
+        <MudTextField @bind-Value="_form.Nome"
+                      Label="Nome Completo *"
+                      Variant="Variant.Outlined"
+                      Class="mb-4"
+                      Immediate="true"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Person" />
+
+        <MudTextField @bind-Value="_form.Email"
+                      Label="E-mail *"
+                      InputType="InputType.Email"
+                      Variant="Variant.Outlined"
+                      Class="mb-4"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Email" />
+
+        <MudTextField @bind-Value="_form.Senha"
+                      Label="Senha *"
+                      InputType="@_senhaInputType"
+                      Variant="Variant.Outlined"
+                      Class="mb-4"
+                      HelperText="Mínimo 8 caracteres"
+                      Adornment="Adornment.End"
+                      AdornmentIcon="@_senhaIcon"
+                      OnAdornmentClick="ToggleSenha" />
+
+        <MudTextField @bind-Value="_form.ConfirmarSenha"
+                      Label="Confirmar Senha *"
+                      InputType="InputType.Password"
+                      Variant="Variant.Outlined"
+                      Class="mb-4"
+                      Error="@(_tentouSalvar && _form.Senha != _form.ConfirmarSenha)"
+                      ErrorText="As senhas não coincidem."
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.LockReset" />
+
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_dataNascimento"
+                               Label="Data de Nascimento *"
+                               Variant="Variant.Outlined"
+                               DateFormat="dd/MM/yyyy"
+                               MaxDate="@DateTime.Today.AddYears(-5)"
+                               Class="mb-4"
+                               Adornment="Adornment.Start"
+                               AdornmentIcon="@Icons.Material.Filled.Cake" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_form.Telefone"
+                              Label="Telefone/WhatsApp"
+                              Variant="Variant.Outlined"
+                              Class="mb-4"
+                              Placeholder="(31) 99999-9999"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Phone" />
+            </MudItem>
+        </MudGrid>
+
+        @* ── CPF — oculto para Recepção ──────────────────────── *@
+        @if (_tipoSelecionado != "Recepção")
+        {
+            <MudTextField @bind-Value="_form.Cpf"
+                          Label="CPF (opcional)"
+                          Variant="Variant.Outlined"
+                          Class="mb-4"
+                          Placeholder="123.456.789-01"
+                          MaxLength="14"
+                          HelperText="Se informado, será validado pelo algoritmo da Receita Federal"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Badge" />
+        }
+
+        <MudSelect T="string"
+                   Label="Gênero"
+                   @bind-Value="_form.Genero"
+                   Variant="Variant.Outlined"
+                   Class="mb-4"
+                   AnchorOrigin="Origin.BottomCenter"
+                   HelperText="Usado para definir o papel padrão na dança de salão">
+            <MudSelectItem Value="@("Masculino")">Masculino</MudSelectItem>
+            <MudSelectItem Value="@("Feminino")">Feminino</MudSelectItem>
+            <MudSelectItem Value="@("Não informado")">Prefiro não informar</MudSelectItem>
+        </MudSelect>
+
+        @* ══════════════════════════════════════════════════════
+           CAMPOS EXTRAS — PROFESSOR
+        ══════════════════════════════════════════════════════ *@
+        @if (_tipoSelecionado == "Professor")
+        {
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.subtitle1" Class="mb-1 font-weight-bold">
+                <MudIcon Icon="@Icons.Material.Filled.MusicNote" Size="Size.Small" Class="mr-1" />
+                Ritmos que Leciona *
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">
+                Clique nos chips para selecionar. Cada ritmo selecionado cria um vínculo com nível "Professor".
+            </MudText>
+
+            @if (_carregandoRitmos)
+            {
+                <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+            }
+            else if (!_ritmos.Any())
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">
+                    Nenhum ritmo cadastrado no sistema.
+                </MudAlert>
+            }
+            else
+            {
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    @foreach (var ritmo in _ritmos.Where(r => r.Ativo))
+                    {
+                        bool sel = _ritmosSelecionados.Contains(ritmo.IdHash);
+                        <MudChip T="string"
+                                 Color="@(sel ? Color.Primary : Color.Default)"
+                                 Variant="@(sel ? Variant.Filled : Variant.Outlined)"
+                                 OnClick="@(() => ToggleRitmo(ritmo.IdHash))"
+                                 Style="cursor:pointer; user-select:none;">
+                            @ritmo.Nome
+                            @(ritmo.Modalidade == "Dança de salão" ? " 💃" : " 🕺")
+                        </MudChip>
+                    }
+                </div>
+                @if (_ritmosSelecionados.Count > 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Success" Class="d-block mb-2">
+                        ✅ @_ritmosSelecionados.Count ritmo(s) selecionado(s)
+                    </MudText>
+                }
+                else if (_tentouSalvar)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block mb-2">
+                        Selecione pelo menos um ritmo.
+                    </MudText>
+                }
+            }
+        }
+
+        @* ══════════════════════════════════════════════════════
+           CAMPOS EXTRAS — BOLSISTA
+        ══════════════════════════════════════════════════════ *@
+        @if (_tipoSelecionado == "Bolsista")
+        {
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.subtitle1" Class="mb-3 font-weight-bold">
+                <MudIcon Icon="@Icons.Material.Filled.Stars" Size="Size.Small" Class="mr-1" />
+                Configuração do Bolsista
+            </MudText>
+
+            <MudText Typo="Typo.body2" Class="mb-1">Papel dominante na dança de salão: *</MudText>
+            <MudRadioGroup T="string" @bind-Value="_form.PapelDominante" Class="mb-4">
+                <MudRadio Value="@("Condutor")" Color="Color.Primary">
+                    ⬆️ Condutor — lidera o par
+                </MudRadio>
+                <MudRadio Value="@("Conduzido")" Color="Color.Secondary">
+                    ⬇️ Conduzido — segue o par
+                </MudRadio>
+                <MudRadio Value="@("Ambos")" Color="Color.Success">
+                    ↕️ Ambos — dança em qualquer papel
+                </MudRadio>
+            </MudRadioGroup>
+            @if (string.IsNullOrEmpty(_form.PapelDominante) && _tentouSalvar)
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" Class="d-block mb-3">
+                    Selecione o papel dominante.
+                </MudText>
+            }
+
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+                Dias obrigatórios são os dias em que o bolsista deve estar presente na escola
+                para equilibrar as turmas de salão. São usados para calcular frequência e sugerir turmas.
+            </MudAlert>
+
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int"
+                               @bind-Value="_form.DiaObrigatorio1"
+                               Label="Dia Obrigatório 1 *"
+                               Variant="Variant.Outlined"
+                               Class="mb-4"
+                               AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var dia in DiasOpcoes)
+                        {
+                            <MudSelectItem T="int" Value="@dia.Valor">@dia.Nome</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int"
+                               @bind-Value="_form.DiaObrigatorio2"
+                               Label="Dia Obrigatório 2 *"
+                               Variant="Variant.Outlined"
+                               Class="mb-4"
+                               AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var dia in DiasOpcoes.Where(d => d.Valor != _form.DiaObrigatorio1))
+                        {
+                            <MudSelectItem T="int" Value="@dia.Valor">@dia.Nome</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+        }
+
+        @* ── Botões de ação e painel de sucesso ───────────────── *@
+        @if (_cadastroConcluido)
+        {
+            <MudAlert Severity="Severity.Success" Class="mt-4">
+                <MudText Typo="Typo.subtitle1"><b>Cadastro realizado com sucesso!</b></MudText>
+                <MudText Typo="Typo.body2" Class="mt-1">
+                    Sua conta foi criada. Acesse o sistema agora:
+                </MudText>
+                <MudButton Href="/login"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Class="mt-3"
+                           StartIcon="@Icons.Material.Filled.Login">
+                    Ir para o Login
+                </MudButton>
+            </MudAlert>
+        }
+        else
+        {
+            <div class="d-flex gap-3 mt-6">
+                <MudButton Variant="Variant.Outlined"
+                           OnClick="VoltarParaEtapa1"
+                           Disabled="@_enviando"
+                           StartIcon="@Icons.Material.Filled.ArrowBack">
+                    Voltar
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           Size="Size.Large"
+                           OnClick="EnviarCadastro"
+                           Disabled="@_enviando"
+                           StartIcon="@Icons.Material.Filled.PersonAdd">
+                    @if (_enviando)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        @_statusEnvio
+                    }
+                    else
+                    {
+                        <text>Criar Conta</text>
+                    }
+                </MudButton>
+            </div>
+        }
+    }
+
+</MudPaper>
+
+@code {
+    // ── Estado do wizard ──────────────────────────────────────
+    private int _step = 1;
+    private string? _tipoSelecionado = null;
+    private bool _tentouAvancar = false;
+    private bool _cadastroConcluido = false;
+
+    // ── Estado do formulário ──────────────────────────────────
+    private CadastroForm _form = new();
+    private DateTime? _dataNascimento = null;
+    private bool _tentouSalvar = false;
+    private bool _enviando = false;
+    private string _statusEnvio = "Criando conta...";
+
+    // ── Toggle de senha ───────────────────────────────────────
+    private bool _senhaVisivel = false;
+    private InputType _senhaInputType = InputType.Password;
+    private string _senhaIcon = Icons.Material.Filled.VisibilityOff;
+
+    // ── Foto ──────────────────────────────────────────────────
+    private string _fotoPreviewUrl = "";
+    private IBrowserFile? _arquivoFoto = null;
+
+    // ── Ritmos (Professor) ────────────────────────────────────
+    private List<RitmoLocal> _ritmos = new();
+    private HashSet<string> _ritmosSelecionados = new();
+    private bool _carregandoRitmos = false;
+    private bool _ritmosCarregados = false;
+
+    // ── Constantes ────────────────────────────────────────────
+    private static readonly string[] TiposDisponiveis =
+        ["Aluno", "Professor", "Bolsista", "Líder", "Recepção"];
+
+    private static readonly (int Valor, string Nome)[] DiasOpcoes =
+    [
+        (0, "Domingo"),
+        (1, "Segunda-feira"),
+        (2, "Terça-feira"),
+        (3, "Quarta-feira"),
+        (4, "Quinta-feira"),
+        (5, "Sexta-feira"),
+        (6, "Sábado"),
+    ];
+
+    // ── Navegação do wizard ───────────────────────────────────
+
+    private async Task AvancarParaEtapa2()
+    {
+        _tentouAvancar = true;
+        if (_tipoSelecionado is null) return;
+
+        if (_tipoSelecionado == "Professor" && !_ritmosCarregados)
+        {
+            _carregandoRitmos = true;
+            try
+            {
+                _ritmos = await Http.GetFromJsonAsync<List<RitmoLocal>>("api/ritmos/listar") ?? new();
+                _ritmosCarregados = true;
+            }
+            catch { /* falha silenciosa — UI mostra estado vazio */ }
+            finally { _carregandoRitmos = false; }
+        }
+
+        _step = 2;
+    }
+
+    private void VoltarParaEtapa1()
+    {
+        _step = 1;
+        _tentouSalvar = false;
+    }
+
+    // ── Foto ──────────────────────────────────────────────────
+
+    private async Task AbrirSeletorFoto()
+    {
+        await JS.InvokeVoidAsync("fileUpload.abrirSeletor", "inputFotoCadastro");
+    }
+
+    private async Task SelecionarFoto(InputFileChangeEventArgs e)
+    {
+        _arquivoFoto = e.File;
+        try
+        {
+            var buffer = new byte[_arquivoFoto.Size];
+            await _arquivoFoto.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024).ReadAsync(buffer);
+            var base64 = Convert.ToBase64String(buffer);
+            _fotoPreviewUrl = $"data:{_arquivoFoto.ContentType};base64,{base64}";
+        }
+        catch
+        {
+            Snackbar.Add("Arquivo muito grande para preview.", Severity.Info);
+        }
+    }
+
+    // ── Ritmos ────────────────────────────────────────────────
+
+    private void ToggleRitmo(string idHash)
+    {
+        if (!_ritmosSelecionados.Remove(idHash))
+            _ritmosSelecionados.Add(idHash);
+    }
+
+    // ── Toggle senha ──────────────────────────────────────────
+
+    private void ToggleSenha()
+    {
+        _senhaVisivel = !_senhaVisivel;
+        _senhaInputType = _senhaVisivel ? InputType.Text : InputType.Password;
+        _senhaIcon = _senhaVisivel
+            ? Icons.Material.Filled.Visibility
+            : Icons.Material.Filled.VisibilityOff;
+    }
+
+    // ── Envio do cadastro ─────────────────────────────────────
+
+    private async Task EnviarCadastro()
+    {
+        _tentouSalvar = true;
+
+        if (string.IsNullOrWhiteSpace(_form.Nome) ||
+            string.IsNullOrWhiteSpace(_form.Email) ||
+            string.IsNullOrWhiteSpace(_form.Senha) ||
+            _dataNascimento is null)
+        {
+            Snackbar.Add("Preencha todos os campos obrigatórios (*).", Severity.Warning);
+            return;
+        }
+
+        if (_form.Senha != _form.ConfirmarSenha)
+        {
+            Snackbar.Add("As senhas não coincidem.", Severity.Warning);
+            return;
+        }
+
+        if (_form.Senha.Length < 8)
+        {
+            Snackbar.Add("A senha deve ter pelo menos 8 caracteres.", Severity.Warning);
+            return;
+        }
+
+        if (_tipoSelecionado == "Professor" && _ritmosSelecionados.Count == 0)
+        {
+            Snackbar.Add("Selecione pelo menos um ritmo.", Severity.Warning);
+            return;
+        }
+
+        if (_tipoSelecionado == "Bolsista" && string.IsNullOrEmpty(_form.PapelDominante))
+        {
+            Snackbar.Add("Selecione o papel dominante do bolsista.", Severity.Warning);
+            return;
+        }
+
+        _enviando = true;
+
+        try
+        {
+            _statusEnvio = "Criando conta...";
+
+            var payload = new
+            {
+                Nome = _form.Nome.Trim(),
+                Email = _form.Email.Trim().ToLower(),
+                Senha = _form.Senha,
+                Tipo = _tipoSelecionado!,
+                DataNascimento = DateOnly.FromDateTime(_dataNascimento!.Value),
+                Telefone = string.IsNullOrWhiteSpace(_form.Telefone) ? null : _form.Telefone.Trim(),
+                FotoUrl = (string?)null,
+                Cpf = string.IsNullOrWhiteSpace(_form.Cpf) ? null : _form.Cpf.Trim(),
+                Genero = _form.Genero,
+                RitmosIdHash = _tipoSelecionado == "Professor"
+                    ? _ritmosSelecionados.ToList()
+                    : (List<string>?)null,
+                PapelDominante = _tipoSelecionado == "Bolsista" ? _form.PapelDominante : null,
+                DiaObrigatorio1 = _tipoSelecionado == "Bolsista" ? (int?)_form.DiaObrigatorio1 : null,
+                DiaObrigatorio2 = _tipoSelecionado == "Bolsista" ? (int?)_form.DiaObrigatorio2 : null,
+            };
+
+            var response = await Http.PostAsJsonAsync("api/usuarios/registrar-testador", payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _cadastroConcluido = true;
+            }
+            else if ((int)response.StatusCode == 422)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<ErroResponse>(body,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                Snackbar.Add(parsed?.Erro ?? "Dados já cadastrados no sistema.", Severity.Warning);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                Snackbar.Add("Dados inválidos. Verifique os campos e tente novamente.", Severity.Error);
+            }
+            else
+            {
+                var corpo = await response.Content.ReadAsStringAsync();
+                Snackbar.Add("Erro no servidor. Tente novamente em instantes.", Severity.Error);
+                Console.WriteLine($"[CADASTRO TESTADOR 500] {corpo}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Erro inesperado: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _enviando = false;
+        }
+    }
+
+    // ── Info por tipo ─────────────────────────────────────────
+
+    private static (string Emoji, string Descricao, string Cor) ObterInfoTipo(string tipo) => tipo switch
+    {
+        "Aluno"     => ("🎓", "Participa de turmas pagas. Testa matrícula, aulas e pagamentos.", "#1b5e20"),
+        "Professor" => ("👨‍🏫", "Ministra aulas. Testa chamadas, turmas e ritmos.", "#1565c0"),
+        "Bolsista"  => ("⭐", "Acesso gratuito a turmas de salão. Testa fluxo de bolsistas.", "#f59f00"),
+        "Líder"     => ("🏅", "Representante de turma. Testa visão gerencial limitada.", "#7b1fa2"),
+        "Recepção"  => ("🗂️", "Administração do dia a dia. Testa cadastros e turmas.", "#e65100"),
+        _           => ("👤", "", "#9e9e9e")
+    };
+
+    // ── Modelos locais ────────────────────────────────────────
+
+    private class CadastroForm
+    {
+        public string Nome { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Senha { get; set; } = "";
+        public string ConfirmarSenha { get; set; } = "";
+        public string Genero { get; set; } = "Não informado";
+        public string? Telefone { get; set; }
+        public string? Cpf { get; set; }
+        public string PapelDominante { get; set; } = "Ambos";
+        public int DiaObrigatorio1 { get; set; } = 1;
+        public int DiaObrigatorio2 { get; set; } = 3;
+    }
+
+    private class RitmoLocal
+    {
+        public string IdHash { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string Modalidade { get; set; } = "";
+        public bool Ativo { get; set; }
+    }
+
+    private class ErroResponse { public string? Erro { get; set; } }
+}

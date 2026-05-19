@@ -1,7 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dotnet --version)"
+      "Bash(dotnet --version)",
+      "Skill(anthropic-skills:docx)",
+      "Skill(anthropic-skills:docx:*)",
+      "PowerShell($globalPath = \\(npm root -g\\); Write-Host \"Global npm root: $globalPath\"; Test-Path \"$globalPath\\\\docx\")",
+      "PowerShell($env:NODE_PATH = \"C:\\\\Users\\\\gdmat\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\"; $skillDir = \"C:\\\\Users\\\\gdmat\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\2eea33fa-6fb2-44aa-b8d2-4c03f10bb385\\\\fa05e739-96f4-4b8b-982a-a2f27e1d2130\\\\skills\\\\docx\"; Set-Location $skillDir; node --experimental-global-require gerar_doc_ponto_da_danca.js 2>&1 | Select-String -NotMatch \"ExperimentalWarning\")",
+      "PowerShell($skillDir = \"C:\\\\Users\\\\gdmat\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\2eea33fa-6fb2-44aa-b8d2-4c03f10bb385\\\\fa05e739-96f4-4b8b-982a-a2f27e1d2130\\\\skills\\\\docx\"; python \"$skillDir\\\\scripts\\\\office\\\\validate.py\" \"C:\\\\Users\\\\gdmat\\\\source\\\\repos\\\\Rascunho\\\\Documentação\\\\documentacao_ponto_da_danca.docx\")",
+      "PowerShell(Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip = [System.IO.Compression.ZipFile]::OpenRead\\(\"C:\\\\Users\\\\gdmat\\\\source\\\\repos\\\\Rascunho\\\\Documentação\\\\documentacao_ponto_da_danca.docx\"\\); $entries = $zip.Entries | Select-Object FullName; $zip.Dispose\\(\\); $entries | ForEach-Object { $_.FullName } | Select-String \"word/\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\gdmat\\\\source\\\\repos\\\\Rascunho\\\\Documentação\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName, Name)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\gdmat\\\\source\\\\repos\\\\Rascunho\\\\Rascunho\\\\\" -Directory | Select-Object Name)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\gdmat\\\\source\\\\repos\\\\Rascunho\\\\Rascunho.Client\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)"
     ]
   }
 }

@@ -23,7 +23,24 @@ public static class UsuarioEndpoints
         .AddEndpointFilter<ValidationFilter<CriarUsuarioRequest>>()
         .RequireAuthorization(policy => policy.RequireRole("Recepção", "Gerente"));
 
-        // 2. CADASTRO EM MASSA
+        // 2. REGISTRAR TESTADOR — público, sem autenticação
+        // Bloqueia Gerente explicitamente; reutiliza o mesmo service e validator
+        group.MapPost("/registrar-testador", async (
+            CriarUsuarioRequest request,
+            UsuarioService usuarioService) =>
+        {
+            if (request.Tipo == "Gerente")
+                return Results.UnprocessableEntity(
+                    new { Erro = "Não é permitido se cadastrar como Gerente." });
+
+            var response = await usuarioService.CriarUsuarioAsync(request);
+            return Results.Created($"/api/usuarios/{response.IdHash}", response);
+        })
+        .AddEndpointFilter<ValidationFilter<CriarUsuarioRequest>>()
+        .AllowAnonymous();
+        // TODO: adicionar rate limiting se o endpoint for exposto publicamente no futuro
+
+        // 3. CADASTRO EM MASSA
         group.MapPost("/cadastrar/lista", async (
             List<CriarUsuarioRequest> listaDeUsuarios,
             UsuarioService usuarioService) =>
