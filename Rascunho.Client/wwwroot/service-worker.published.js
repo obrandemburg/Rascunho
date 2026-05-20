@@ -19,6 +19,10 @@ const manifestUrlList = self.assetsManifest.assets.map(asset => new URL(asset.ur
 async function onInstall(event) {
     console.info('Service worker: Install');
 
+    // Pula a fase de "waiting" e ativa o novo service worker imediatamente
+    // após instalar — sem precisar fechar todas as abas abertas.
+    self.skipWaiting();
+
     // Fetch and cache all matching items from the assets manifest
     const assetsRequests = self.assetsManifest.assets
         .filter(asset => offlineAssetsInclude.some(pattern => pattern.test(asset.url)))
@@ -29,6 +33,11 @@ async function onInstall(event) {
 
 async function onActivate(event) {
     console.info('Service worker: Activate');
+
+    // Assume controle imediato de todas as abas abertas ao detectar nova versão.
+    // Sem isso, o browser só ativa o novo service worker quando todas as abas
+    // com a versão antiga forem fechadas — o que atrasaria a atualização para testadores.
+    await self.clients.claim();
 
     // Delete unused caches
     const cacheKeys = await caches.keys();

@@ -25,17 +25,23 @@
     </Found>
     <NotFound>
         <PageTitle>404 — Página não encontrada</PageTitle>
-        <LayoutView Layout="@typeof(MainLayout)">
-            <MudContainer Class="mt-16 text-center">
-                <MudText Typo="Typo.h3">🕺 Ops!</MudText>
-                <MudText Typo="Typo.h5" Class="mt-4">
-                    Esta página não existe.
+        <LayoutView Layout="@typeof(AuthLayout)">
+            <MudPaper Elevation="4" Class="pa-8 text-center"
+                      Style="width: 100%; max-width: 400px; border-top: 5px solid #1b5e20; border-radius: 8px;">
+                <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large"
+                         Style="color: #1b5e20;" Class="mb-4" />
+                <MudText Typo="Typo.h5" Class="mb-2" Style="color: #1b5e20; font-weight: bold;">
+                    Página não encontrada
                 </MudText>
-                <MudButton Href="/painel" Color="Color.Primary"
-                           Variant="Variant.Filled" Class="mt-8">
-                    Voltar ao Painel
+                <MudText Typo="Typo.body1" Class="mb-6 mud-text-secondary">
+                    O endereço digitado não existe no sistema.
+                </MudText>
+                <MudButton Href="/login" Variant="Variant.Filled"
+                           Style="background-color: #1b5e20; color: white; font-weight: bold;"
+                           FullWidth="true">
+                    Ir para o Login
                 </MudButton>
-            </MudContainer>
+            </MudPaper>
         </LayoutView>
     </NotFound>
 </Router>

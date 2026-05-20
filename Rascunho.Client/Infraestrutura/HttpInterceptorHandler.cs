@@ -55,6 +55,11 @@ public class HttpInterceptorHandler : DelegatingHandler
             Console.WriteLine($"[INTERCEPTADOR] Resposta: {corpo}");
         }
 
+        // A rota de login trata credenciais inválidas diretamente no AuthService.
+        // Qualquer snackbar exibido aqui causaria duplicidade com o que Login.razor mostra.
+        if (request.RequestUri?.AbsolutePath.Contains("/api/auth/login") == true)
+            return response;
+
         // Resolvendo as demais dependências apenas quando necessárias (Lazy Loading)
         var localStorage = _serviceProvider.GetRequiredService<ILocalStorageService>();
         var authStateProvider = _serviceProvider.GetRequiredService<AuthenticationStateProvider>();
