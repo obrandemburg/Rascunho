@@ -1,14 +1,12 @@
-﻿@* 
-  Componente auxiliar: redireciona para /login preservando a URL original
-  via returnUrl, para que após o login o usuário volte para onde estava.
+@*
+  Componente auxiliar: redireciona para /login quando o usuário não está autenticado.
+  Não usa returnUrl — o Login.razor sempre redireciona para "/" após autenticação.
 *@
 @inject NavigationManager NavigationManager
 
 @code {
     protected override void OnInitialized()
     {
-        // Captura a URL atual e passa como parâmetro para o login
-        var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
-        NavigationManager.NavigateTo($"/login?returnUrl={returnUrl}");
+        NavigationManager.NavigateTo("/login");
     }
 }

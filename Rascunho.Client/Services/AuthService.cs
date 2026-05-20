@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Rascunho.Shared.DTOs;
 using Rascunho.Client.Security;
 using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Rascunho.Client.Services;
 
@@ -75,6 +76,16 @@ public class AuthService
                 return null; // Sucesso — sem mensagem de erro
             }
         }
+
+        // Tenta extrair a mensagem de erro retornada pelo backend (400 com { "erro": "..." })
+        try
+        {
+            var corpo = await response.Content.ReadAsStringAsync();
+            var json = JsonSerializer.Deserialize<JsonElement>(corpo);
+            if (json.TryGetProperty("erro", out var prop) && prop.GetString() is { Length: > 0 } msg)
+                return msg;
+        }
+        catch { }
 
         return "E-mail ou senha incorretos.";
     }
